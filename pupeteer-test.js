@@ -7,9 +7,8 @@ const proxyChain = require('proxy-chain');
 
 const oldProxyUrl = "http://terriblename:C1qV9OqPHtNyaAqH_country-UnitedStates@proxy.packetstream.io:31112"
 
-async() => {
-  const newProxyUrl = await proxyChain.anonymizeProxy({ url: oldProxyUrl });
-}
+
+const newProxyUrl = await proxyChain.anonymizeProxy({ url: oldProxyUrl });
 
 // add stealth plugin and use defaults (all evasion techniques)
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')

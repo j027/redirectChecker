@@ -18,10 +18,10 @@ module.exports = {
 				return;
 			}
 
-			urlList = data.split("\n")
+			let urlList = data.split("\n")
 			urlList = urlList.filter(item => item != "")
 			let url = interaction.options.getString("url")
-			urlAlreadyThere = urlList.includes(url)
+			let urlAlreadyThere = urlList.includes(url)
 
 			const isValidUrl = url => {
 				try {
@@ -38,7 +38,7 @@ module.exports = {
 
 			else if (!urlAlreadyThere) {
 				urlList.push(url)
-				dataToWrite = urlList.join("\n")
+				let dataToWrite = urlList.join("\n")
 				fs.writeFile("redirects.txt", dataToWrite, err => {
 					if (err) {
 						console.error(err)

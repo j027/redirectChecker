@@ -1,4 +1,3 @@
-
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { readConfig } from "./config";
 import { commands } from "./commands/commands";

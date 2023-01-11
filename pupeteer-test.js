@@ -48,9 +48,10 @@ puppeteer.use(StealthPlugin());
       req.continue();
     }
   });
-  await page.goto("https://bit.ly/3CF6AFv");
+  let url = "https://atvegrecipes.com"
+  await page.goto(url);
 
-  await page.waitForTimeout(10000);
+  await page.waitForNavigation({ waitUntil: ['networkidle0'] })
 
   console.log(`Redirect Path: ${redirects.join(" --> ")}`);
 

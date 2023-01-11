@@ -1,7 +1,9 @@
-const { SlashCommandBuilder } = require("discord.js");
+import { SlashCommandBuilder } from "discord.js";
+import { CommandDefinition } from "./commands";
+
 const fs = require("node:fs");
-module.exports = {
-  data: new SlashCommandBuilder()
+export const removeCommand: CommandDefinition = {
+  command: new SlashCommandBuilder()
     .setName("remove")
     .setDescription("Removes redirect from list of redirects")
     .addStringOption((option) =>
@@ -9,8 +11,9 @@ module.exports = {
         .setName("url")
         .setDescription("The url that redirects to a popup")
         .setRequired(true)
-    ),
+    )
+    .toJSON(),
   async execute(interaction) {
-    interaction.reply("Not implemented");
+    await interaction.reply("Not implemented");
   },
 };

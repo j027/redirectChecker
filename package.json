@@ -1,13 +1,9 @@
 {
   "name": "discordbot",
-  "version": "1.0.0",
-  "description": "Follows redirects to tech support scams to get the latest popup",
-  "main": "discordBot.js",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node discordBot.js"
   },
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "discord.js": "^14.7.1",
     "proxy-chain": "^2.2.0",

@@ -8,6 +8,7 @@
   "dependencies": {
     "@types/node": "^18.11.18",
     "discord.js": "^14.7.1",
+    "level": "^8.0.0",
     "node-fetch": "^3.3.0",
     "proxy-chain": "^2.2.0",
     "puppeteer": "^19.5.0",

@@ -1,6 +1,8 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
+import { Level } from "level";
 import puppeteer from "puppeteer-extra";
-import proxyChain from "proxy-chain";
+
+const proxyChain = require("proxy-chain");
 import { readConfig } from "./config";
 import { commands } from "./commands/commands";
 import { promises as fs } from "fs";
@@ -44,65 +46,77 @@ async function main() {
 
 async function loadRedirect() {
   while (true) {
-    const oldProxyUrl =
-      "http://terriblename:C1qV9OqPHtNyaAqH_country-UnitedStates@proxy.packetstream.io:31112";
-    const newProxyUrl = await proxyChain.anonymizeProxy({
-      port: 8000,
-      url: oldProxyUrl,
-    });
-    puppeteer.use(StealthPlugin());
-    const browser = await puppeteer.launch({
-      headless: false,
-      executablePath: executablePath(),
-      args: [`--proxy-server=${newProxyUrl}`],
-    });
     const data = await fs.readFile("redirects.txt", { encoding: "utf-8" });
 
     let urlList = data.split("\n");
     urlList = urlList.filter((item) => item != "");
-
-    for (let i = 0; i < urlList.length; i++) {
-      let redirectURL = urlList[i];
-
-      const page = await browser.newPage();
-      page.setDefaultNavigationTimeout(0); // disable navigation timeout
-      // keep track of redirect path
-      const redirects = [];
-      const client = await page.target().createCDPSession();
-      await client.send("Network.enable");
-      client.on("Network.requestWillBeSent", (e) => {
-        if (e.type !== "Document") {
-          return;
-        }
-        redirects.push(e.documentURL);
+    if (urlList.length > 0) {
+      const db = new Level("lastRedirect", { valueEncoding: "json" });
+      const oldProxyUrl =
+        "http://terriblename:C1qV9OqPHtNyaAqH_country-UnitedStates@proxy.packetstream.io:31112";
+      const newProxyUrl = await proxyChain.anonymizeProxy({
+        port: 8000,
+        url: oldProxyUrl,
       });
-
-      // block unnecessary things from loading
-      await page.setRequestInterception(true);
-      page.on("request", (req) => {
-        if (
-          ["image", "font", "stylesheet", "media"].includes(req.resourceType())
-        ) {
-          req.abort();
-        } else {
-          req.continue();
-        }
+      puppeteer.use(StealthPlugin());
+      const browser = await puppeteer.launch({
+        headless: true,
+        executablePath: executablePath(),
+        args: [`--proxy-server=${newProxyUrl}`],
       });
-      await page.goto(redirectURL);
-      await page.waitForNavigation({ waitUntil: ["networkidle0"] });
+      for (let i = 0; i < urlList.length; i++) {
+        let redirectURL = urlList[i];
 
-      let pageTitle = await page.title();
-      if (pageTitle.toLowerCase().includes("security center")) {
-        console.log("Popup detected");
-        let currentURL = page.url();
-        // TODO: fix this so it only reports on first occurrence - the state needs to be stored
-        // it also needs to store when it last changed so the status command can display that info
-        await reportSite(currentURL);
+        const page = await browser.newPage();
+        page.setDefaultNavigationTimeout(0); // disable navigation timeout
+        // keep track of redirect path
+        const redirects: string[] = [];
+        const client = await page.target().createCDPSession();
+        await client.send("Network.enable");
+        client.on("Network.requestWillBeSent", (e) => {
+          if (e.type !== "Document") {
+            return;
+          }
+          redirects.push(e.documentURL);
+        });
+
+        // block unnecessary things from loading
+        await page.setRequestInterception(true);
+        page.on("request", (req) => {
+          if (
+            ["image", "font", "stylesheet", "media"].includes(
+              req.resourceType()
+            )
+          ) {
+            req.abort();
+          } else {
+            req.continue();
+          }
+        });
+        await page.goto(redirectURL);
+        await page.waitForTimeout(10000);
+
+        let pageTitle = await page.title();
+        if (pageTitle.toLowerCase().includes("security center")) {
+          const lastURL = await db.get(redirectURL);
+          let currentURL = page.url();
+          if (lastURL != currentURL) {
+            await reportSite(currentURL);
+            await db.put(redirectURL, currentURL);
+            await db.put(
+              redirectURL + "redirectPath",
+              JSON.stringify(redirects)
+            );
+          }
+        }
+        await page.close();
       }
-      await page.close();
+      await browser.close();
+      await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
+      await db.close();
+    } else {
+      console.log("redirect list is empty, will check again in a minute");
     }
-    await browser.close();
-    await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
     await sleep(60000);
   }
 }

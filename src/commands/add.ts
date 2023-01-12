@@ -30,6 +30,7 @@ export const addCommand: CommandDefinition = {
 
     if (urlAlreadyThere) {
       await interaction.reply(`This url "${url}" already exists in the list`);
+      return;
     }
 
     urlList.push(url);

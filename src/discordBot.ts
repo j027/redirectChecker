@@ -51,7 +51,6 @@ async function loadRedirect() {
     let urlList = data.split("\n");
     urlList = urlList.filter((item) => item != "");
     if (urlList.length > 0) {
-      const db = new Level("lastRedirect", { valueEncoding: "json" });
       const oldProxyUrl =
         "http://terriblename:C1qV9OqPHtNyaAqH_country-UnitedStates@proxy.packetstream.io:31112";
       const newProxyUrl = await proxyChain.anonymizeProxy({
@@ -64,8 +63,7 @@ async function loadRedirect() {
         executablePath: executablePath(),
         args: [`--proxy-server=${newProxyUrl}`],
       });
-      for (let i = 0; i < urlList.length; i++) {
-        let redirectURL = urlList[i];
+      for (const redirectURL of urlList) {
 
         const page = await browser.newPage();
         page.setDefaultNavigationTimeout(0); // disable navigation timeout
@@ -93,27 +91,40 @@ async function loadRedirect() {
             req.continue();
           }
         });
-        await page.goto(redirectURL);
+        try {
+          await page.goto(redirectURL);
+        }
+        catch {}
         await page.waitForTimeout(10000);
 
         let pageTitle = await page.title();
-        if (pageTitle.toLowerCase().includes("security center")) {
-          const lastURL = await db.get(redirectURL);
-          let currentURL = page.url();
+        let currentURL = page.url();
+        const db = new Level("lastRedirect", { valueEncoding: "json" });
+        if (pageTitle.toLowerCase().includes("security")) {
+          let lastURL = "";
+          try {
+            lastURL = await db.get(redirectURL);
+          } catch {}
           if (lastURL != currentURL) {
-            await reportSite(currentURL);
+            await reportSite(currentURL, redirects);
             await db.put(redirectURL, currentURL);
             await db.put(
               redirectURL + "redirectPath",
               JSON.stringify(redirects)
             );
+            await db.put(
+              redirectURL + "lastUpdated",
+              Math.round(Date.now() / 1000).toString()
+            );
           }
         }
+        await db.put(redirectURL + "lastCheck", currentURL)
+        await db.close();
         await page.close();
       }
       await browser.close();
       await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
-      await db.close();
+
     } else {
       console.log("redirect list is empty, will check again in a minute");
     }
@@ -127,7 +138,7 @@ function sleep(ms: number) {
   });
 }
 
-async function reportSite(site: string) {
+async function reportSite(site: string, redirectPath: string[]) {
   // report to netcraft, google safebrowsing, crdflabs and urlscan
 
   let response = await fetch(
@@ -138,7 +149,7 @@ async function reportSite(site: string) {
       body: JSON.stringify([site]),
     }
   );
-  console.log("Safebrowsing response" + (await response.text()));
+  console.log("Safebrowsing response " + response.status.toString());
 
   response = await fetch("https://report.netcraft.com/api/v3/report/urls", {
     method: "POST",
@@ -180,16 +191,17 @@ async function reportSite(site: string) {
 
   // send a message in the discord server with a link to the popup
   // using webhook since it's easier, maybe will change out for something else later
+  const redirectPathReadable = redirectPath.join(" => ");
   const discordWebhook =
     "https://discord.com/api/webhooks/858323588910022706/2G21Sqpssz1AJDGKPGHruAAYnhCRCiRwl_ivWpKDnLB5rOqARKXYqd4m_2Wr3DF3_QhZ";
   response = await fetch(discordWebhook, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      content: site,
+      content: `${site} \n Redirect Path: ${redirectPathReadable}`,
     }),
   });
-  console.log("discord webhook response" + (await response.text()));
+  console.log("discord webhook response " + response.status.toString());
 }
 
 main();

@@ -1,6 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 import { CommandDefinition } from "./commands";
 import { promises as fs } from "fs";
+import {Level} from "level";
 
 export const removeCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
@@ -25,6 +26,15 @@ export const removeCommand: CommandDefinition = {
       urlList = urlList.filter((item) => item != url);
       let dataToWrite = urlList.join("\n");
       await fs.writeFile("redirects.txt", dataToWrite);
+      try {
+        const db = new Level("lastRedirect", { valueEncoding: "json" });
+        await db.del(url + "lastCheck")
+        await db.del(url)
+        await db.del(url + "lastUpdated")
+        await db.del(url + "redirectPath")
+        await db.close()
+      }
+      catch{}
       await interaction.reply(`The url ${url} was removed from the list`);
       return;
     }

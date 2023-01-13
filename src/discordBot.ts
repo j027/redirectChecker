@@ -2,16 +2,16 @@ import { Client, Events, GatewayIntentBits } from "discord.js";
 import { Level } from "level";
 import puppeteer from "puppeteer-extra";
 
-const proxyChain = require("proxy-chain");
+import * as proxyChain from "proxy-chain";
 import { readConfig } from "./config";
 import { commands } from "./commands/commands";
 import { promises as fs } from "fs";
-// the import below isn't unused but it gets marked at that for some reason
-import { RequestInfo, RequestInit } from "node-fetch";
-import { executablePath } from "puppeteer";
+import { executablePath, Page } from "puppeteer";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 
 async function main() {
+  loadRedirect();
+
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   const { token } = await readConfig();
 
@@ -44,95 +44,135 @@ async function main() {
   });
 }
 
-async function loadRedirect() {
-  while (true) {
-    const data = await fs.readFile("redirects.txt", { encoding: "utf-8" });
+async function blockVisualResources(page: Page) {
+  await page.setRequestInterception(true);
+  page.on("request", (req) => {
+    if (["image", "font", "stylesheet", "media"].includes(req.resourceType())) {
+      req.abort();
+    } else {
+      req.continue();
+    }
+  });
+}
 
-    let urlList = data.split("\n");
-    urlList = urlList.filter((item) => item != "");
-    if (urlList.length > 0) {
-      const oldProxyUrl =
-        "http://terriblename:C1qV9OqPHtNyaAqH_country-UnitedStates@proxy.packetstream.io:31112";
-      const newProxyUrl = await proxyChain.anonymizeProxy({
-        port: 8000,
-        url: oldProxyUrl,
-      });
-      puppeteer.use(StealthPlugin());
-      const browser = await puppeteer.launch({
-        headless: true,
-        executablePath: executablePath(),
-        args: [`--proxy-server=${newProxyUrl}`],
-      });
-      for (const redirectURL of urlList) {
+async function trackRedirects(page: Page) {
+  const redirects: string[] = [];
 
-        const page = await browser.newPage();
-        page.setDefaultNavigationTimeout(0); // disable navigation timeout
-        // keep track of redirect path
-        const redirects: string[] = [];
-        const client = await page.target().createCDPSession();
-        await client.send("Network.enable");
-        client.on("Network.requestWillBeSent", (e) => {
-          if (e.type !== "Document") {
-            return;
-          }
-          redirects.push(e.documentURL);
-        });
+  const client = await page.target().createCDPSession();
+  await client.send("Network.enable");
+  client.on("Network.requestWillBeSent", (e) => {
+    if (e.type !== "Document") {
+      return;
+    }
+    redirects.push(e.documentURL);
+  });
 
-        // block unnecessary things from loading
-        await page.setRequestInterception(true);
-        page.on("request", (req) => {
-          if (
-            ["image", "font", "stylesheet", "media"].includes(
-              req.resourceType()
-            )
-          ) {
-            req.abort();
-          } else {
-            req.continue();
-          }
-        });
-        try {
-          await page.goto(redirectURL);
-        }
-        catch {}
-        await page.waitForTimeout(10000);
+  return redirects;
+}
 
-        let pageTitle = await page.title();
-        let currentURL = page.url();
-        const db = new Level("lastRedirect", { valueEncoding: "json" });
-        if (pageTitle.toLowerCase().includes("security")) {
-          let lastURL = "";
-          try {
-            lastURL = await db.get(redirectURL);
-          } catch {}
-          if (lastURL != currentURL) {
-            await reportSite(currentURL, redirects);
-            await db.put(redirectURL, currentURL);
-            await db.put(
-              redirectURL + "redirectPath",
-              JSON.stringify(redirects)
-            );
-            await db.put(
-              redirectURL + "lastUpdated",
-              Math.round(Date.now() / 1000).toString()
-            );
-          }
-        }
-        await db.put(redirectURL + "lastCheck", currentURL)
-        await db.close();
+async function checkAllRedirects() {
+
+  if ((await getRedirects()).length <= 0) {
+    console.log("redirect list is empty, will check again in a minute");
+    return;
+  }
+
+  const oldProxyUrl =
+    "http://terriblename:C1qV9OqPHtNyaAqH_country-UnitedStates@proxy.packetstream.io:31112";
+
+  const newProxyUrl = await proxyChain.anonymizeProxy({
+    port: 8000,
+    url: oldProxyUrl,
+  });
+  puppeteer.use(StealthPlugin());
+  const browser = await puppeteer.launch({
+    headless: true,
+    executablePath: executablePath(),
+    args: [`--proxy-server=${newProxyUrl}`],
+  });
+
+  try {
+    for (const redirectURL of await getRedirects()) {
+      const page = await browser.newPage();
+      try {
+        await checkRedirectsForPage(page, redirectURL);
+      } catch (e) {
+        console.error(e);
+      } finally {
         await page.close();
       }
-      await browser.close();
-      await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
-
-    } else {
-      console.log("redirect list is empty, will check again in a minute");
     }
-    await sleep(60000);
+  } finally {
+    await browser.close();
+    await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
   }
 }
 
-function sleep(ms: number) {
+async function checkRedirectsForPage(page: Page, redirectURL: string) {
+  page.setDefaultNavigationTimeout(0);
+  const redirects = await trackRedirects(page);
+  await blockVisualResources(page);
+
+  await page.goto(redirectURL);
+  await timeout(10000);
+
+  let finalURL = page.url();
+  const db = new Level("lastRedirect", { valueEncoding: "json" });
+  try {
+    if (await checkPage(page)) {
+      let previousFinalURL = await db.get(redirectURL).catch(() => null);
+
+      const hasChanged = previousFinalURL != finalURL;
+      if (hasChanged) {
+        await reportSite(finalURL, redirects);
+      }
+
+      await db.batch([
+        {
+          type: "put",
+          key: redirectURL,
+          value: finalURL,
+        },
+        {
+          type: "put",
+          key: redirectURL + "redirectPath",
+          value: JSON.stringify(redirects),
+        },
+        {
+          type: "put",
+          key: redirectURL + "lastUpdated",
+          value: Math.round(Date.now() / 1000).toString(),
+        },
+      ]);
+    }
+
+    await db.put(redirectURL + "lastCheck", finalURL);
+
+  } finally {
+    await db.close();
+  }
+}
+
+async function getRedirects(): Promise<string[]> {
+  const data = await fs.readFile("redirects.txt", { encoding: "utf-8" });
+  let urlList = data.split("\n");
+  urlList = urlList.filter((item) => item != "");
+  return urlList
+}
+
+async function checkPage(page: Page): Promise<boolean> {
+  let pageTitle = await page.title();
+  return pageTitle.toLowerCase().includes("security");
+}
+
+async function loadRedirect() {
+  while (true) {
+    await checkAllRedirects();
+    await timeout(60000);
+  }
+}
+
+function timeout(ms: number) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
@@ -205,4 +245,3 @@ async function reportSite(site: string, redirectPath: string[]) {
 }
 
 main();
-loadRedirect();

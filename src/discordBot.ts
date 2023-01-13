@@ -8,6 +8,7 @@ import { commands } from "./commands/commands";
 import { promises as fs } from "fs";
 import { executablePath, Page } from "puppeteer";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import Adblocker from 'puppeteer-extra-plugin-adblocker'
 
 async function main() {
   loadRedirect();
@@ -84,7 +85,8 @@ async function checkAllRedirects() {
     port: 8000,
     url: oldProxyUrl,
   });
-  puppeteer.use(StealthPlugin());
+
+  puppeteer.use(Adblocker({ blockTrackers: true })).use(StealthPlugin())
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: executablePath(),
@@ -168,7 +170,7 @@ async function checkPage(page: Page): Promise<boolean> {
 async function loadRedirect() {
   while (true) {
     await checkAllRedirects();
-    await timeout(60000);
+    await timeout(180000);
   }
 }
 

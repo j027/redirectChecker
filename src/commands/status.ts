@@ -26,7 +26,7 @@ export const statusCommand: CommandDefinition = {
       let redirectPath
       try {
         redirectPath = await db.get(redirectURL + "redirectPath");
-        redirectPath = JSON.parse(redirectPath).join(" => ");
+        redirectPath = JSON.parse(redirectPath).join(" => \n");
       } catch {}
       let lastUpdatedFormatted
       try {

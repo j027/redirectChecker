@@ -6,9 +6,15 @@ import * as proxyChain from "proxy-chain";
 import { readConfig } from "./config";
 import { commands } from "./commands/commands";
 import { promises as fs } from "fs";
-import { executablePath, Page } from "puppeteer";
-import StealthPlugin from "puppeteer-extra-plugin-stealth";
-import Adblocker from 'puppeteer-extra-plugin-adblocker'
+import {
+  executablePath,
+  Page,
+  DEFAULT_INTERCEPT_RESOLUTION_PRIORITY,
+  InterceptResolutionAction,
+} from "puppeteer";
+import stealthPlugin from "puppeteer-extra-plugin-stealth";
+import adblockerPlugin from "puppeteer-extra-plugin-adblocker";
+import blockResourcesPlugin from "puppeteer-extra-plugin-block-resources";
 
 async function main() {
   loadRedirect();
@@ -45,21 +51,10 @@ async function main() {
   });
 }
 
-async function blockVisualResources(page: Page) {
-  await page.setRequestInterception(true);
-  page.on("request", (req) => {
-    if (["image", "font", "stylesheet", "media"].includes(req.resourceType())) {
-      req.abort();
-    } else {
-      req.continue();
-    }
-  });
-}
-
 async function trackRedirects(page: Page) {
   const redirects: string[] = [];
-
   const client = await page.target().createCDPSession();
+
   await client.send("Network.enable");
   client.on("Network.requestWillBeSent", (e) => {
     if (e.type !== "Document") {
@@ -71,8 +66,33 @@ async function trackRedirects(page: Page) {
   return redirects;
 }
 
-async function checkAllRedirects() {
+async function acceptDialogs(page: Page) {
+  await page.on("dialog", async (dialog) => {
+    try {
+      await dialog.accept();
+    } catch (e) {}
+  });
+}
 
+async function blockWebsites(page: Page) {
+  const blockedSites = ["amazon.com", "facebook.com", "surfshark.com"];
+
+  page.on("request", (request) => {
+    const { action } = request.interceptResolutionState();
+    if (action === InterceptResolutionAction.AlreadyHandled) return;
+
+    if (blockedSites.some((domain) => request.url().includes(domain))) {
+      request.abort("failed", DEFAULT_INTERCEPT_RESOLUTION_PRIORITY);
+    } else {
+      request.continue(
+        request.continueRequestOverrides(),
+        DEFAULT_INTERCEPT_RESOLUTION_PRIORITY
+      );
+    }
+  });
+}
+
+async function checkAllRedirects() {
   if ((await getRedirects()).length <= 0) {
     console.log("redirect list is empty, will check again in a minute");
     return;
@@ -86,7 +106,20 @@ async function checkAllRedirects() {
     url: oldProxyUrl,
   });
 
-  puppeteer.use(Adblocker({ blockTrackers: true })).use(StealthPlugin())
+  puppeteer
+    .use(
+      adblockerPlugin({
+        blockTrackersAndAnnoyances: true,
+        interceptResolutionPriority: DEFAULT_INTERCEPT_RESOLUTION_PRIORITY,
+      })
+    )
+    .use(stealthPlugin())
+    .use(
+      blockResourcesPlugin({
+        blockedTypes: new Set(["image", "stylesheet", "font", "media"]),
+        interceptResolutionPriority: DEFAULT_INTERCEPT_RESOLUTION_PRIORITY,
+      })
+    );
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: executablePath(),
@@ -113,9 +146,10 @@ async function checkAllRedirects() {
 async function checkRedirectsForPage(page: Page, redirectURL: string) {
   page.setDefaultNavigationTimeout(0);
   const redirects = await trackRedirects(page);
-  await blockVisualResources(page);
+  await blockWebsites(page);
+  await acceptDialogs(page);
 
-  await page.goto(redirectURL);
+  await page.goto(redirectURL).catch(() => null);
   await timeout(10000);
 
   let finalURL = page.url();
@@ -149,7 +183,6 @@ async function checkRedirectsForPage(page: Page, redirectURL: string) {
     }
 
     await db.put(redirectURL + "lastCheck", finalURL);
-
   } finally {
     await db.close();
   }
@@ -159,12 +192,15 @@ async function getRedirects(): Promise<string[]> {
   const data = await fs.readFile("redirects.txt", { encoding: "utf-8" });
   let urlList = data.split("\n");
   urlList = urlList.filter((item) => item != "");
-  return urlList
+  return urlList;
 }
 
 async function checkPage(page: Page): Promise<boolean> {
-  let pageTitle = await page.title();
-  return pageTitle.toLowerCase().includes("security");
+  const pageTitle = await page.title();
+  if (pageTitle.toLowerCase().includes("security")) {
+    return true;
+  }
+  return (await page.$("#poptxt")) != null;
 }
 
 async function loadRedirect() {

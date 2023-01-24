@@ -975,6 +975,14 @@ puppeteer-extra-plugin-adblocker@^2.13.5:
     node-fetch "^2.6.0"
     puppeteer-extra-plugin "^3.2.2"
 
+puppeteer-extra-plugin-block-resources@^2.4.2:
+  version "2.4.2"
+  resolved "https://registry.yarnpkg.com/puppeteer-extra-plugin-block-resources/-/puppeteer-extra-plugin-block-resources-2.4.2.tgz#fe0230a43e30f6cb7e0fe29bf0430f7f8f971f4e"
+  integrity sha512-MUUcZANszgkvMCOVBmVsSmC6wl37fM4CWH4M2zOXU+wp9UuiW0J0R7cv4NOGSvLPYZ12QB2BcT3XCQizvwpkxA==
+  dependencies:
+    debug "^4.1.1"
+    puppeteer-extra-plugin "^3.2.2"
+
 puppeteer-extra-plugin-stealth@^2.11.1:
   version "2.11.1"
   resolved "https://registry.yarnpkg.com/puppeteer-extra-plugin-stealth/-/puppeteer-extra-plugin-stealth-2.11.1.tgz#7d56a27a986cb5eb69dca3c65695ad6444f4e822"

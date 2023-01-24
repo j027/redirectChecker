@@ -200,7 +200,9 @@ async function checkPage(page: Page): Promise<boolean> {
   if (pageTitle.toLowerCase().includes("security")) {
     return true;
   }
-  return (await page.$("#poptxt")) != null;
+  return (
+    (await page.$("#poptxt")) != null || (await page.$("#alert-modal")) != null
+  );
 }
 
 async function loadRedirect() {

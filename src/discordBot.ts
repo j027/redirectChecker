@@ -130,14 +130,16 @@ async function checkAllRedirects() {
     for (const redirectURL of await getRedirects()) {
       const page = await browser.newPage();
       try {
+        console.log("Checking url " + redirectURL);
         await checkRedirectsForPage(page, redirectURL);
       } catch (e) {
         console.error(e);
       } finally {
-        await page.close();
+        //await page.close();
       }
     }
   } finally {
+    console.log("Closing browser")
     await browser.close();
     await proxyChain.closeAnonymizedProxy(newProxyUrl, true);
   }
@@ -149,18 +151,21 @@ async function checkRedirectsForPage(page: Page, redirectURL: string) {
   await blockWebsites(page);
   await acceptDialogs(page);
 
-  await page.goto(redirectURL).catch(() => null);
+  await page.goto(redirectURL).catch((): any => null);
   await timeout(10000);
 
   let finalURL = page.url();
   const db = new Level("lastRedirect", { valueEncoding: "json" });
   try {
     if (await checkPage(page)) {
-      let previousFinalURL = await db.get(redirectURL).catch(() => null);
+      let previousFinalURL = await db.get(redirectURL).catch((): any => null);
 
       const hasChanged = previousFinalURL != finalURL;
       if (hasChanged) {
         await reportSite(finalURL, redirects);
+      }
+      else {
+        console.log("Already reported, so skipping the report")
       }
 
       await db.batch([

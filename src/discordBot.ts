@@ -1,11 +1,12 @@
 import { Client, Events, GatewayIntentBits, TextChannel } from "discord.js";
+import { ProxyAgent, fetch } from "undici";
 
 import { readConfig } from "./config";
 import { commands } from "./commands/commands";
 
 async function main() {
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-  const { token, proxy } = await readConfig();
+  const { token } = await readConfig();
 
   // Log in to Discord with your client's token
   await client.login(token);
@@ -48,10 +49,12 @@ async function reportSite(site: string, client: Client, redirect: string) {
     netcraftReportEmail,
     urlscanApiKey,
     netcraftReportSource,
+    proxy,
   } = await readConfig();
-  // report to netcraft, google safe browsing, and urlscan.io
-  const reports = [];
 
+  // report to netcraft, google safe browsing, and urlscan.io
+  const proxyAgent = new ProxyAgent(proxy);
+  const reports = [];
   reports.push(
     fetch(
       "https://safebrowsing.google.com/safebrowsing/clientreport/crx-report",
@@ -59,10 +62,10 @@ async function reportSite(site: string, client: Client, redirect: string) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify([site]),
+        dispatcher: proxyAgent,
       },
     ),
   );
-
   reports.push(
     fetch("https://report.netcraft.com/api/v3/report/urls", {
       method: "POST",
@@ -72,9 +75,9 @@ async function reportSite(site: string, client: Client, redirect: string) {
         source: netcraftReportSource,
         urls: [{ url: site }],
       }),
+      dispatcher: proxyAgent,
     }),
   );
-
   reports.push(
     fetch("https://urlscan.io/api/v1/scan/", {
       method: "POST",

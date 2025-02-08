@@ -4,9 +4,8 @@ import { readConfig } from "./config";
 import { commands } from "./commands/commands";
 
 async function main() {
-
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-  const { token, proxy, channelId} = await readConfig();
+  const { token, proxy } = await readConfig();
 
   // Log in to Discord with your client's token
   await client.login(token);
@@ -15,12 +14,12 @@ async function main() {
     if (!interaction.isChatInputCommand()) return;
 
     const command = commands.find(
-      (it) => it.command.name === interaction.commandName
+      (it) => it.command.name === interaction.commandName,
     );
 
     if (!command) {
       console.error(
-        `No command matching ${interaction.commandName} was found.`
+        `No command matching ${interaction.commandName} was found.`,
       );
       return;
     }
@@ -37,49 +36,61 @@ async function main() {
   });
 }
 
-
 function timeout(ms: number) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 }
 
-async function reportSite(site: string, client: Client, channelId: string, redirect: string) {
-  // report to netcraft, google safebrowsing, crdflabs and urlscan
+async function reportSite(site: string, client: Client, redirect: string) {
+  const {
+    channelId,
+    netcraftReportEmail,
+    urlscanApiKey,
+    netcraftReportSource,
+  } = await readConfig();
+  // report to netcraft, google safe browsing, and urlscan.io
+  const reports = [];
 
-  let response = await fetch(
-    "https://safebrowsing.google.com/safebrowsing/clientreport/crx-report",
-    {
+  reports.push(
+    fetch(
+      "https://safebrowsing.google.com/safebrowsing/clientreport/crx-report",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([site]),
+      },
+    ),
+  );
+
+  reports.push(
+    fetch("https://report.netcraft.com/api/v3/report/urls", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify([site]),
-    }
+      body: JSON.stringify({
+        email: netcraftReportEmail,
+        source: netcraftReportSource,
+        urls: [{ url: site }],
+      }),
+    }),
   );
-  console.log("Safebrowsing response " + response.status.toString());
 
-  response = await fetch("https://report.netcraft.com/api/v3/report/urls", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: "josephcharles1234@gmail.com",
-      source: "vsvgnMlBCnFTHVKRkbbghaW4I52cyjx5",
-      urls: [{ url: site }],
+  reports.push(
+    fetch("https://urlscan.io/api/v1/scan/", {
+      method: "POST",
+      headers: {
+        "API-Key": urlscanApiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: site,
+        visibility: "public",
+      }),
     }),
-  });
-  console.log("netcraft response" + (await response.text()));
+  );
 
-  response = await fetch("https://urlscan.io/api/v1/scan/", {
-    method: "POST",
-    headers: {
-      "API-Key": "c893c2ce-be83-432e-830b-cfc217ddb381",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      url: site,
-      visibility: "public",
-    }),
-  });
-  console.log("urlscan response " + (await response.text()));
+  // send all reports in parallel
+  await Promise.allSettled(reports);
 
   // send a message in the discord server with a link to the popup
   const channel = client.channels.cache.get(channelId) as TextChannel;

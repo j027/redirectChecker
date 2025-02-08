@@ -6,6 +6,9 @@ type Config = {
     clientId: string;
     proxy: string;
     channelId: string;
+    netcraftReportEmail: string;
+    netcraftReportSource: string;
+    urlscanApiKey: string;
 };
 
 export async function readConfig(): Promise<Config> {

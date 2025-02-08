@@ -1,26 +1,14 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
-import { Level } from "level";
-import puppeteer from "puppeteer-extra";
 
-import * as proxyChain from "proxy-chain";
 import { readConfig } from "./config";
 import { commands } from "./commands/commands";
 import { promises as fs } from "fs";
-import {
-  executablePath,
-  Page,
-  DEFAULT_INTERCEPT_RESOLUTION_PRIORITY,
-  InterceptResolutionAction,
-} from "puppeteer";
-import stealthPlugin from "puppeteer-extra-plugin-stealth";
-import adblockerPlugin from "puppeteer-extra-plugin-adblocker";
-import blockResourcesPlugin from "puppeteer-extra-plugin-block-resources";
 
 async function main() {
   loadRedirect();
 
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-  const { token } = await readConfig();
+  const { token, proxy } = await readConfig();
 
   // Log in to Discord with your client's token
   await client.login(token);
@@ -259,20 +247,6 @@ async function reportSite(site: string, redirectPath: string[]) {
     }),
   });
   console.log("urlscan response " + (await response.text()));
-
-  response = await fetch(
-    "https://threatcenter.crdf.fr/api/v0/submit_url.json",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token: "b810419e3a3376ecfc37a60706101493",
-        method: "submit_url",
-        urls: [site],
-      }),
-    }
-  );
-  console.log("crdf labs response " + (await response.text()));
 
   // send a message in the discord server with a link to the popup
   // using webhook since it's easier, maybe will change out for something else later

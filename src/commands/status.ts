@@ -1,6 +1,5 @@
 import { CommandDefinition } from "./commands";
 import { SlashCommandBuilder } from "discord.js";
-import { Level } from "level";
 import { promises as fs } from "fs";
 
 export const statusCommand: CommandDefinition = {

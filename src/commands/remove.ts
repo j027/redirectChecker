@@ -1,7 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 import { CommandDefinition } from "./commands";
 import { promises as fs } from "fs";
-import {Level} from "level";
 
 export const removeCommand: CommandDefinition = {
   command: new SlashCommandBuilder()

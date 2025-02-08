@@ -5,6 +5,7 @@ type Config = {
     guildId: string;
     clientId: string;
     proxy: string;
+    channelId: string;
 };
 
 export async function readConfig(): Promise<Config> {

@@ -3,14 +3,17 @@
   "private": true,
   "scripts": {
     "start": "ts-node src/discordBot.ts",
-    "deploy": "ts-node src/deployCommands.ts"
+    "deploy": "ts-node src/deployCommands.ts",
+    "init-db": "ts-node src/initDb.ts"
   },
   "dependencies": {
     "@types/node": "^22.13.1",
+    "better-sqlite3": "^11.8.1",
     "discord.js": "^14.7.1",
     "undici": "^7.3.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
     "prettier": "^3.4.2",
     "ts-node": "^10.9.1",
     "typescript": "^5.0.2"

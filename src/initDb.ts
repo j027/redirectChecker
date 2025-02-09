@@ -1,35 +1,26 @@
-import Database from 'better-sqlite3';
+// initDb.ts
+import { Client } from 'pg';
+import { readFileSync } from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
 
-function initDb() {
-    const db = new Database('redirects.db');
-    db.pragma('journal_mode = WAL');
+// Load environment variables from .env file
+dotenv.config();
 
-    db.exec(`
-    CREATE TABLE IF NOT EXISTS redirects (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      url TEXT UNIQUE,
-      regex_pattern TEXT,
-      type TEXT
-    );
+async function initializeDatabase() {
+    const client = new Client();
 
-    CREATE TABLE IF NOT EXISTS seen_urls (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      redirect_id INTEGER,
-      url TEXT,
-      last_seen DATETIME,
-      FOREIGN KEY (redirect_id) REFERENCES redirects(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS most_recent_redirects (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      redirect_id INTEGER,
-      url TEXT,
-      timestamp DATETIME,
-      FOREIGN KEY (redirect_id) REFERENCES redirects(id)
-    );
-  `);
-
-    db.close();
+    try {
+        await client.connect();
+        const schemaPath = path.join(__dirname, 'schema.sql');
+        const schema = readFileSync(schemaPath, 'utf-8');
+        await client.query(schema);
+        console.log('Database initialized successfully.');
+    } catch (error) {
+        console.error('Error initializing the database:', error);
+    } finally {
+        await client.end();
+    }
 }
 
-initDb();
+void initializeDatabase();

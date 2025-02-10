@@ -42,23 +42,20 @@ export const addCommand: CommandDefinition = {
     const client = await pool.connect();
 
     try {
-      const query = "SELECT COUNT(*) FROM redirects WHERE source_url = $1";
+      const query = "SELECT 1 FROM redirects WHERE source_url = $1 LIMIT 1";
       const result = await client.query(query, [url]);
 
-      if (parseInt(result.rows[0].count) > 0) {
-        await interaction.editReply(
-            `This url already exists in the database`,
-        );
+      if (result.rowCount != null && result.rowCount > 0) {
+        await interaction.editReply(`This url already exists in the database`);
         return;
       }
 
       const insertQuery =
-          "INSERT INTO redirects (source_url, regex_pattern, type) VALUES ($1, $2, $3)";
+        "INSERT INTO redirects (source_url, regex_pattern, type) VALUES ($1, $2, $3)";
       await client.query(insertQuery, [url, regex, redirectType]);
 
       await interaction.editReply(`The url "${url}" was added`);
-    }
-    finally {
+    } finally {
       client.release();
     }
   },

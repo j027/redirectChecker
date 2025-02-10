@@ -3,9 +3,11 @@ import { ProxyAgent, fetch } from "undici";
 
 import { readConfig } from "./config";
 import { commands } from "./commands/commands";
+import { closePool } from "./dbPool";
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 async function main() {
-  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   const { token } = await readConfig();
 
   // Log in to Discord with your client's token
@@ -104,5 +106,15 @@ async function reportSite(site: string, client: Client, redirect: string) {
     console.error("Channel not found");
   }
 }
+// Graceful shutdown
+async function gracefulShutdown() {
+    console.log('Shutting down gracefully...');
+    await closePool();
+    await client.destroy();
+    process.exit(0);
+}
+
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
 
 void main();

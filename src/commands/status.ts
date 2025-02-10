@@ -1,58 +1,72 @@
 import { CommandDefinition } from "./commands";
-import { SlashCommandBuilder } from "discord.js";
-import { promises as fs } from "fs";
+import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
+import pool from "../dbPool";
 
 export const statusCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
-    .setName("status")
-    .setDescription("Displays all redirects and their current status")
-    .toJSON(),
+      .setName("status")
+      .setDescription("Displays all redirects and their current status")
+      .toJSON(),
 
   async execute(interaction) {
-    await interaction.reply("status be sent as a separate message soon");
-    const data = await fs.readFile("redirects.txt", { encoding: "utf-8" });
+    await interaction.deferReply();
 
-    let urlList = data.split("\n");
-    urlList = urlList.filter((item) => item != "");
+    const client = await pool.connect();
 
-    for (const redirectURL of urlList) {
-      const db = await new Level("lastRedirect", { valueEncoding: "json" });
-      let lastPopupRedirect
-      try {
-        lastPopupRedirect = await db.get(redirectURL);
+    try {
+      // Fetch all redirects and their 10 most recent redirect destinations
+      const query = `
+        SELECT r.id AS redirect_id, r.source_url, r.regex_pattern, r.type,
+               d.destination_url, d.first_seen, d.last_seen, d.is_popup
+        FROM redirects r
+        LEFT JOIN (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY redirect_id ORDER BY last_seen DESC) AS rn
+          FROM redirect_destinations
+        ) d ON r.id = d.redirect_id AND d.rn <= 10
+        ORDER BY r.id, d.last_seen DESC;
+      `;
+      const result = await client.query(query);
+
+      const embeds = [];
+      let currentEmbed = new EmbedBuilder()
+          .setTitle("Redirects Status")
+          .setColor(0x00AE86);
+
+      let currentRedirectId = null;
+      let redirectInfo = "";
+
+      for (const row of result.rows) {
+        if (row.redirect_id !== currentRedirectId) {
+          if (currentRedirectId !== null) {
+            currentEmbed.addFields({ name: `Redirect ID: ${currentRedirectId}`, value: redirectInfo });
+            if (currentEmbed.length > 6000) {
+              embeds.push(currentEmbed);
+              currentEmbed = new EmbedBuilder()
+                  .setTitle("Redirects Status (cont.)")
+                  .setColor(0x00AE86);
+            }
+          }
+          currentRedirectId = row.redirect_id;
+          redirectInfo = `**Source URL**: ${row.source_url}\n**Regex Pattern**: ${row.regex_pattern}\n**Type**: ${row.type}\n\n### Most Recent 10 Redirect Destinations:\n`;
+        }
+        if (row.destination_url) {
+          redirectInfo += `**Destination URL**: ${row.destination_url}\n**First Seen**: <t:${Math.floor(new Date(row.first_seen).getTime() / 1000)}:F>\n**Last Seen**: <t:${Math.floor(new Date(row.last_seen).getTime() / 1000)}:F>\n**Is Popup**: ${row.is_popup}\n\n`;
+        }
       }
-      catch {}
-      let redirectPath
-      try {
-        redirectPath = await db.get(redirectURL + "redirectPath");
-        redirectPath = JSON.parse(redirectPath).join(" => \n");
-      } catch {}
-      let lastUpdatedFormatted
-      try {
-        lastUpdatedFormatted = await db.get(redirectURL + "lastUpdated");
-        lastUpdatedFormatted = `<t:${lastUpdatedFormatted}:f>`;
-      } catch {}
-      let lastCheck
-      try {
-        lastCheck = await db.get(redirectURL + "lastCheck");
-      } catch {}
-      let discordWebhook =
-        "https://discord.com/api/webhooks/1063132741392158902/9YwK9LCgUfSgTKNHeyYhesaVxnaNop0fU-T3jPll10PwFbIh_qY-soLEoIrhkwtFjiEh";
-      let replyString = `
-      Redirect URL: ${redirectURL}
-      Last Popup Redirect: ${lastPopupRedirect}
-      Popup Redirect last changed at: ${lastUpdatedFormatted}
-      Redirect Path: ${redirectPath}
-      Last Redirect: ${lastCheck}
-      --------------------------------------------------------`;
-      await db.close();
-      let response = await fetch(discordWebhook, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: replyString,
-        }),
-      });
+
+      if (currentRedirectId !== null) {
+        currentEmbed.addFields({ name: `Redirect ID: ${currentRedirectId}`, value: redirectInfo });
+        embeds.push(currentEmbed);
+      }
+
+      for (const embed of embeds) {
+        await interaction.followUp({ embeds: [embed] });
+      }
+    } catch (error) {
+      console.error("Error fetching status:", error);
+      await interaction.editReply("There was an error fetching the status.");
+    } finally {
+      client.release();
     }
   },
 };

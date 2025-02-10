@@ -18,3 +18,11 @@ CREATE TABLE IF NOT EXISTS redirect_destinations
     last_seen       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this destination was most recently observed
     is_popup        BOOLEAN     DEFAULT FALSE              -- Indicates if the destination is a popup
 );
+
+-- Table for storing and caching user agents
+CREATE TABLE IF NOT EXISTS user_agents
+(
+    id           SERIAL PRIMARY KEY,
+    user_agent   TEXT NOT NULL,
+    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);

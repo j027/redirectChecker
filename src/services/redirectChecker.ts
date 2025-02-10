@@ -1,8 +1,14 @@
 import { Client, TextChannel } from "discord.js";
 import { ProxyAgent, fetch } from "undici";
 import { readConfig } from "../config";
+import { RedirectType } from "../redirectType";
+import { userAgentService } from "./userAgentService";
 
-export async function reportSite(site: string, client: Client, redirect: string) {
+export async function reportSite(
+  site: string,
+  client: Client,
+  redirect: string,
+) {
   const {
     channelId,
     netcraftReportEmail,
@@ -59,16 +65,54 @@ export async function reportSite(site: string, client: Client, redirect: string)
 }
 
 async function sendMessageToDiscord(
-    client: Client<boolean>,
-    channelId: string,
-    site: string,
-    redirect: string,
+  client: Client<boolean>,
+  channelId: string,
+  site: string,
+  redirect: string,
 ) {
-    const channel = client.channels.cache.get(channelId) as TextChannel;
-    if (channel) {
-        await channel.send(`Found new popup with url ${site} from ${redirect}`);
-        console.log("Message sent to the channel");
-    } else {
-        console.error("Channel not found");
-    }
+  const channel = client.channels.cache.get(channelId) as TextChannel;
+  if (channel) {
+    await channel.send(`Found new popup with url ${site} from ${redirect}`);
+    console.log("Message sent to the channel");
+  } else {
+    console.error("Channel not found");
+  }
+}
+
+async function handleRedirect(
+  redirectUrl: string,
+  regex: RegExp,
+  redirectType: RedirectType,
+): Promise<[string | null, boolean]> {
+  switch (redirectType) {
+    case RedirectType.HTTP:
+      return httpRedirect(redirectUrl, regex);
+    default:
+      console.warn(`Redirect type ${redirectType} is supported yet`);
+      throw new Error("Redirect type is supported");
+  }
+}
+
+async function httpRedirect(
+  redirectUrl: string,
+  regex: RegExp,
+): Promise<[string | null, boolean]> {
+  const { proxy } = await readConfig();
+  const proxyAgent = new ProxyAgent(proxy);
+
+  // check redirect through proxy
+  const response = await fetch(redirectUrl, {
+    dispatcher: proxyAgent,
+    redirect: "manual",
+    headers: {
+      "User-Agent": await userAgentService.getUserAgent(),
+    },
+  });
+  const location = response.headers.get("location");
+
+  // check if matching the popup detection regex
+  if (location && regex.test(location)) {
+    return [location, true];
+  }
+  return [location, false];
 }

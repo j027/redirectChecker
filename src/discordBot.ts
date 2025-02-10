@@ -105,4 +105,4 @@ async function reportSite(site: string, client: Client, redirect: string) {
   }
 }
 
-main();
+void main();

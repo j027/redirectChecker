@@ -1,42 +1,61 @@
-import { SlashCommandBuilder } from "discord.js";
-import { promises as fs } from "fs";
+import {
+  SlashCommandBuilder,
+} from "discord.js";
 import { CommandDefinition } from "./commands";
+import { RedirectType } from "../redirectType";
+import { Client } from "pg";
 
 export const addCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
     .setName("add")
     .setDescription("Adds redirect to list of redirects")
     .addStringOption((option) =>
+      option.setName("URL").setDescription("The URL to add").setRequired(true),
+    )
+    .addStringOption((option) =>
       option
-        .setName("url")
-        .setDescription("The url that redirects to a popup")
+        .setName("Regex")
+        .setDescription("Regex for popup detection")
+        .setRequired(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName("Redirect Type")
+        .setDescription("The type of redirect")
         .setRequired(true)
+        .addChoices({ name: "HTTP redirect", value: RedirectType.HTTP }),
     )
     .toJSON(),
   async execute(interaction) {
-    const data = await fs.readFile("redirects.txt", { encoding: "utf-8" });
+    const url = interaction.options.getString("URL");
+    const regex = interaction.options.getString("Regex");
+    const redirectType = interaction.options.getString("Redirect Type");
+    await interaction.deferReply({flags: "Ephemeral"})
 
-    let urlList = data.split("\n");
-    urlList = urlList.filter((item) => item != "");
-    let url = interaction.options.getString("url")!;
-    let urlAlreadyThere = urlList.includes(url);
-
-    if (!isValidUrl(url)) {
-      await interaction.reply(
-        `The url "${url}" is an invalid url, please make sure it's formatted correctly`
-      );
+    if (url == null || !isValidUrl(url)) {
+      await interaction.editReply("Invalid URL provided. Please enter a valid URL.");
       return;
     }
 
-    if (urlAlreadyThere) {
-      await interaction.reply(`This url "${url}" already exists in the list`);
+    // TODO: validate url and implement core redirect checking functionality
+
+    const dbClient = new Client();
+    await dbClient.connect();
+
+    const query = "SELECT COUNT(*) FROM redirects WHERE source_url = $1";
+    const result = await dbClient.query(query, [url]);
+
+    if (parseInt(result.rows[0].count) > 0) {
+      await interaction.editReply(`This url "${url}" already exists in the database`);
       return;
     }
 
-    urlList.push(url);
-    let dataToWrite = urlList.join("\n");
-    await fs.writeFile("redirects.txt", dataToWrite);
-    await interaction.reply(`The url "${url}" was added to the list`);
+    const insertQuery =
+      "INSERT INTO redirects (source_url, regex_pattern, type) VALUES ($1, $2, $3)";
+    await dbClient.query(insertQuery, [url, regex, redirectType]);
+
+    await dbClient.end();
+    await interaction.editReply(`The url "${url}" was added`);
   },
 };
 

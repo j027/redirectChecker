@@ -2,7 +2,7 @@ import pool from "../dbPool";
 import { getLatestWindowsChromeUserAgent } from "./chromeUserAgent";
 
 export class UserAgentService {
-  async getUserAgent(): Promise<string> {
+  async getUserAgent(): Promise<string | null> {
     const client = await pool.connect();
     try {
       const result = await client.query(`
@@ -21,6 +21,11 @@ export class UserAgentService {
       }
 
       const userAgent = await getLatestWindowsChromeUserAgent();
+
+      if (userAgent == null) {
+        console.error("Failed to get user agent");
+        return null;
+      }
 
       // Use a transaction to ensure atomic operations
       await client.query('BEGIN');

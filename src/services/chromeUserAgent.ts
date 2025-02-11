@@ -16,13 +16,13 @@ async function getLatestChromeVersion(): Promise<number> {
 }
 
 // Helper function to get the latest Windows Chrome user agent
-export async function getLatestWindowsChromeUserAgent(): Promise<string> {
+export async function getLatestWindowsChromeUserAgent(): Promise<string | null> {
   try {
     const version = await getLatestChromeVersion();
     return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Safari/537.36`;
   } catch (error) {
     console.error("Error getting Chrome version:", error);
-    // Fallback to a recent version if API fails
-    return "";
+    // Fallback to an empty string if the api fails, so it is more obvious that the user agent is not set
+    return null;
   }
 }

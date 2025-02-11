@@ -84,35 +84,40 @@ async function handleRedirect(
   regex: RegExp,
   redirectType: RedirectType,
 ): Promise<[string | null, boolean]> {
+  let location: string | null  = null;
+
   switch (redirectType) {
     case RedirectType.HTTP:
-      return httpRedirect(redirectUrl, regex);
+      location = await httpRedirect(redirectUrl);
+      break;
     default:
       console.warn(`Redirect type ${redirectType} is supported yet`);
       throw new Error("Redirect type is supported");
   }
+
+  return [location, location != null ? regex.test(location) : false];
 }
 
 async function httpRedirect(
   redirectUrl: string,
-  regex: RegExp,
-): Promise<[string | null, boolean]> {
+): Promise<string | null> {
   const { proxy } = await readConfig();
   const proxyAgent = new ProxyAgent(proxy);
+
+  // fail hard if the user agent is not available - this ensures this is properly fixed
+  const userAgent = await userAgentService.getUserAgent();
+  if (userAgent == null) {
+      throw new Error("Failed to get user agent");
+  }
 
   // check redirect through proxy
   const response = await fetch(redirectUrl, {
     dispatcher: proxyAgent,
     redirect: "manual",
     headers: {
-      "User-Agent": await userAgentService.getUserAgent(),
+      "User-Agent": userAgent,
     },
   });
-  const location = response.headers.get("location");
 
-  // check if matching the popup detection regex
-  if (location && regex.test(location)) {
-    return [location, true];
-  }
-  return [location, false];
+  return response.headers.get("location");
 }

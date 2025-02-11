@@ -79,7 +79,7 @@ async function sendMessageToDiscord(
   }
 }
 
-async function handleRedirect(
+export async function handleRedirect(
   redirectUrl: string,
   regex: RegExp,
   redirectType: RedirectType,

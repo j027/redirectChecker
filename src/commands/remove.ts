@@ -24,13 +24,13 @@ export const removeCommand: CommandDefinition = {
       const result = await client.query(query, [id]);
 
       if (result.rowCount === 0) {
-        await interaction.reply("No redirect found with the provided ID.");
+        await interaction.editReply("No redirect found with the provided ID.");
       } else {
-        await interaction.reply(`The redirect with ID ${id} was removed.`);
+        await interaction.editReply(`The redirect with ID ${id} was removed.`);
       }
     } catch (error) {
       console.error("Error removing redirect:", error);
-      await interaction.reply("There was an error removing the redirect.");
+      await interaction.editReply("There was an error removing the redirect.");
     } finally {
       client.release();
     }

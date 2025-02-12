@@ -9,17 +9,17 @@ export const addCommand: CommandDefinition = {
     .setName("add")
     .setDescription("Adds redirect to list of redirects")
     .addStringOption((option) =>
-      option.setName("URL").setDescription("The URL to add").setRequired(true),
+      option.setName("url").setDescription("The URL to add").setRequired(true),
     )
     .addStringOption((option) =>
       option
-        .setName("Regex")
+        .setName("regex")
         .setDescription("Regex for popup detection")
         .setRequired(true),
     )
     .addStringOption((option) =>
       option
-        .setName("Redirect Type")
+        .setName("redirect_type")
         .setDescription("The type of redirect")
         .setRequired(true)
         .addChoices({ name: "HTTP redirect", value: RedirectType.HTTP }),

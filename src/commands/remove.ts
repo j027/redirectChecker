@@ -15,6 +15,7 @@ export const removeCommand: CommandDefinition = {
       .toJSON(),
   async execute(interaction) {
     const id = interaction.options.getInteger("id");
+    await interaction.deferReply({ flags: "Ephemeral" });
 
     const client = await pool.connect();
 

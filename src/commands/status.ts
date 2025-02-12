@@ -63,11 +63,12 @@ export const statusCommand: CommandDefinition = {
         }
       }
 
-      // Now add fields for each redirect group. For each redirect, we add one header field and then one field per destination.
+      // Now add fields for each redirect group.
+      // For each redirect, calculate the total number of fields (header + all destination fields) needed.
+      // If the current embed does not have enough room (max 25 fields), push the embed and start a new one.
       for (const [redirectId, info] of redirects.entries()) {
-        // Check if adding header (1 field) plus each destination field would exceed 25 fields in current embed.
-        const neededFields = 1 + info.destinations.length;
-        if (currentFieldCount + neededFields > 25) {
+        const groupFieldCount = 1 + info.destinations.length; // header plus all destinations
+        if (currentFieldCount + groupFieldCount > 25) {
           embeds.push(currentEmbed);
           currentEmbed = new EmbedBuilder()
             .setTitle("Redirects Status (cont.)")
@@ -82,16 +83,8 @@ export const statusCommand: CommandDefinition = {
         });
         currentFieldCount++;
 
-        // Add a field for each destination (if any)
+        // Now add all destination fields for this redirect
         info.destinations.forEach((dest) => {
-          // If needed, start a new embed if we hit the 25-field limit
-          if (currentFieldCount + 1 > 25) {
-            embeds.push(currentEmbed);
-            currentEmbed = new EmbedBuilder()
-              .setTitle("Redirects Status (cont.)")
-              .setColor(0x00ae86);
-            currentFieldCount = 0;
-          }
           currentEmbed.addFields({
             name: "Recent Destinations",
             value: dest,

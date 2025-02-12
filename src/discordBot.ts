@@ -4,15 +4,17 @@ import { readConfig } from "./config";
 import { commands } from "./commands/commands";
 import { closePool } from "./dbPool";
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+export const discordClient = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+});
 
 async function main() {
   const { token } = await readConfig();
 
   // Log in to Discord with your client's token
-  await client.login(token);
+  await discordClient.login(token);
 
-  client.on(Events.InteractionCreate, async (interaction) => {
+  discordClient.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     const command = commands.find(
@@ -42,7 +44,7 @@ async function main() {
 async function gracefulShutdown() {
     console.log('Shutting down gracefully...');
     await closePool();
-    await client.destroy();
+    await discordClient.destroy();
     process.exit(0);
 }
 

@@ -1,4 +1,5 @@
-import { Client, TextChannel } from "discord.js";
+import { TextChannel } from "discord.js";
+import { discordClient } from "../discordBot";
 import { ProxyAgent, fetch } from "undici";
 import { readConfig } from "../config";
 import { RedirectType } from "../redirectType";
@@ -6,7 +7,6 @@ import { userAgentService } from "./userAgentService";
 
 export async function reportSite(
   site: string,
-  client: Client,
   redirect: string,
 ) {
   const {
@@ -58,19 +58,18 @@ export async function reportSite(
   );
 
   // send a message in the discord server with a link to the popup
-  reports.push(sendMessageToDiscord(client, channelId, site, redirect));
+  reports.push(sendMessageToDiscord(channelId, site, redirect));
 
   // wait for all the reports to finish
   await Promise.allSettled(reports);
 }
 
 async function sendMessageToDiscord(
-  client: Client<boolean>,
   channelId: string,
   site: string,
   redirect: string,
 ) {
-  const channel = client.channels.cache.get(channelId) as TextChannel;
+  const channel = discordClient.channels.cache.get(channelId) as TextChannel;
   if (channel) {
     await channel.send(`Found new popup with url ${site} from ${redirect}`);
     console.log("Message sent to the channel");

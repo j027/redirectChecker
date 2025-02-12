@@ -1,5 +1,5 @@
 import pool from "../dbPool";
-import { handleRedirect } from "./redirectHandlerService";
+import { handleRedirect, reportSite } from "./redirectHandlerService";
 import { RedirectType } from "../redirectType";
 
 export async function checkRedirects() {
@@ -67,6 +67,11 @@ async function processRedirectEntry(
         "INSERT INTO redirect_history (redirect_id, redirect_destination, is_popup, last_seen) VALUES ($1, $2, $3, NOW())",
         [redirectId, redirectDestination, isPopup]
       );
+
+      // if it is a popup that is seen for the first time, make sure to report it
+      if (isPopup) {
+        await reportSite(redirectDestination, sourceUrl);
+      }
     }
   } catch (error) {
     console.log("Error updating redirect_history:", error);

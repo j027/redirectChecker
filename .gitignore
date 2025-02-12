@@ -5,3 +5,4 @@ prettier.xml
 redirects.db
 .env
 .idea
+dist/

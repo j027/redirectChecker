@@ -2,9 +2,15 @@
   "name": "discordbot",
   "private": true,
   "scripts": {
-    "start": "ts-node src/discordBot.ts",
-    "deploy": "ts-node src/deployCommands.ts",
-    "init-db": "ts-node src/initDb.ts"
+    "build": "tsc",
+    "start:dev": "ts-node src/discordBot.ts",
+    "start": "node dist/discordBot.js",
+    "deploy:dev": "ts-node src/deployCommands.ts",
+    "deploy": "node dist/deployCommands.js",
+    "init-db:dev": "ts-node src/initDb.ts",
+    "init-db": "node dist/initDb.js",
+    "clean": "rm -rf dist",
+    "prebuild": "yarn clean"
   },
   "dependencies": {
     "discord.js": "^14.7.1",

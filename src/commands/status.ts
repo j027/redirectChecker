@@ -9,7 +9,7 @@ export const statusCommand: CommandDefinition = {
       .toJSON(),
 
   async execute(interaction) {
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: "Ephemeral" });
 
     const client = await pool.connect();
 

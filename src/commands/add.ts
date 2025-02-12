@@ -26,10 +26,10 @@ export const addCommand: CommandDefinition = {
     )
     .toJSON(),
   async execute(interaction) {
-    const url = interaction.options.getString("URL");
-    const regex = interaction.options.getString("Regex");
+    const url = interaction.options.getString("url");
+    const regex = interaction.options.getString("regex");
     const redirectType = interaction.options.getString(
-      "Redirect Type",
+      "redirect_type",
     ) as RedirectType;
     await interaction.deferReply({ flags: "Ephemeral" });
 

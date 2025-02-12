@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 import { CommandDefinition } from "./commands";
 import { RedirectType } from "../redirectType";
-import { handleRedirect } from "../services/redirectService";
+import { handleRedirect } from "../services/redirectHandlerService";
 import pool from "../dbPool";
 
 export const addCommand: CommandDefinition = {

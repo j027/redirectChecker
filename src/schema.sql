@@ -3,8 +3,8 @@ CREATE TABLE IF NOT EXISTS redirects
 (
     id            SERIAL PRIMARY KEY,
     source_url    TEXT NOT NULL, -- The URL that triggers a redirect
-    regex_pattern TEXT,          -- Required: a regex pattern to match or filter URLs, used to check for popup
-    type          TEXT           -- The type of redirect, stored as a string.
+    regex_pattern TEXT NOT NULL,          -- Required: a regex pattern to match or filter URLs, used to check for popup
+    type          TEXT NOT NULL           -- The type of redirect, stored as a string.
 );
 
 -- Table for storing where the redirect actually goes,

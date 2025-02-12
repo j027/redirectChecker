@@ -51,20 +51,20 @@ async function processRedirectEntry(
   try {
     // Check if a record already exists for the given redirect destination
     const result = await client.query(
-      "SELECT * FROM redirect_history WHERE redirect_destination = $1",
+      "SELECT * FROM redirect_destinations WHERE redirect_destination = $1",
       [redirectDestination]
     );
 
     if (result.rows.length > 0) {
       // If found, update the last seen timestamp
       await client.query(
-        "UPDATE redirect_history SET last_seen = NOW() WHERE redirect_destination = $1",
+        "UPDATE redirect_destinations SET last_seen = NOW() WHERE redirect_destination = $1",
         [redirectDestination]
       );
     } else {
       // If not found, create a new entry with the redirect id, destination, and is_popup flag
       await client.query(
-        "INSERT INTO redirect_history (redirect_id, redirect_destination, is_popup, last_seen) VALUES ($1, $2, $3, NOW())",
+        "INSERT INTO redirect_destinations (redirect_id, redirect_destination, is_popup, last_seen) VALUES ($1, $2, $3, NOW())",
         [redirectId, redirectDestination, isPopup]
       );
 

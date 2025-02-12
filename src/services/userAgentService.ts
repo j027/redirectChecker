@@ -31,7 +31,7 @@ export class UserAgentService {
       await client.query('BEGIN');
       
       // Remove old user agents and insert new one
-      await client.query(`TRUNCATE FROM user_agents`);
+      await client.query(`TRUNCATE user_agents`);
       await client.query(`
         INSERT INTO user_agents (user_agent) 
         VALUES ($1)

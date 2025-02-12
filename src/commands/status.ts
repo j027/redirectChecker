@@ -27,6 +27,11 @@ export const statusCommand: CommandDefinition = {
       `;
       const result = await client.query(query);
 
+      if (result.rows.length === 0) {
+        await interaction.editReply("No redirects found.");
+        return;
+      }
+
       const embeds = [];
       let currentEmbed = new EmbedBuilder()
           .setTitle("Redirects Status")

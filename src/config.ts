@@ -9,6 +9,7 @@ type Config = {
     netcraftReportEmail: string;
     netcraftReportSource: string;
     urlscanApiKey: string;
+    crdfLabsApiKey: string;
 };
 
 export async function readConfig(): Promise<Config> {

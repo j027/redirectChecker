@@ -50,6 +50,19 @@ async function reportToUrlscan(site: string) {
   });
 }
 
+async function reportToCrdfLabs(site: string) {
+  const { crdfLabsApiKey } = await readConfig();
+  await fetch("https://threatcenter.crdf.fr/api/v0/submit_url.json", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token: crdfLabsApiKey,
+      method: "submit_url",
+      urls: [site],
+    }),
+  });
+}
+
 export async function reportSite(site: string, redirect: string) {
   // report to netcraft, google safe browsing, and urlscan.io
   const reports = [];

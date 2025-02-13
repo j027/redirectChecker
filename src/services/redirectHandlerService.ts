@@ -21,7 +21,7 @@ async function reportToGoogleSafeBrowsing(site: string) {
 }
 
 async function reportToNetcraft(site: string) {
-  const { netcraftReportEmail, netcraftReportSource, proxy } =
+  const { netcraftReportEmail, proxy } =
     await readConfig();
   const proxyAgent = new ProxyAgent(proxy);
   await fetch("https://report.netcraft.com/api/v3/report/urls", {
@@ -29,7 +29,6 @@ async function reportToNetcraft(site: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       email: netcraftReportEmail,
-      source: netcraftReportSource,
       urls: [{ url: site }],
     }),
     dispatcher: proxyAgent,

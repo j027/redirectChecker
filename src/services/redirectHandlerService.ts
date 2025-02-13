@@ -4,6 +4,7 @@ import { ProxyAgent, fetch } from "undici";
 import { readConfig } from "../config";
 import { RedirectType } from "../redirectType";
 import { userAgentService } from "./userAgentService";
+import { queueCrdfLabsReport } from "./crdfLabsQueue";
 
 async function reportToGoogleSafeBrowsing(site: string) {
   const { proxy } = await readConfig();
@@ -50,7 +51,7 @@ async function reportToUrlscan(site: string) {
   });
 }
 
-async function reportToCrdfLabs(site: string) {
+export async function reportToCrdfLabs(site: string) {
   const { crdfLabsApiKey } = await readConfig();
   await fetch("https://threatcenter.crdf.fr/api/v0/submit_url.json", {
     method: "POST",
@@ -69,6 +70,7 @@ export async function reportSite(site: string, redirect: string) {
   reports.push(reportToGoogleSafeBrowsing(site));
   reports.push(reportToNetcraft(site));
   reports.push(reportToUrlscan(site));
+  reports.push(queueCrdfLabsReport(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));

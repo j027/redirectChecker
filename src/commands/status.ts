@@ -26,7 +26,7 @@ export const statusCommand: CommandDefinition = {
         LEFT JOIN (
           SELECT *, ROW_NUMBER() OVER (PARTITION BY redirect_id ORDER BY last_seen DESC) AS rn
           FROM redirect_destinations
-        ) d ON r.id = d.redirect_id AND d.rn <= 10
+        ) d ON r.id = d.redirect_id AND d.rn <= 8
         ORDER BY r.id, d.last_seen DESC;
       `;
       const result = await client.query(query);
@@ -45,7 +45,15 @@ export const statusCommand: CommandDefinition = {
       let currentFieldCount = 0;
 
       // Group rows by redirect_id
-      const redirects = new Map<number, { header: string; destinations: string[] }>();
+      const redirects = new Map<number, { 
+        header: string; 
+        destinations: Array<{
+          url: string;
+          firstSeen: string;
+          lastSeen: string;
+          isPopup: boolean;
+        }>;
+      }>();
 
       for (const row of result.rows) {
         const id = row.redirect_id;
@@ -58,44 +66,48 @@ export const statusCommand: CommandDefinition = {
           // Use a compact timestamp format: relative time (<t:timestamp:R>)
           const firstSeen = `<t:${Math.floor(new Date(row.first_seen).getTime() / 1000)}:R>`;
           const lastSeen = `<t:${Math.floor(new Date(row.last_seen).getTime() / 1000)}:R>`;
-          const destText = `**Destination URL:** ${row.destination_url}\n**First Seen:** ${firstSeen}\n**Last Seen:** ${lastSeen}\n**Is Popup:** ${row.is_popup}`;
-          redirects.get(id)?.destinations.push(destText);
-        }
-      }
-
-      // Now add fields for each redirect group.
-      // For each redirect, calculate the total number of fields (header + all destination fields) needed.
-      // If the current embed does not have enough room (max 25 fields), push the embed and start a new one.
-      for (const [redirectId, info] of redirects.entries()) {
-        const groupFieldCount = 1 + info.destinations.length; // header plus all destinations
-        if (currentFieldCount + groupFieldCount > 25) {
-          embeds.push(currentEmbed);
-          currentEmbed = new EmbedBuilder()
-            .setTitle("Redirects Status (cont.)")
-            .setColor(0x00ae86);
-          currentFieldCount = 0;
-        }
-
-        // Add header field for the redirect
-        currentEmbed.addFields({
-          name: `Redirect ID: ${redirectId}`,
-          value: info.header,
-        });
-        currentFieldCount++;
-
-        // Now add all destination fields for this redirect
-        info.destinations.forEach((dest) => {
-          currentEmbed.addFields({
-            name: "Recent Destinations",
-            value: dest,
+          redirects.get(id)?.destinations.push({
+            url: row.destination_url,
+            firstSeen,
+            lastSeen,
+            isPopup: row.is_popup
           });
-          currentFieldCount++;
-        });
+        }
       }
 
-      // Push remaining embed if it has any fields
-      if (currentFieldCount > 0) {
-        embeds.push(currentEmbed);
+      // Create an embed for each redirect
+      for (const [redirectId, info] of redirects.entries()) {
+        const embed = new EmbedBuilder()
+          .setTitle(`Redirect ID: ${redirectId}`)
+          .setColor(0x00ae86)
+          .addFields({
+            name: "Configuration",
+            value: info.header,
+            inline: false
+          });
+
+        // Add destination fields (max 8 destinations = 24 fields)
+        for (const dest of info.destinations) {
+          embed.addFields(
+            {
+              name: "Destination",
+              value: dest.url,
+              inline: true
+            },
+            {
+              name: "Timeline",
+              value: `First: ${dest.firstSeen}\nLast: ${dest.lastSeen}`,
+              inline: true
+            },
+            {
+              name: "Popup",
+              value: dest.isPopup ? "Yes" : "No",
+              inline: true
+            }
+          );
+        }
+
+        embeds.push(embed);
       }
 
       // Send each embed as a follow-up message

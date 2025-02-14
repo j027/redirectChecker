@@ -9,6 +9,7 @@ type Config = {
     netcraftReportEmail: string;
     urlscanApiKey: string;
     crdfLabsApiKey: string;
+    browserFingerprintForRedirect: object;
 };
 
 export async function readConfig(): Promise<Config> {

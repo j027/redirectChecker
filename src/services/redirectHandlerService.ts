@@ -116,6 +116,9 @@ export async function handleRedirect(
     case RedirectType.HTTP:
       location = await httpRedirect(redirectUrl);
       break;
+    case RedirectType.BrowserFingerprintPost:
+      location = await browserFingerprintPost(redirectUrl);
+      break;
     default:
       console.warn(`Redirect type ${redirectType} is supported yet`);
       throw new Error("Redirect type is supported");
@@ -136,12 +139,39 @@ async function httpRedirect(redirectUrl: string): Promise<string | null> {
 
   // check redirect through proxy
   const response = await fetch(redirectUrl, {
+    method: "POST",
     dispatcher: proxyAgent,
     redirect: "manual",
     headers: {
       "User-Agent": userAgent,
     },
   });
+
+  return response.headers.get("location");
+}
+
+async function browserFingerprintPost(redirectUrl: string) : Promise <string | null> {
+  const { proxy, browserFingerprintForRedirect } = await readConfig();
+  const proxyAgent = new ProxyAgent(proxy);
+
+  // fail hard if the user agent is not available - this ensures this is properly fixed
+  const userAgent = await userAgentService.getUserAgent();
+  if (userAgent == null) {
+    throw new Error("Failed to get user agent");
+  }
+
+  // add the magical fingerprint that allows the redirect to work
+  const data = new URLSearchParams();
+  data.append("data", JSON.stringify(browserFingerprintForRedirect));
+
+  const response = await fetch(redirectUrl, {
+    dispatcher: proxyAgent,
+    redirect: "manual",
+    headers: {
+      "User-Agent": userAgent,
+    },
+    body: data
+  })
 
   return response.headers.get("location");
 }

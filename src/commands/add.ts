@@ -22,7 +22,13 @@ export const addCommand: CommandDefinition = {
         .setName("redirect_type")
         .setDescription("The type of redirect")
         .setRequired(true)
-        .addChoices({ name: "HTTP redirect", value: RedirectType.HTTP }),
+        .addChoices([
+          { name: "HTTP redirect", value: RedirectType.HTTP },
+          {
+            name: "Browser Fingerprint Post",
+            value: RedirectType.BrowserFingerprintPost,
+          },
+        ]),
     )
     .toJSON(),
   async execute(interaction) {

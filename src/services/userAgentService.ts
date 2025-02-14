@@ -43,7 +43,7 @@ export class UserAgentService {
     } catch (error) {
       await client.query('ROLLBACK');
       console.error("Error managing user agent:", error);
-      return "";
+      return null;
     } finally {
       client.release();
     }

@@ -100,7 +100,7 @@ export const statusCommand: CommandDefinition = {
 
       // Send each embed as a follow-up message
       for (const embed of embeds) {
-        await interaction.followUp({ embeds: [embed] });
+        await interaction.followUp({ embeds: [embed], flags: "Ephemeral"});
       }
     } catch (error) {
       console.error("Error fetching status:", error);

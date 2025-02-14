@@ -44,7 +44,7 @@ async function reportToNetcraft(site: string) {
       email: netcraftReportEmail,
       reason:
         "This is a suspected tech support scam popup." +
-          "This was found by automatically checking redirects that go to tech support scam popups, so there may be potential errors",
+        "This was found by automatically checking redirects that go to tech support scam popups, so there may be potential errors",
       urls: [{ url: site, country: "US" }],
     }),
     dispatcher: proxyAgent,
@@ -150,7 +150,9 @@ async function httpRedirect(redirectUrl: string): Promise<string | null> {
   return response.headers.get("location");
 }
 
-async function browserFingerprintPost(redirectUrl: string) : Promise <string | null> {
+async function browserFingerprintPost(
+  redirectUrl: string,
+): Promise<string | null> {
   const { proxy, browserFingerprintForRedirect } = await readConfig();
   const proxyAgent = new ProxyAgent(proxy);
 
@@ -165,13 +167,14 @@ async function browserFingerprintPost(redirectUrl: string) : Promise <string | n
   data.append("data", JSON.stringify(browserFingerprintForRedirect));
 
   const response = await fetch(redirectUrl, {
+    method: "POST",
     dispatcher: proxyAgent,
     redirect: "manual",
     headers: {
       "User-Agent": userAgent,
     },
-    body: data
-  })
+    body: data,
+  });
 
   return response.headers.get("location");
 }

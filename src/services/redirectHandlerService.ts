@@ -42,7 +42,7 @@ async function reportToNetcraft(site: string) {
     headers: { "Content-Type": "application/json", "User-Agent": userAgent },
     body: JSON.stringify({
       email: netcraftReportEmail,
-      urls: [{ url: site }],
+      urls: [{ url: site, country: "US" }],
     }),
     dispatcher: proxyAgent,
   });

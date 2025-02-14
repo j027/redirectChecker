@@ -58,8 +58,8 @@ export const statusCommand: CommandDefinition = {
       for (const row of result.rows) {
         const id = row.redirect_id;
         if (!redirects.has(id)) {
-          // Create a new group entry with header info
-          const header = `**Source URL:** ${row.source_url}\n**Regex Pattern:** \`${row.regex_pattern}\`\n**Type:** ${row.type}`;
+          const sourceUrl = formatUrl(row.source_url);
+          const header = `**Source URL:** [${sourceUrl.display}](${sourceUrl.full})\n**Regex Pattern:** \`${row.regex_pattern}\`\n**Type:** ${row.type}`;
           redirects.set(id, { header, destinations: [] });
         }
         if (row.destination_url) {
@@ -88,10 +88,11 @@ export const statusCommand: CommandDefinition = {
 
         // Add destination fields (max 8 destinations = 24 fields)
         for (const dest of info.destinations) {
+          const destUrl = formatUrl(dest.url);
           embed.addFields(
             {
               name: "Destination",
-              value: dest.url,
+              value: `[${destUrl.display}](${destUrl.full})`,
               inline: true
             },
             {
@@ -122,3 +123,19 @@ export const statusCommand: CommandDefinition = {
     }
   },
 };
+
+function formatUrl(url: string): { display: string, full: string } {
+  try {
+    const urlObj = new URL(url);
+    return {
+      display: urlObj.hostname,
+      full: url
+    };
+  } catch {
+    // If URL parsing fails, return the original
+    return {
+      display: url,
+      full: url
+    };
+  }
+}

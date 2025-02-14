@@ -42,6 +42,9 @@ async function reportToNetcraft(site: string) {
     headers: { "Content-Type": "application/json", "User-Agent": userAgent },
     body: JSON.stringify({
       email: netcraftReportEmail,
+      reason:
+        "This is a suspected tech support scam popup." +
+          "This was found by automatically checking redirects that go to tech support scam popups, so there may be potential errors",
       urls: [{ url: site, country: "US" }],
     }),
     dispatcher: proxyAgent,

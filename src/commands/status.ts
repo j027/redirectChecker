@@ -51,7 +51,7 @@ export const statusCommand: CommandDefinition = {
         const id = row.redirect_id;
         if (!redirects.has(id)) {
           // Create a new group entry with header info
-          const header = `**Source URL:** ${row.source_url}\n**Regex Pattern:** ${row.regex_pattern}\n**Type:** ${row.type}`;
+          const header = `**Source URL:** ${row.source_url}\n**Regex Pattern:** \`${row.regex_pattern}\`\n**Type:** ${row.type}`;
           redirects.set(id, { header, destinations: [] });
         }
         if (row.destination_url) {

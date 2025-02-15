@@ -139,7 +139,7 @@ async function httpRedirect(redirectUrl: string): Promise<string | null> {
 
   // check redirect through proxy
   const response = await fetch(redirectUrl, {
-    method: "POST",
+    method: "GET",
     dispatcher: proxyAgent,
     redirect: "manual",
     headers: {

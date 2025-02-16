@@ -7,9 +7,6 @@ import { userAgentService } from "./userAgentService";
 import { queueCrdfLabsReport } from "./crdfLabsQueue";
 
 async function reportToGoogleSafeBrowsing(site: string) {
-  const { proxy } = await readConfig();
-  const proxyAgent = new ProxyAgent(proxy);
-
   // fail hard if the user agent is not available - this ensures this is properly fixed
   const userAgent = await userAgentService.getUserAgent();
   if (userAgent == null) {
@@ -22,14 +19,12 @@ async function reportToGoogleSafeBrowsing(site: string) {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": userAgent },
       body: JSON.stringify([site]),
-      dispatcher: proxyAgent,
     },
   );
 }
 
 async function reportToNetcraft(site: string) {
-  const { netcraftReportEmail, proxy } = await readConfig();
-  const proxyAgent = new ProxyAgent(proxy);
+  const { netcraftReportEmail } = await readConfig();
 
   // fail hard if the user agent is not available - this ensures this is properly fixed
   const userAgent = await userAgentService.getUserAgent();
@@ -42,12 +37,10 @@ async function reportToNetcraft(site: string) {
     headers: { "Content-Type": "application/json", "User-Agent": userAgent },
     body: JSON.stringify({
       email: netcraftReportEmail,
-      reason:
-        "This is a suspected tech support scam popup." +
-        "This was found by automatically checking redirects that go to tech support scam popups, so there may be potential errors",
-      urls: [{ url: site, country: "US" }],
+      urls: [
+        { url: site, reason: "Likely tech support scam", country: "US" },
+      ],
     }),
-    dispatcher: proxyAgent,
   });
 }
 

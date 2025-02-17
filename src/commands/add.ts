@@ -61,11 +61,21 @@ export const addCommand: CommandDefinition = {
     }
 
     const parsedRegex = new RegExp(regex);
-    const [redirectDestination, isPopup] = await handleRedirect(
-      url,
-      parsedRegex,
-      redirectType,
-    );
+    let redirectDestination: string | null = null;
+    let isPopup: boolean = false;
+
+    try {
+      [redirectDestination, isPopup] = await handleRedirect(
+        url,
+        parsedRegex,
+        redirectType,
+      );
+    } catch {
+      await interaction.editReply(
+        "There was an error attempting to validate the redirect.",
+      );
+      return;
+    }
 
     if (redirectDestination == null) {
       await interaction.editReply(
@@ -76,11 +86,13 @@ export const addCommand: CommandDefinition = {
 
     if (!isPopup) {
       await interaction.editReply(
-        `Popup not detected, the redirect may not be redirecting to the expected location or the regex may be incorrect.
+        `Popup not detected, the redirect may not be redirecting to the expected location or the regex may be incorrect.\n
         The current destination is ${redirectDestination}`,
       );
       return;
     }
+
+    await interaction.editReply("The redirect has been detected as valid, it will be added shortly.")
 
     const client = await pool.connect();
 

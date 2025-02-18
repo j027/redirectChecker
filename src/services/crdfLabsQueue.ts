@@ -1,5 +1,6 @@
 import PQueue from "p-queue";
-import { reportToCrdfLabs } from "./redirectHandlerService";
+
+import {reportToCrdfLabs} from "./reportService";
 
 // Create a queue that allows 2 jobs every 60000ms (1 minute)
 export const crdfLabsQueue = new PQueue({

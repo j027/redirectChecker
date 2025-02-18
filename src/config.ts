@@ -7,6 +7,7 @@ type Config = {
     proxy: string;
     channelId: string;
     netcraftReportEmail: string;
+    netcraftSourceExtension: string;
     urlscanApiKey: string;
     crdfLabsApiKey: string;
     browserFingerprintForRedirect: object;

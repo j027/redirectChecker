@@ -26,12 +26,6 @@ async function reportToGoogleSafeBrowsing(site: string) {
 async function reportToNetcraft(site: string) {
   const { netcraftReportEmail, netcraftSourceExtension } = await readConfig();
 
-  // fail hard if the user agent is not available - this ensures this is properly fixed
-  const userAgent = await userAgentService.getUserAgent();
-  if (userAgent == null) {
-    throw new Error("Failed to get user agent");
-  }
-
   await fetch("https://report.netcraft.com/api/v3/report/urls", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

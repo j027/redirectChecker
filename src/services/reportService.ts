@@ -24,10 +24,15 @@ async function reportToGoogleSafeBrowsing(site: string) {
 
 async function reportToNetcraft(site: string) {
   const { netcraftReportEmail, netcraftSourceExtension } = await readConfig();
+  const androidUserAgent =
+    "Dalvik/2.1.0 (Linux; U; Android 9; SM-G960N Build/PQ3A.190705.06121522)";
 
   await fetch("https://report.netcraft.com/api/v3/report/urls", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": androidUserAgent,
+    },
     body: JSON.stringify({
       email: netcraftReportEmail,
       source: netcraftSourceExtension,

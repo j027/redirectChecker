@@ -1,5 +1,5 @@
 import { readConfig } from "../config";
-import { fetch } from "undici";
+import { fetch, ProxyAgent } from "undici";
 import { queueCrdfLabsReport } from "./crdfLabsQueue";
 import { discordClient } from "../discordBot";
 import { TextChannel } from "discord.js";
@@ -23,12 +23,15 @@ async function reportToGoogleSafeBrowsing(site: string) {
 }
 
 async function reportToNetcraft(site: string) {
-  const { netcraftReportEmail, netcraftSourceExtension } = await readConfig();
+  const { netcraftReportEmail, netcraftSourceExtension, proxy } =
+    await readConfig();
   const androidUserAgent =
     "Dalvik/2.1.0 (Linux; U; Android 9; SM-G960N Build/PQ3A.190705.06121522)";
+  const proxyAgent = new ProxyAgent(proxy);
 
   await fetch("https://report.netcraft.com/api/v3/report/urls", {
     method: "POST",
+    dispatcher: proxyAgent,
     headers: {
       "Content-Type": "application/json",
       "User-Agent": androidUserAgent,

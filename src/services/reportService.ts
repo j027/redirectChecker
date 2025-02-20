@@ -29,7 +29,7 @@ async function reportToNetcraft(site: string) {
     "Report Phishing/5.0.0 (com.netcraft.BlockList.Report-Phishing; build:105; iOS 18.3.1) Alamofire/1.0";
   const proxyAgent = new ProxyAgent(proxy);
 
-  await fetch("https://report.netcraft.com/api/v3/report/urls", {
+  const response = await fetch("https://report.netcraft.com/api/v3/report/urls", {
     method: "POST",
     dispatcher: proxyAgent,
     headers: {
@@ -42,6 +42,10 @@ async function reportToNetcraft(site: string) {
       urls: [{ url: site, country: null }],
     }),
   });
+
+  // display the netcraft report in the console for debugging the slow report processing
+  const parsedResponse = await response.json();
+  console.info(`Netcraft report message: ${parsedResponse?.message} uuid: ${parsedResponse?.uuid}`);
 }
 
 async function reportToUrlscan(site: string) {

@@ -22,6 +22,11 @@ async function reportToGoogleSafeBrowsing(site: string) {
   );
 }
 
+interface NetcraftApiResponse {
+  message: string;
+  uuid: string;
+}
+
 async function reportToNetcraft(site: string) {
   const { netcraftReportEmail, netcraftSourceExtension, proxy } =
     await readConfig();
@@ -41,11 +46,9 @@ async function reportToNetcraft(site: string) {
       source: netcraftSourceExtension,
       urls: [{ url: site, country: null }],
     }),
-  });
+  }).then(r => r.json()) as NetcraftApiResponse;
 
-  // display the netcraft report in the console for debugging the slow report processing
-  const parsedResponse = await response.json();
-  console.info(`Netcraft report message: ${parsedResponse?.message} uuid: ${parsedResponse?.uuid}`);
+  console.info(`Netcraft report message: ${response?.message} uuid: ${response?.uuid}`);
 }
 
 async function reportToUrlscan(site: string) {

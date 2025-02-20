@@ -28,6 +28,10 @@ export const addCommand: CommandDefinition = {
             name: "Browser Fingerprint Post",
             value: RedirectType.BrowserFingerprintPost,
           },
+          {
+            name: "Weebly DigitalOcean JS",
+            value: RedirectType.WeeblyDigitalOceanJs,
+          },
         ]),
     )
     .toJSON(),
@@ -64,7 +68,9 @@ export const addCommand: CommandDefinition = {
     let redirectDestination: string | null = null;
     let isPopup: boolean = false;
 
+    // verify the user's regidrect is valid against the regex
     try {
+      await interaction.editReply("Attempting to validate redirect");
       [redirectDestination, isPopup] = await handleRedirect(
         url,
         parsedRegex,
@@ -92,7 +98,9 @@ export const addCommand: CommandDefinition = {
       return;
     }
 
-    await interaction.editReply("The redirect has been detected as valid, it will be added shortly.")
+    await interaction.editReply(
+      "The redirect has been detected as valid, it will be added shortly.",
+    );
 
     const client = await pool.connect();
 

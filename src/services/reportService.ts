@@ -25,21 +25,21 @@ async function reportToGoogleSafeBrowsing(site: string) {
 async function reportToNetcraft(site: string) {
   const { netcraftReportEmail, netcraftSourceExtension, proxy } =
     await readConfig();
-  const androidUserAgent =
-    "Dalvik/2.1.0 (Linux; U; Android 9; SM-G960N Build/PQ3A.190705.06121522)";
+  const iosAppUserAgent =
+    "Report Phishing/5.0.0 (com.netcraft.BlockList.Report-Phishing; build:105; iOS 18.3.1) Alamofire/1.0";
   const proxyAgent = new ProxyAgent(proxy);
 
   await fetch("https://report.netcraft.com/api/v3/report/urls", {
     method: "POST",
     dispatcher: proxyAgent,
     headers: {
-      "Content-Type": "application/json",
-      "User-Agent": androidUserAgent,
+      "content-type": "application/json",
+      "user-agent": iosAppUserAgent,
     },
     body: JSON.stringify({
       email: netcraftReportEmail,
       source: netcraftSourceExtension,
-      urls: [{ url: site }],
+      urls: [{ url: site, country: null }],
     }),
   });
 }

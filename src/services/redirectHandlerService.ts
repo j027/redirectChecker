@@ -17,7 +17,7 @@ export async function handleRedirect(
     case RedirectType.BrowserFingerprintPost:
       location = await browserFingerprintPost(redirectUrl);
       break;
-    case RedirectType.WeeblyDigitalOceanJs:
+    case   RedirectType.WeeblyDigitalOceanJs:
       location = await weeblyDigitalOceanJs(redirectUrl);
       break;
     default:

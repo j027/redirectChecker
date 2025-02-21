@@ -52,7 +52,7 @@ async function main() {
 async function gracefulShutdown() {
   console.log("Shutting down gracefully...");
   stopRedirectChecker();
-  stopBatchReportProcessor();
+  await stopBatchReportProcessor();
   await closePool();
   await discordClient.destroy();
   process.exit(0);

@@ -26,6 +26,13 @@ export function startBatchReportProcessor(): void {
   batchInterval = setInterval(flushQueues, 3600000);
 }
 
-export function stopBatchReportProcessor(): void {
+export async function stopBatchReportProcessor(): Promise<void> {
   clearInterval(batchInterval);
+
+  try {
+    await flushQueues();
+    console.info("Batch queues flushed successfully during shutdown.");
+  } catch (error) {
+    console.error("Error while flushing batch queues during shutdown:", error);
+  }
 }

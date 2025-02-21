@@ -22,31 +22,15 @@ async function reportToGoogleSafeBrowsing(site: string) {
   );
 }
 
-async function reportToUrlscan(site: string) {
-  const { urlscanApiKey } = await readConfig();
-  await fetch("https://urlscan.io/api/v1/scan/", {
-    method: "POST",
-    headers: {
-      "API-Key": urlscanApiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      url: site,
-      visibility: "public",
-    }),
-  });
-}
-
 export async function reportSite(site: string, redirect: string) {
   // report to google safe browsing and urlscan.io
   const reports = [];
   reports.push(reportToGoogleSafeBrowsing(site));
-  reports.push(reportToUrlscan(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));
 
-  // netcraft and crdf labs go into a queue that is reported hourly
+  // netcraft, crdf labs, and urlscan go into a queue that is reported hourly
   enqueueReport(site);
 
   // wait for all the reports to finish

@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, TextChannel } from "discord.js";
+import { Client, Events, GatewayIntentBits } from "discord.js";
 
 import { readConfig } from "./config";
 import { commands } from "./commands/commands";
@@ -6,11 +6,9 @@ import { closePool } from "./dbPool";
 import {
   startRedirectChecker,
   stopRedirectChecker,
-} from "./services/schedulerService";
-import {
   startBatchReportProcessor,
   stopBatchReportProcessor,
-} from "./services/batchReportService";
+} from "./services/schedulerService";
 
 export const discordClient = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],

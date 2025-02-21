@@ -1,17 +1,18 @@
 // File: batchReportService.ts
 import { readConfig } from "../config";
 import { fetch } from "undici";
+import { setTimeout } from "node:timers/promises";
 
-let batchInterval: NodeJS.Timeout;
-
-// In\-memory queues
+// In-memory queues
 const netcraftQueue: Set<string> = new Set();
 const crdfLabsQueue: Set<string> = new Set();
+const urlscanQueue: Set<string> = new Set();
 
 // Add a URL to the batch queues
 export function enqueueReport(site: string): void {
   netcraftQueue.add(site);
   crdfLabsQueue.add(site);
+  urlscanQueue.add(site);
 }
 
 interface NetcraftApiResponse {
@@ -84,17 +85,45 @@ async function flushCrdfLabsQueue(): Promise<void> {
   }
 }
 
+// Process URLScan in batches of 60
+async function processUrlscanBatch(): Promise<void> {
+  if (urlscanQueue.size === 0) return;
+
+  const { urlscanApiKey } = await readConfig();
+  const urls = Array.from(urlscanQueue).slice(0, 60);
+
+  for (const url of urls) {
+    try {
+      await fetch("https://urlscan.io/api/v1/scan/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "API-Key": urlscanApiKey
+        },
+        body: JSON.stringify({
+          url: url,
+          visibility: "public"
+        })
+      });
+      urlscanQueue.delete(url); // Remove only processed URLs
+    } catch (error) {
+      console.error(`URLScan submission failed for ${url}`);
+      urlscanQueue.delete(url); // Remove failed ones too since we're ignoring failures
+    }
+  }
+
+  // If there are more URLs, wait a minute and process the next batch
+  if (urlscanQueue.size > 0) {
+    await setTimeout(60000);
+    await processUrlscanBatch();
+  }
+}
+
 // Flush both queues
-async function flushQueues(): Promise<void> {
-  await Promise.allSettled([flushNetcraftQueue(), flushCrdfLabsQueue()]);
-}
-
-// Start a scheduled job to flush queues once every hour
-export function startBatchReportProcessor(): void {
-  // 3600000ms = 1 hour
-  batchInterval = setInterval(flushQueues, 3600000);
-}
-
-export function stopBatchReportProcessor(): void {
-  clearInterval(batchInterval);
+export async function flushQueues(): Promise<void> {
+  await Promise.allSettled([
+    flushNetcraftQueue(), 
+    flushCrdfLabsQueue(),
+    processUrlscanBatch()
+  ]);
 }

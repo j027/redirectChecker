@@ -57,8 +57,7 @@ async function sendMessageToDiscord(site: string, redirect: string) {
   const { channelId } = await readConfig();
   const channel = discordClient.channels.cache.get(channelId) as TextChannel;
   if (channel) {
-    await channel.send(`Found new popup with url ${site} from ${redirect}`);
-    console.log("Message sent to the channel");
+    await channel.send(`Found ${site} from ${redirect}`);
   } else {
     console.error("Channel not found");
   }

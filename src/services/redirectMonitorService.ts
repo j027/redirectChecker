@@ -42,9 +42,6 @@ async function processRedirectEntry(
 
   // if we didn't redirect anywhere
   if (redirectDestination == null) {
-    console.log(
-      `The redirect with source ${sourceUrl} did not go anywhere, this may be expected if redirect is disabled`,
-    );
     return;
   }
 

@@ -1,9 +1,9 @@
 import { readConfig } from "../config";
 import { fetch, ProxyAgent } from "undici";
-import { queueCrdfLabsReport } from "./crdfLabsQueue";
 import { discordClient } from "../discordBot";
 import { TextChannel } from "discord.js";
 import { userAgentService } from "./userAgentService";
+import { enqueueReport } from "./batchReportService";
 
 async function reportToGoogleSafeBrowsing(site: string) {
   // fail hard if the user agent is not available - this ensures this is properly fixed
@@ -22,35 +22,6 @@ async function reportToGoogleSafeBrowsing(site: string) {
   );
 }
 
-interface NetcraftApiResponse {
-  message: string;
-  uuid: string;
-}
-
-async function reportToNetcraft(site: string) {
-  const { netcraftReportEmail, netcraftSourceExtension, proxy } =
-    await readConfig();
-  const iosAppUserAgent =
-    "Report Phishing/5.0.0 (com.netcraft.BlockList.Report-Phishing; build:105; iOS 18.3.1) Alamofire/1.0";
-  const proxyAgent = new ProxyAgent(proxy);
-
-  const response = await fetch("https://report.netcraft.com/api/v3/report/urls", {
-    method: "POST",
-    dispatcher: proxyAgent,
-    headers: {
-      "content-type": "application/json",
-      "user-agent": iosAppUserAgent,
-    },
-    body: JSON.stringify({
-      email: netcraftReportEmail,
-      source: netcraftSourceExtension,
-      urls: [{ url: site, country: null }],
-    }),
-  }).then(r => r.json()) as NetcraftApiResponse;
-
-  console.info(`Netcraft report message: ${response?.message} uuid: ${response?.uuid}`);
-}
-
 async function reportToUrlscan(site: string) {
   const { urlscanApiKey } = await readConfig();
   await fetch("https://urlscan.io/api/v1/scan/", {
@@ -66,29 +37,17 @@ async function reportToUrlscan(site: string) {
   });
 }
 
-export async function reportToCrdfLabs(site: string) {
-  const { crdfLabsApiKey } = await readConfig();
-  await fetch("https://threatcenter.crdf.fr/api/v0/submit_url.json", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      token: crdfLabsApiKey,
-      method: "submit_url",
-      urls: [site],
-    }),
-  });
-}
-
 export async function reportSite(site: string, redirect: string) {
-  // report to netcraft, google safe browsing, and urlscan.io
+  // report to google safe browsing and urlscan.io
   const reports = [];
   reports.push(reportToGoogleSafeBrowsing(site));
-  reports.push(reportToNetcraft(site));
   reports.push(reportToUrlscan(site));
-  reports.push(queueCrdfLabsReport(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));
+
+  // netcraft and crdf labs go into a queue that is reported hourly
+  enqueueReport(site);
 
   // wait for all the reports to finish
   await Promise.allSettled(reports);

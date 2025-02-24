@@ -29,7 +29,12 @@ async function flushNetcraftQueue(): Promise<void> {
     "Report Phishing/5.0.0 (com.netcraft.BlockList.Report-Phishing; build:105; iOS 18.3.1) Alamofire/1.0";
 
   // Convert Set to array of objects
-  const urls = Array.from(netcraftQueue).map((url) => ({ url, country: null }));
+  const urls = Array.from(netcraftQueue).map((url) => ({
+    url,
+    country: "US",
+    reason: "TSS",
+    tags: ["smishing"],
+  }));
   netcraftQueue.clear();
 
   try {
@@ -98,12 +103,12 @@ async function processUrlscanBatch(): Promise<void> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "API-Key": urlscanApiKey
+          "API-Key": urlscanApiKey,
         },
         body: JSON.stringify({
           url: url,
-          visibility: "public"
-        })
+          visibility: "public",
+        }),
       });
       urlscanQueue.delete(url); // Remove only processed URLs
     } catch (error) {
@@ -122,8 +127,8 @@ async function processUrlscanBatch(): Promise<void> {
 // Flush both queues
 export async function flushQueues(): Promise<void> {
   await Promise.allSettled([
-    flushNetcraftQueue(), 
+    flushNetcraftQueue(),
     flushCrdfLabsQueue(),
-    processUrlscanBatch()
+    processUrlscanBatch(),
   ]);
 }

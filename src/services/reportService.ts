@@ -73,7 +73,8 @@ async function reportToVirusTotal(site: string) {
 }
 
 export async function reportSite(site: string, redirect: string) {
-  // report to google safe browsing and urlscan.io
+  // TODO: add reporting for microsoft smartscreen at https://www.microsoft.com/en-us/wdsi/support/report-unsafe-site-guest
+  // report to google safe browsing, netacraft, virustotal, and urlscan.io
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));

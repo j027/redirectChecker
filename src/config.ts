@@ -9,6 +9,7 @@ type Config = {
     netcraftReportEmail: string;
     urlscanApiKey: string;
     crdfLabsApiKey: string;
+    virusTotalApiKey: string;
     browserFingerprintForRedirect: object;
 };
 

@@ -59,13 +59,27 @@ async function reportToUrlscan(site: string) {
   });
 }
 
+async function reportToVirusTotal(site: string) {
+  const { virusTotalApiKey } = await readConfig();
+  await fetch("https://www.virustotal.com/api/v3/urls", {
+    method: "POST",
+    headers: {
+      "x-apikey": virusTotalApiKey
+    },
+    body: new URLSearchParams({
+      url: site
+    })
+  });
+}
+
 export async function reportSite(site: string, redirect: string) {
   // report to google safe browsing and urlscan.io
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));
   reports.push(reportToUrlscan(site));
-  
+  reports.push(reportToVirusTotal(site));
+
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));
 

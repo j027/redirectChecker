@@ -20,10 +20,9 @@ export function stopRedirectChecker() {
   }
 }
 
-// Start a scheduled job to flush queues once every hour
+// Start a scheduled job to flush queues every minute
 export function startBatchReportProcessor(): void {
-  // 3600000ms = 1 hour
-  batchInterval = setInterval(flushQueues, 3600000);
+  batchInterval = setInterval(flushQueues, 60 * 1000);
 }
 
 export async function stopBatchReportProcessor(): Promise<void> {

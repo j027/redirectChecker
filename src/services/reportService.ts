@@ -22,15 +22,54 @@ async function reportToGoogleSafeBrowsing(site: string) {
   );
 }
 
+interface NetcraftApiResponse {
+  message: string;
+  uuid: string;
+}
+
+async function reportToNetcraft(site: string) {
+  const { netcraftReportEmail } = await readConfig();
+
+  const response = await fetch("https://report.netcraft.com/api/v3/report/urls", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: netcraftReportEmail,
+      urls: [{ url: site, country: "US" }],
+    }),
+  }).then(r => r.json()) as NetcraftApiResponse;
+
+  console.info(`Netcraft report message: ${response?.message} uuid: ${response?.uuid}`);
+}
+
+async function reportToUrlscan(site: string) {
+  const { urlscanApiKey } = await readConfig();
+  await fetch("https://urlscan.io/api/v1/scan/", {
+    method: "POST",
+    headers: {
+      "API-Key": urlscanApiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      url: site,
+      visibility: "public",
+    }),
+  });
+}
+
 export async function reportSite(site: string, redirect: string) {
   // report to google safe browsing and urlscan.io
   const reports = [];
+  reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));
-
+  reports.push(reportToUrlscan(site));
+  
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));
 
-  // netcraft, crdf labs, and urlscan go into a queue that is reported hourly
+  // crdf labs reports go into a queue that is reported every minute
   enqueueReport(site);
 
   // wait for all the reports to finish

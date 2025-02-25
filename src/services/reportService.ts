@@ -59,9 +59,16 @@ async function reportToUrlscan(site: string) {
   });
 }
 
+interface VirusTotalResponse {
+  data: {
+    id: string;
+    type: string;
+  };
+}
+
 async function reportToVirusTotal(site: string) {
   const { virusTotalApiKey } = await readConfig();
-  await fetch("https://www.virustotal.com/api/v3/urls", {
+  const response = await fetch("https://www.virustotal.com/api/v3/urls", {
     method: "POST",
     headers: {
       "x-apikey": virusTotalApiKey
@@ -69,7 +76,9 @@ async function reportToVirusTotal(site: string) {
     body: new URLSearchParams({
       url: site
     })
-  });
+  }).then(r => r.json()) as VirusTotalResponse;
+
+  console.info(`VirusTotal report id: ${response?.data?.id}`);
 }
 
 export async function reportSite(site: string, redirect: string) {

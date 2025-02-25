@@ -10,6 +10,12 @@ export function enqueueReport(site: string): void {
   crdfLabsQueue.add(site);
 }
 
+interface CrdfLabsResponse {
+  success: boolean;
+  message: string;
+  urls_submitted?: number;
+}
+
 // Flush batch of CRDF Labs reports
 async function flushCrdfLabsQueue(): Promise<void> {
   if (crdfLabsQueue.size === 0) return;
@@ -32,8 +38,8 @@ async function flushCrdfLabsQueue(): Promise<void> {
         }),
       },
     );
-    await response.json();
-    console.info("CRDF Labs batched report submitted successfully.");
+    const data = await response.json() as CrdfLabsResponse;
+    console.info(`CRDF Labs report: success=${data.success}, message=${data.message}, urls submitted=${data.urls_submitted}`);
   } catch (error) {
     console.error("CRDF Labs batched report failed", error);
   }

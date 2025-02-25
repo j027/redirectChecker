@@ -11,9 +11,9 @@ export function enqueueReport(site: string): void {
 }
 
 interface CrdfLabsResponse {
-  success: boolean;
-  message: string;
-  urls_submitted?: number;
+  error: boolean;
+  msg: string;
+  ref: string;
 }
 
 // Flush batch of CRDF Labs reports
@@ -39,7 +39,7 @@ async function flushCrdfLabsQueue(): Promise<void> {
       },
     );
     const data = await response.json() as CrdfLabsResponse;
-    console.info(`CRDF Labs report: success=${data.success}, message=${data.message}, urls submitted=${data.urls_submitted}`);
+    console.info(`CRDF Labs report: error=${data.error}, message=${data.msg}, reference=${data.ref}`);
   } catch (error) {
     console.error("CRDF Labs batched report failed", error);
   }

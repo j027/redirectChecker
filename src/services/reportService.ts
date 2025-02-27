@@ -1,9 +1,9 @@
-import { readConfig } from "../config";
+import { readConfig } from "../config.js";
 import { fetch, ProxyAgent } from "undici";
-import { discordClient } from "../discordBot";
+import { discordClient } from "../discordBot.js";
 import { TextChannel } from "discord.js";
-import { userAgentService } from "./userAgentService";
-import { enqueueReport } from "./batchReportService";
+import { userAgentService } from "./userAgentService.js";
+import { enqueueReport } from "./batchReportService.js";
 
 async function reportToGoogleSafeBrowsing(site: string) {
   // fail hard if the user agent is not available - this ensures this is properly fixed

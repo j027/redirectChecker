@@ -1,5 +1,5 @@
-import pool from "../dbPool";
-import { getLatestWindowsChromeUserAgent } from "./chromeUserAgentService";
+import pool from "../dbPool.js";
+import { getLatestWindowsChromeUserAgent } from "./chromeUserAgentService.js";
 
 export class UserAgentService {
   async getUserAgent(): Promise<string | null> {

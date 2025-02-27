@@ -1,5 +1,5 @@
 // File: batchReportService.ts
-import { readConfig } from "../config";
+import { readConfig } from "../config.js";
 import { fetch } from "undici";
 
 // In-memory queues

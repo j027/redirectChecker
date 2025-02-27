@@ -1,6 +1,6 @@
-import { SlashCommandBuilder } from "discord.js";
-import { CommandDefinition } from "./commands";
-import pool from "../dbPool";
+import {ChatInputCommandInteraction, SlashCommandBuilder} from "discord.js";
+import { CommandDefinition } from "./commands.js";
+import pool from "../dbPool.js";
 
 export const removeCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
@@ -13,7 +13,7 @@ export const removeCommand: CommandDefinition = {
               .setRequired(true)
       )
       .toJSON(),
-  async execute(interaction) {
+  async execute(interaction: ChatInputCommandInteraction) {
     const id = interaction.options.getInteger("id");
     await interaction.deferReply({ flags: "Ephemeral" });
 

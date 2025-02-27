@@ -1,7 +1,7 @@
-import pool from "../dbPool";
-import { handleRedirect } from "./redirectHandlerService";
-import { RedirectType } from "../redirectType";
-import {reportSite} from "./reportService";
+import pool from "../dbPool.js";
+import { handleRedirect } from "./redirectHandlerService.js";
+import { RedirectType } from "../redirectType.js";
+import {reportSite} from "./reportService.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();

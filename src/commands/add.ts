@@ -1,8 +1,8 @@
-import { SlashCommandBuilder } from "discord.js";
-import { CommandDefinition } from "./commands";
-import { RedirectType } from "../redirectType";
-import { handleRedirect } from "../services/redirectHandlerService";
-import pool from "../dbPool";
+import {ChatInputCommandInteraction, SlashCommandBuilder} from "discord.js";
+import { CommandDefinition } from "./commands.js";
+import { RedirectType } from "../redirectType.js";
+import { handleRedirect } from "../services/redirectHandlerService.js";
+import pool from "../dbPool.js";
 
 export const addCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
@@ -35,7 +35,7 @@ export const addCommand: CommandDefinition = {
         ]),
     )
     .toJSON(),
-  async execute(interaction) {
+  async execute(interaction: ChatInputCommandInteraction) {
     const url = interaction.options.getString("url");
     const regex = interaction.options.getString("regex");
     const redirectType = interaction.options.getString(

@@ -5,8 +5,8 @@ import {
   RESTPutAPIApplicationGuildCommandsJSONBody,
   RESTPutAPIApplicationGuildCommandsResult,
 } from "discord.js";
-import { readConfig } from "./config";
-import { commands } from "./commands/commands";
+import { readConfig } from "./config.js";
+import { commands } from "./commands/commands.js";
 
 async function main() {
   const { token, guildId, clientId } = await readConfig();

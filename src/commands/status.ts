@@ -1,6 +1,6 @@
-import { CommandDefinition } from "./commands";
-import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
-import pool from "../dbPool";
+import { CommandDefinition } from "./commands.js";
+import {SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction} from "discord.js";
+import pool from "../dbPool.js";
 
 export const statusCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
@@ -8,7 +8,7 @@ export const statusCommand: CommandDefinition = {
     .setDescription("Displays all redirects and their current status")
     .toJSON(),
 
-  async execute(interaction) {
+  async execute(interaction : ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: "Ephemeral" });
     const client = await pool.connect();
 

@@ -1,5 +1,5 @@
-import { checkRedirects } from './redirectMonitorService';
-import { flushQueues } from './batchReportService';
+import { checkRedirects } from './redirectMonitorService.js';
+import { flushQueues } from './batchReportService.js';
 
 let checkInterval: NodeJS.Timeout;
 let batchInterval: NodeJS.Timeout;

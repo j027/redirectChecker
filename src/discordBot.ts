@@ -1,14 +1,14 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 
-import { readConfig } from "./config";
-import { commands } from "./commands/commands";
-import { closePool } from "./dbPool";
+import { readConfig } from "./config.js";
+import { commands } from "./commands/commands.js";
+import { closePool } from "./dbPool.js";
 import {
   startRedirectChecker,
   stopRedirectChecker,
   startBatchReportProcessor,
   stopBatchReportProcessor,
-} from "./services/schedulerService";
+} from "./services/schedulerService.js";
 
 export const discordClient = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],

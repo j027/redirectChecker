@@ -2,9 +2,9 @@ import {
   ChatInputCommandInteraction,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from "discord.js";
-import { addCommand } from "./add";
-import { statusCommand } from "./status";
-import { removeCommand } from "./remove";
+import { addCommand } from "./add.js";
+import { statusCommand } from "./status.js";
+import { removeCommand } from "./remove.js";
 
 export type CommandDefinition = {
   execute(interaction: ChatInputCommandInteraction): Promise<void>;

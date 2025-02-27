@@ -1,7 +1,7 @@
 import { fetch, ProxyAgent } from "undici";
-import { readConfig } from "../config";
-import { RedirectType } from "../redirectType";
-import { userAgentService } from "./userAgentService";
+import { readConfig } from "../config.js";
+import { RedirectType } from "../redirectType.js";
+import { userAgentService } from "./userAgentService.js";
 
 export async function handleRedirect(
   redirectUrl: string,

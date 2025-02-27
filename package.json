@@ -1,21 +1,25 @@
 {
   "name": "discordbot",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "tsc",
-    "start:dev": "ts-node src/discordBot.ts",
+    "start:dev": "ts-node --loader ts-node/esm src/discordBot.ts",
     "start": "node dist/discordBot.js",
-    "deploy:dev": "ts-node src/deployCommands.ts",
+    "deploy:dev": "ts-node --loader ts-node/esm src/deployCommands.ts",
     "deploy": "node dist/deployCommands.js",
-    "init-db:dev": "ts-node src/initDb.ts",
+    "init-db:dev": "ts-node --loader ts-node/esm src/initDb.ts",
     "init-db": "node dist/initDb.js",
     "clean": "rm -rf dist",
     "prebuild": "yarn clean"
   },
   "dependencies": {
+    "@playwright/browser-chromium": "^1.50.1",
     "discord.js": "^14.7.1",
     "dotenv": "^16.4.7",
+    "nodejs-whisper": "^0.2.6",
     "pg": "^8.13.1",
+    "playwright": "^1.50.1",
     "undici": "^7.3.0"
   },
   "devDependencies": {

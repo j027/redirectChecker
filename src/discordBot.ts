@@ -10,19 +10,25 @@ import {
   stopBatchReportProcessor,
 } from "./services/schedulerService.js";
 import { browserReportService } from "./services/browserReportService.js";
+import { browserRedirectService} from "./services/browserRedirectService.js";
 
 export const discordClient = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 });
 
 async function main() {
+  console.log("Starting browsers");
   const { token } = await readConfig();
   await browserReportService.init();
+  await browserRedirectService.init();
 
   // Log in to Discord with your client's token
+  console.log("Logging into discord");
   await discordClient.login(token);
   startRedirectChecker();
   startBatchReportProcessor();
+
+  console.log("Logged in and ready to go");
 
   discordClient.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -56,6 +62,7 @@ async function gracefulShutdown() {
   stopRedirectChecker();
   await stopBatchReportProcessor();
   await browserReportService.close();
+  await browserRedirectService.close();
   await closePool();
   await discordClient.destroy();
   process.exit(0);

@@ -1,4 +1,4 @@
-import {ChatInputCommandInteraction, SlashCommandBuilder} from "discord.js";
+import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { CommandDefinition } from "./commands.js";
 import { RedirectType } from "../redirectType.js";
 import { handleRedirect } from "../services/redirectHandlerService.js";
@@ -31,6 +31,10 @@ export const addCommand: CommandDefinition = {
           {
             name: "Weebly DigitalOcean JS",
             value: RedirectType.WeeblyDigitalOceanJs,
+          },
+          {
+            name: "Browser Redirect",
+            value: RedirectType.BrowserRedirect,
           },
         ]),
     )

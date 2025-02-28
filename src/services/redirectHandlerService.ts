@@ -2,6 +2,7 @@ import { fetch, ProxyAgent } from "undici";
 import { readConfig } from "../config.js";
 import { RedirectType } from "../redirectType.js";
 import { userAgentService } from "./userAgentService.js";
+import { browserRedirectService } from "./browserRedirectService.js";
 
 export async function handleRedirect(
   redirectUrl: string,
@@ -17,8 +18,11 @@ export async function handleRedirect(
     case RedirectType.BrowserFingerprintPost:
       location = await browserFingerprintPost(redirectUrl);
       break;
-    case   RedirectType.WeeblyDigitalOceanJs:
+    case RedirectType.WeeblyDigitalOceanJs:
       location = await weeblyDigitalOceanJs(redirectUrl);
+      break;
+    case RedirectType.BrowserRedirect:
+      location = await browserRedirectService.handleRedirect(redirectUrl);
       break;
     default:
       console.warn(`Redirect type ${redirectType} is supported yet`);
@@ -73,7 +77,7 @@ async function browserFingerprintPost(
     redirect: "manual",
     headers: {
       "User-Agent": userAgent,
-      "Accept-Language": "en-US,en;q=0.9"
+      "Accept-Language": "en-US,en;q=0.9",
     },
     body: data,
   });
@@ -81,7 +85,9 @@ async function browserFingerprintPost(
   return response.headers.get("location");
 }
 
-async function weeblyDigitalOceanJs(redirectUrl: string) : Promise<string | null> {
+async function weeblyDigitalOceanJs(
+  redirectUrl: string,
+): Promise<string | null> {
   const { proxy } = await readConfig();
   const proxyAgent = new ProxyAgent(proxy);
 
@@ -98,9 +104,10 @@ async function weeblyDigitalOceanJs(redirectUrl: string) : Promise<string | null
     headers: {
       "User-Agent": userAgent,
     },
-  }).then(r => r.text());
+  }).then((r) => r.text());
 
-  const digitalOceanRedirectRegex : RegExp = /(?<=var redirectUrl = ")https:\/\/.*(?=";)/;
+  const digitalOceanRedirectRegex: RegExp =
+    /(?<=var redirectUrl = ")https:\/\/.*(?=";)/;
   const nextRedirect = weeblyPage.match(digitalOceanRedirectRegex);
 
   // if we can't find the next digitalocean redirect
@@ -110,5 +117,4 @@ async function weeblyDigitalOceanJs(redirectUrl: string) : Promise<string | null
 
   // pass onto the standard redirect handling, as it is now a normal http redirect from here
   return httpRedirect(nextRedirect[0]);
-
 }

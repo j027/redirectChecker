@@ -71,3 +71,5 @@ export class BrowserReportService {
     await this.browser.close();
   }
 }
+
+export const browserReportService = new BrowserReportService();

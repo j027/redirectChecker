@@ -9,6 +9,7 @@ import {
   startBatchReportProcessor,
   stopBatchReportProcessor,
 } from "./services/schedulerService.js";
+import { browserReportService } from "./services/browserReportService.js";
 
 export const discordClient = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
@@ -16,6 +17,7 @@ export const discordClient = new Client({
 
 async function main() {
   const { token } = await readConfig();
+  await browserReportService.init();
 
   // Log in to Discord with your client's token
   await discordClient.login(token);
@@ -53,6 +55,7 @@ async function gracefulShutdown() {
   console.log("Shutting down gracefully...");
   stopRedirectChecker();
   await stopBatchReportProcessor();
+  await browserReportService.close();
   await closePool();
   await discordClient.destroy();
   process.exit(0);

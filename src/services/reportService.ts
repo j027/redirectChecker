@@ -4,6 +4,7 @@ import { discordClient } from "../discordBot.js";
 import { TextChannel } from "discord.js";
 import { userAgentService } from "./userAgentService.js";
 import { enqueueReport } from "./batchReportService.js";
+import { browserReportService } from "./browserReportService.js";
 
 async function reportToGoogleSafeBrowsing(site: string) {
   // fail hard if the user agent is not available - this ensures this is properly fixed
@@ -89,6 +90,7 @@ export async function reportSite(site: string, redirect: string) {
   reports.push(reportToGoogleSafeBrowsing(site));
   reports.push(reportToUrlscan(site));
   reports.push(reportToVirusTotal(site));
+  reports.push(browserReportService.reportToSmartScreen(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));

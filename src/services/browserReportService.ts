@@ -1,4 +1,4 @@
-import { chromium, Browser } from "playwright";
+import { chromium, Browser } from "patchright";
 import { readConfig } from "../config.js";
 
 export class BrowserReportService {

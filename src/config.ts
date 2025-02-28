@@ -11,6 +11,8 @@ type Config = {
     crdfLabsApiKey: string;
     virusTotalApiKey: string;
     browserFingerprintForRedirect: object;
+    microsoftUsername: string;
+    microsoftPassword: string;
 };
 
 export async function readConfig(): Promise<Config> {

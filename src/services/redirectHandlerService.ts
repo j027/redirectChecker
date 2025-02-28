@@ -73,6 +73,7 @@ async function browserFingerprintPost(
     redirect: "manual",
     headers: {
       "User-Agent": userAgent,
+      "Accept-Language": "en-US,en;q=0.9"
     },
     body: data,
   });

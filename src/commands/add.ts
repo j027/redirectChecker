@@ -76,10 +76,11 @@ export const addCommand: CommandDefinition = {
         parsedRegex,
         redirectType,
       );
-    } catch {
+    } catch (error) {
       await interaction.editReply(
         "There was an error attempting to validate the redirect.",
       );
+      console.log(error);
       return;
     }
 

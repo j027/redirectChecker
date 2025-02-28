@@ -1,5 +1,4 @@
 import { chromium, Browser } from "playwright";
-import path from "path";
 import { readConfig } from "../config.js";
 
 export class BrowserReportService {

@@ -4,18 +4,17 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start:dev": "ts-node --loader ts-node/esm src/discordBot.ts",
+    "start:dev": "tsx src/discordBot.ts",
     "start": "node dist/discordBot.js",
-    "deploy:dev": "ts-node --loader ts-node/esm src/deployCommands.ts",
+    "deploy:dev": "tsx src/deployCommands.ts",
     "deploy": "node dist/deployCommands.js",
-    "init-db:dev": "ts-node --loader ts-node/esm src/initDb.ts",
+    "init-db:dev": "tsx src/initDb.ts",
     "init-db": "node dist/initDb.js",
     "clean": "rm -rf dist",
     "prebuild": "yarn clean",
     "test": "vitest"
   },
   "dependencies": {
-    "@playwright/browser-chromium": "^1.50.1",
     "discord.js": "^14.7.1",
     "dotenv": "^16.4.7",
     "patchright": "^1.50.1",
@@ -26,7 +25,7 @@
     "@types/node": "^22.13.1",
     "@types/pg": "^8.11.11",
     "prettier": "^3.4.2",
-    "ts-node": "^10.9.1",
+    "tsx": "^4.19.3",
     "typescript": "^5.0.2",
     "vitest": "^3.0.7"
   }

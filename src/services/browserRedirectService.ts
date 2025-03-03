@@ -9,7 +9,7 @@ export class BrowserRedirectService {
     }
 
     async init() {
-        this.browser = await chromium.launch();
+        this.browser = await chromium.launch({ headless: false });
     }
 
     async handleRedirect(redirectUrl: string): Promise<string | null> {

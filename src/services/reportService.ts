@@ -116,13 +116,47 @@ async function reportToKaspersky(site: string) {
   }
 }
 
+interface MetaDefenderResponse {
+  status: string;
+  in_queue: number;
+  queue_priority: string;
+  sandbox_id: string;
+}
+
+async function reportToMetaDefender(site: string) {
+  const { metaDefenderApiKey } = await readConfig();
+  
+  try {
+    const response = await fetch("https://api.metadefender.com/v4/sandbox", {
+      method: "POST",
+      headers: {
+        "apikey": metaDefenderApiKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        url: site
+      })
+    });
+    
+    if (response.ok) {
+      const data = await response.json() as MetaDefenderResponse;
+      console.info(`Reported to MetaDefender: ${site} (sandbox_id: ${data.sandbox_id}, status: ${data.status})`);
+    } else {
+      console.error(`MetaDefender report failed for ${site}: ${response.status}`);
+    }
+  } catch (err) {
+    console.error(`Error reporting to MetaDefender: ${err}`);
+  }
+}
+
 export async function reportSite(site: string, redirect: string) {
-  // report to google safe browsing, netcraft, virustotal, kaspersky, and microsoft smartscreen
+  // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, and microsoft smartscreen
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));
   reports.push(reportToVirusTotal(site));
   reports.push(reportToKaspersky(site));
+  reports.push(reportToMetaDefender(site));
   reports.push(browserReportService.reportToSmartScreen(site));
 
   // send a message in the discord server with a link to the popup

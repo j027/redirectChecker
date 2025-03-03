@@ -14,6 +14,7 @@ type Config = {
     microsoftUsername: string;
     microsoftPassword: string;
     kasperskyApiKey: string;
+    metaDefenderApiKey: string;
 };
 
 export async function readConfig(): Promise<Config> {

@@ -82,12 +82,47 @@ async function reportToVirusTotal(site: string) {
   console.info(`VirusTotal report id: ${response?.data?.id}`);
 }
 
+interface KasperskyResponse {
+  Zone?: string;
+  UrlGeneralInfo?: {
+    Url: string;
+    Host: string;
+    Categories: string[];
+  };
+}
+
+async function reportToKaspersky(site: string) {
+  const { kasperskyApiKey } = await readConfig();
+  
+  const url = new URL('https://opentip.kaspersky.com/api/v1/search/url');
+  url.searchParams.append('request', site);
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "x-api-key": kasperskyApiKey
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json() as KasperskyResponse;
+      console.info(`Reported to Kaspersky: ${site} (Zone: ${data.Zone || 'unknown'})`);
+    } else {
+      console.error(`Kaspersky report failed for ${site}: ${response.status}`);
+    }
+  } catch (err) {
+    console.error(`Error reporting to Kaspersky: ${err}`);
+  }
+}
+
 export async function reportSite(site: string, redirect: string) {
-  // report to google safe browsing, netcraft, virustotal, and microsoft smartscreen
+  // report to google safe browsing, netcraft, virustotal, kaspersky, and microsoft smartscreen
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));
   reports.push(reportToVirusTotal(site));
+  reports.push(reportToKaspersky(site));
   reports.push(browserReportService.reportToSmartScreen(site));
 
   // send a message in the discord server with a link to the popup

@@ -13,6 +13,7 @@ type Config = {
     browserFingerprintForRedirect: object;
     microsoftUsername: string;
     microsoftPassword: string;
+    kasperskyApiKey: string;
 };
 
 export async function readConfig(): Promise<Config> {

@@ -83,11 +83,10 @@ async function reportToVirusTotal(site: string) {
 }
 
 export async function reportSite(site: string, redirect: string) {
-  // report to google safe browsing, netacraft, virustotal, urlscan.io, and microsoft smartscreen
+  // report to google safe browsing, netcraft, virustotal, and microsoft smartscreen
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));
-  reports.push(reportToUrlscan(site));
   reports.push(reportToVirusTotal(site));
   reports.push(browserReportService.reportToSmartScreen(site));
 
@@ -99,6 +98,10 @@ export async function reportSite(site: string, redirect: string) {
 
   // wait for all the reports to finish
   await Promise.allSettled(reports);
+
+  // report to urlscan last, to ensure that my netcraft report credits more often
+  // otherwise the popup scanner scraping urlscan sometimes reports before I can and gets the credit
+  await reportToUrlscan(site);
 }
 
 async function sendMessageToDiscord(site: string, redirect: string) {

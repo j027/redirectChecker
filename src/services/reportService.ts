@@ -149,8 +149,41 @@ async function reportToMetaDefender(site: string) {
   }
 }
 
+interface CheckPhishResponse {
+  jobID: string;
+  timestamp: number;
+}
+
+async function reportToCheckPhish(site: string) {
+  const { checkPhishApiKey } = await readConfig();
+  
+  try {
+    const response = await fetch("https://developers.bolster.ai/api/neo/scan", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        apiKey: checkPhishApiKey,
+        urlInfo: { url: site },
+        scanType: "full"
+      })
+    });
+    
+    if (response.ok) {
+      const data = await response.json() as CheckPhishResponse;
+      console.info(`Reported to CheckPhish: ${site} (jobID: ${data.jobID})`);
+    } else {
+      console.error(`CheckPhish report failed for ${site}: ${response.status}`);
+    }
+  } catch (err) {
+    console.error(`Error reporting to CheckPhish: ${err}`);
+  }
+}
+
 export async function reportSite(site: string, redirect: string) {
-  // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, and microsoft smartscreen
+  // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
+  // and checkphish
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));
@@ -158,6 +191,7 @@ export async function reportSite(site: string, redirect: string) {
   reports.push(reportToKaspersky(site));
   reports.push(reportToMetaDefender(site));
   reports.push(browserReportService.reportToSmartScreen(site));
+  reports.push(reportToCheckPhish(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));

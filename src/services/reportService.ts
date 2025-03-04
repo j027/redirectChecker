@@ -1,5 +1,5 @@
 import { readConfig } from "../config.js";
-import { fetch, ProxyAgent } from "undici";
+import { fetch } from "undici";
 import { discordClient } from "../discordBot.js";
 import { TextChannel } from "discord.js";
 import { userAgentService } from "./userAgentService.js";

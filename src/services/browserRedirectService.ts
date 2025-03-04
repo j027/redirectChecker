@@ -1,4 +1,4 @@
-import { chromium, Browser, devices } from "patchright";
+import { chromium, Browser } from "patchright";
 import { readConfig } from "../config.js";
 
 export class BrowserRedirectService {
@@ -46,8 +46,7 @@ export class BrowserRedirectService {
             server: proxyServer,
             username,
             password,
-          },
-          ...devices["Desktop Chrome"],
+          }
         });
 
         const page = await context.newPage();

@@ -51,6 +51,17 @@ export class BrowserRedirectService {
 
         const page = await context.newPage();
 
+        // block google analytics
+        await page.route(
+          "https://www.google-analytics.com/g/collect*",
+          (route) => {
+            route.fulfill({
+              status: 204,
+              body: "",
+            });
+          }
+        );
+
         try {
             await page.goto(redirectUrl, {waitUntil: "commit"});
 

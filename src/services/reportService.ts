@@ -45,19 +45,38 @@ async function reportToNetcraft(site: string) {
   console.info(`Netcraft report message: ${response?.message} uuid: ${response?.uuid}`);
 }
 
+interface UrlscanResponse {
+  message: string;
+  uuid: string;
+  visibility: string;
+  url: string;
+}
+
 async function reportToUrlscan(site: string) {
   const { urlscanApiKey } = await readConfig();
-  await fetch("https://urlscan.io/api/v1/scan/", {
-    method: "POST",
-    headers: {
-      "API-Key": urlscanApiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      url: site,
-      visibility: "public",
-    }),
-  });
+  
+  try {
+    const response = await fetch("https://urlscan.io/api/v1/scan/", {
+      method: "POST",
+      headers: {
+        "API-Key": urlscanApiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: site,
+        visibility: "public",
+      }),
+    });
+    
+    if (response.ok) {
+      const data = await response.json() as UrlscanResponse;
+      console.info(`Reported to URLScan: ${site} (uuid: ${data.uuid}, message: ${data.message})`);
+    } else {
+      console.error(`URLScan report failed for ${site}: ${response.status}`);
+    }
+  } catch (err) {
+    console.error(`Error reporting to URLScan: ${err}`);
+  }
 }
 
 interface VirusTotalResponse {

@@ -16,6 +16,7 @@ type Config = {
     kasperskyApiKey: string;
     metaDefenderApiKey: string;
     checkPhishApiKey: string;
+    hybridAnalysisApiKey: string;
 };
 
 export async function readConfig(): Promise<Config> {

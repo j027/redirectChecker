@@ -181,9 +181,44 @@ async function reportToCheckPhish(site: string) {
   }
 }
 
+interface HybridAnalysisResponse {
+  job_id: string;
+  submission_id: string;
+  environment_id: number;
+  sha256: string;
+}
+
+async function reportToHybridAnalysis(site: string) {
+  const { hybridAnalysisApiKey } = await readConfig();
+  
+  try {
+    const response = await fetch("https://www.hybrid-analysis.com/api/v2/submit/url", {
+      method: "POST",
+      headers: {
+        "api-key": hybridAnalysisApiKey,
+        "User-Agent": "Falcon Sandbox",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({
+        url: site,
+        environment_id: "140" // win11 64bit
+      })
+    });
+    
+    if (response.ok) {
+      const data = await response.json() as HybridAnalysisResponse;
+      console.info(`Reported to Hybrid Analysis: ${site} (job_id: ${data.job_id})`);
+    } else {
+      console.error(`Hybrid Analysis report failed for ${site}: ${response.status}`);
+    }
+  } catch (err) {
+    console.error(`Error reporting to Hybrid Analysis: ${err}`);
+  }
+}
+
 export async function reportSite(site: string, redirect: string) {
   // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
-  // and checkphish
+  // checkphish, and hybrid analysis
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));
@@ -192,6 +227,7 @@ export async function reportSite(site: string, redirect: string) {
   reports.push(reportToMetaDefender(site));
   reports.push(browserReportService.reportToSmartScreen(site));
   reports.push(reportToCheckPhish(site));
+  reports.push(reportToHybridAnalysis(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));

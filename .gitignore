@@ -6,3 +6,4 @@ redirects.db
 .env
 .idea
 dist/
+install-state.gz

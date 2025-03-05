@@ -10,7 +10,6 @@ type Config = {
     urlscanApiKey: string;
     crdfLabsApiKey: string;
     virusTotalApiKey: string;
-    browserFingerprintForRedirect: object;
     microsoftUsername: string;
     microsoftPassword: string;
     kasperskyApiKey: string;

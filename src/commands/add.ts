@@ -25,10 +25,6 @@ export const addCommand: CommandDefinition = {
         .addChoices([
           { name: "HTTP redirect", value: RedirectType.HTTP },
           {
-            name: "Browser Fingerprint Post",
-            value: RedirectType.BrowserFingerprintPost,
-          },
-          {
             name: "Weebly DigitalOcean JS",
             value: RedirectType.WeeblyDigitalOceanJs,
           },

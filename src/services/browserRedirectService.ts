@@ -60,9 +60,9 @@ export class BrowserRedirectService {
       },
       // HACK: redirect needs an old chrome version to work
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-      // pretend to be referred by pornhub, so redirects don't change behavior
       extraHTTPHeaders: {
-        "Referer": "https://pornhub.com/"
+        "sec-ch-ua-platform": "\"Windows\"",
+        "sec-ch-ua": "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\"",
       }
     });
 
@@ -70,7 +70,7 @@ export class BrowserRedirectService {
     await this.blockGoogleAnalytics(page);
 
     try {
-      await page.goto(redirectUrl, { waitUntil: "commit" });
+      await page.goto(redirectUrl, { waitUntil: "commit", referer: "https://www.pornhub.com/" });
 
       // wait for the url to change
       await page.waitForURL("**");

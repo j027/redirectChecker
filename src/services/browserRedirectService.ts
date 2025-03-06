@@ -2,101 +2,132 @@ import { chromium, Browser, Page } from "patchright";
 import { readConfig } from "../config.js";
 
 export class BrowserRedirectService {
-    private browser: Browser | null;
+  private browser: Browser | null;
 
-    constructor() {
-        this.browser = null;
+  constructor() {
+    this.browser = null;
+  }
+
+  async init() {
+    this.browser = await chromium.launch({ headless: false });
+  }
+
+  async handleRedirect(redirectUrl: string): Promise<string | null> {
+    if (this.browser == null) {
+      console.error(
+        "Browser has not been initialized - redirect handling failed",
+      );
+      return null;
     }
 
-    async init() {
-        this.browser = await chromium.launch({ headless: false });
+    const context = await this.browser.newContext({
+      proxy: {
+        ...(await this.parseProxy()),
+      },
+    });
+
+    const page = await context.newPage();
+    await this.blockGoogleAnalytics(page);
+
+    try {
+      await page.goto(redirectUrl, { waitUntil: "commit" });
+
+      // wait for the url to change
+      await page.waitForURL("**");
+      const destinationUrl = page.url();
+
+      return destinationUrl != redirectUrl ? destinationUrl : null;
+    } catch (error) {
+      console.log(`Error when handling redirect: ${error}`);
+      return null;
+    } finally {
+      await page.close();
+      await context.close();
+    }
+  }
+
+  async handlePornhubRedirect(redirectUrl: string): Promise<string | null> {
+    if (this.browser == null) {
+      console.error(
+        "Browser has not been initialized - redirect handling failed",
+      );
+      return null;
     }
 
-    async handleRedirect(redirectUrl: string): Promise<string | null> {
-        const context = await this.buildBrowserContextWithProxy();
+    const context = await this.browser.newContext({
+      proxy: {
+        ...(await this.parseProxy()),
+      },
+      // HACK: redirect needs an old chrome version to work
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+      // pretend to be referred by pornhub, so redirects don't change behavior
+      extraHTTPHeaders: {
+        "Referer": "https://pornhub.com/"
+      }
+    });
 
-        if (context == null) {
-            console.error("Browser has not been initialized - redirect handling failed");
-            return null;
-        }
+    const page = await context.newPage();
+    await this.blockGoogleAnalytics(page);
 
-        const page = await context.newPage();
-        await this.blockGoogleAnalytics(page);
+    try {
+      await page.goto(redirectUrl, { waitUntil: "commit" });
 
-        try {
-            await page.goto(redirectUrl, {waitUntil: "commit"});
+      // wait for the url to change
+      await page.waitForURL("**");
+      const destinationUrl = page.url();
 
-            // wait for the url to change
-            await page.waitForURL("**");
-            const destinationUrl = page.url();
+      return destinationUrl != redirectUrl ? destinationUrl : null;
+    } catch (error) {
+      console.log(`Error when handling redirect: ${error}`);
+      return null;
+    } finally {
+      await page.close();
+      await context.close();
+    }
+  }
 
-            return destinationUrl != redirectUrl ? destinationUrl : null;
-        } catch (error) {
-            console.log(`Error when handling redirect: ${error}`);
-            return null;
-        } finally {
-            await page.close();
-            await context.close();
-        }
+  private async parseProxy() {
+    const { proxy } = await readConfig();
+
+    // Parse proxy URL to extract username and password
+    let server = proxy;
+    let username = undefined;
+    let password = undefined;
+
+    try {
+      const proxyUrl = new URL(proxy);
+
+      // Check if there are auth credentials in the URL
+      if (proxyUrl.username || proxyUrl.password) {
+        username = decodeURIComponent(proxyUrl.username);
+        password = decodeURIComponent(proxyUrl.password);
+
+        // Reconstruct proxy URL without auth for server parameter
+        server = `${proxyUrl.protocol}//${proxyUrl.host}${proxyUrl.pathname}${proxyUrl.search}`;
+      }
+    } catch (err) {
+      console.error(`Failed to parse proxy URL: ${err}`);
     }
 
-    private async buildBrowserContextWithProxy() {
-        if (this.browser == null) {
-            return null;
-        }
+    return { server, username, password };
+  }
 
-        const { proxy } = await readConfig();
+  private async blockGoogleAnalytics(page: Page) {
+    await page.route("https://www.google-analytics.com/g/collect*", (route) => {
+      route.fulfill({
+        status: 204,
+        body: "",
+      });
+    });
+  }
 
-        // Parse proxy URL to extract username and password
-        let proxyServer = proxy;
-        let username = undefined;
-        let password = undefined;
-
-        try {
-            const proxyUrl = new URL(proxy);
-
-            // Check if there are auth credentials in the URL
-            if (proxyUrl.username || proxyUrl.password) {
-                username = decodeURIComponent(proxyUrl.username);
-                password = decodeURIComponent(proxyUrl.password);
-
-                // Reconstruct proxy URL without auth for server parameter
-                proxyServer = `${proxyUrl.protocol}//${proxyUrl.host}${proxyUrl.pathname}${proxyUrl.search}`;
-            }
-        } catch (err) {
-            console.error(`Failed to parse proxy URL: ${err}`);
-        }
-
-        // Create context with explicit auth parameters if available
-        const context = await this.browser.newContext({
-            proxy: {
-                server: proxyServer,
-                username,
-                password,
-            }
-        });
-        return context;
+  async close() {
+    if (this.browser == null) {
+      return;
     }
 
-    private async blockGoogleAnalytics(page: Page) {
-        await page.route(
-            "https://www.google-analytics.com/g/collect*",
-            (route) => {
-                route.fulfill({
-                    status: 204,
-                    body: "",
-                });
-            }
-        );
-    }
-
-    async close() {
-        if (this.browser == null) {
-            return;
-        }
-
-        await this.browser.close();
-    }
+    await this.browser.close();
+  }
 }
 
 export const browserRedirectService = new BrowserRedirectService();

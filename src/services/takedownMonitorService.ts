@@ -20,6 +20,17 @@ interface TakedownStatusRecord {
   check_active: boolean;
 }
 
+// Interface for Netcraft API response
+interface NetcraftApiResponse {
+  patterns?: NetcraftPattern[];
+}
+
+interface NetcraftPattern {
+  message_override: string;  // Description of the threat, e.g. "Suspected Tech Support Scam"
+  pattern: string;           // Regex pattern to match URLs
+  subtype: string;           // Subcategory of threat, e.g. "support"
+  type: string;              // Main threat category, e.g. "scam"
+}
 
 export async function initTakedownStatusForDestination(destinationId: number, isPopup: boolean): Promise<void> {
   const client = await pool.connect();
@@ -67,14 +78,12 @@ export async function monitorTakedownStatus(): Promise<void> {
       // Check DNS resolvability first
       if (dest.dns_unresolvable_at === null) {
         tasks.push(checkDnsResolvability(dest));
-      }
-      
-      // Don't perform other checks if DNS is unresolvable
-      if (dest.dns_unresolvable_at === null) {
+
+        // only do other checks if dns is resolvable and the checks
+        // haven't been flagged already
         if (dest.netcraft_flagged_at === null) {
           tasks.push(checkNetcraft(dest));
         }
-        
         if (dest.smartscreen_flagged_at === null) {
           tasks.push(checkSmartScreen(dest));
         }
@@ -103,8 +112,6 @@ async function getDestinationsToCheck(): Promise<TakedownStatusRecord[]> {
       FROM takedown_status ss
       JOIN redirect_destinations rd ON ss.redirect_destination_id = rd.id
       WHERE ss.check_active = TRUE
-      AND (NOW() - ss.last_checked > INTERVAL '4 hours' 
-           OR ss.last_checked IS NULL)
     `);
     
     return result.rows;
@@ -156,22 +163,60 @@ async function checkSafeBrowsingBatch(urls: string[]): Promise<void> {
 }
 
 async function checkNetcraft(destination: TakedownStatusRecord): Promise<void> {
-  // TODO: Implement Netcraft check
-  console.log(`Checking Netcraft status for ${destination.destination_url}`);
-  
-  // If flagged, update the database
-  const isFlagged = false; // This would come from the API
-  
-  if (isFlagged) {
-    const client = await pool.connect();
-    try {
-      await client.query(
-        "UPDATE takedown_status SET netcraft_flagged_at = NOW() WHERE id = $1",
-        [destination.id]
-      );
-    } finally {
-      client.release();
+  try {
+    console.log(`Checking Netcraft status for ${destination.destination_url}`);
+    
+    // Extract the base domain without the path
+    const urlObj = new URL(destination.destination_url);
+    const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
+    
+    // Encode the base URL in base64
+    const encodedUrl = Buffer.from(baseUrl).toString('base64');
+    
+    // Construct the Netcraft API URL
+    const netcraftApiUrl = `https://mirror2.extension.netcraft.com/check_url/v4/${encodedUrl}/dodns`;
+    
+    // Make the request to Netcraft API
+    const response = await fetch(netcraftApiUrl);
+    
+    if (!response.ok) {
+      console.log(`Netcraft API error: ${response.status} ${response.statusText}`);
+      return;
     }
+    
+    const data = await response.json() as NetcraftApiResponse;
+    
+    // Check if there are any patterns to match against
+    if (data.patterns && Array.isArray(data.patterns) && data.patterns.length > 0) {
+      // Try to match each pattern against our full URL
+      const isFlagged = data.patterns.some(patternObj => {
+        try {
+          // The pattern comes as base64 encoded regex string
+          const regexStr = patternObj.pattern;
+          const regex = new RegExp(regexStr);
+          return regex.test(destination.destination_url);
+        } catch (error) {
+          console.error(`Error with Netcraft regex pattern: ${error}`);
+          return false;
+        }
+      });
+      
+      // If flagged, update the database
+      if (isFlagged) {
+        const client = await pool.connect();
+        try {
+          await client.query(
+            "UPDATE takedown_status SET netcraft_flagged_at = NOW() WHERE id = $1",
+            [destination.id]
+          );
+          console.log(`Netcraft flagged: ${destination.destination_url}`);
+        } finally {
+          client.release();
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Error checking Netcraft status for ${destination.destination_url}: ${error}`);
   }
 }
 

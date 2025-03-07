@@ -26,16 +26,16 @@ CREATE TABLE IF NOT EXISTS takedown_status
     redirect_destination_id INTEGER NOT NULL REFERENCES redirect_destinations (id) ON DELETE CASCADE,
     
     -- Security service flags (NULL = not flagged, timestamp = when flagged)
-    safebrowsing_flagged_at TIMESTAMPTZ,        -- When this URL was flagged by Google SafeBrowsing
-    netcraft_flagged_at     TIMESTAMPTZ,        -- When this URL was flagged by Netcraft
-    smartscreen_flagged_at  TIMESTAMPTZ,        -- When this URL was flagged by Microsoft SmartScreen
+    safebrowsing_flagged_at TIMESTAMPTZ DEFAULT NULL,        -- When this URL was flagged by Google SafeBrowsing
+    netcraft_flagged_at     TIMESTAMPTZ DEFAULT NULL,        -- When this URL was flagged by Netcraft
+    smartscreen_flagged_at  TIMESTAMPTZ DEFAULT NULL,        -- When this URL was flagged by Microsoft SmartScreen
     
     -- DNS resolution status (NULL = still resolving, timestamp = when first found unresolvable)
-    dns_unresolvable_at     TIMESTAMPTZ,        -- When the DNS record stopped resolving
+    dns_unresolvable_at     TIMESTAMPTZ DEFAULT NULL,        -- When the DNS record stopped resolving
     
     -- Tracking fields
-    last_checked            TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When security checks were last performed
-    check_active            BOOLEAN DEFAULT TRUE,                  -- Whether this URL should be checked in future runs
+    last_checked            TIMESTAMPTZ DEFAULT NULL, -- When security checks were last performed
+    check_active            BOOLEAN DEFAULT TRUE,     -- Whether this URL should be checked in future runs
     
     UNIQUE (redirect_destination_id)
 );

@@ -1,6 +1,8 @@
 import pool from "../dbPool.js";
 import dns from "dns";
 import { promisify } from "util";
+import { PatentHash } from "../utils/patentHash.js";
+import { v4 as uuidv4 } from 'uuid'; // Make sure to install this dependency
 
 // DNS lookup as a promise
 const dnsLookup = promisify(dns.lookup);
@@ -30,6 +32,36 @@ interface NetcraftPattern {
   pattern: string;           // Regex pattern to match URLs
   subtype: string;           // Subcategory of threat, e.g. "support"
   type: string;              // Main threat category, e.g. "scam"
+}
+
+interface SmartScreenRequest {
+  correlationId: string;
+  destination: {
+    uri: string;
+  };
+  identity: {
+    client: {
+      version: string;
+    };
+    device: {
+      id: string;
+    };
+    user: {
+      locale: string;
+    };
+  };
+  userAgent: string;
+}
+
+interface SmartScreenAuthObject {
+  authId: string;
+  hash: string;
+  key: string;
+}
+
+interface SmartScreenResponse {
+  responseCategory: string;
+  allow: boolean;
 }
 
 export async function initTakedownStatusForDestination(destinationId: number, isPopup: boolean): Promise<void> {
@@ -212,22 +244,92 @@ async function checkNetcraft(destination: TakedownStatusRecord): Promise<void> {
 }
 
 async function checkSmartScreen(destination: TakedownStatusRecord): Promise<void> {
-  // TODO: Implement SmartScreen check
-  console.log(`Checking SmartScreen status for ${destination.destination_url}`);
-  
-  // If flagged, update the database
-  const isFlagged = false; // This would come from the API
-  
-  if (isFlagged) {
-    const client = await pool.connect();
-    try {
-      await client.query(
-        "UPDATE takedown_status SET smartscreen_flagged_at = NOW() WHERE id = $1",
-        [destination.id]
-      );
-    } finally {
-      client.release();
+  try {
+    console.log(`Checking SmartScreen status for ${destination.destination_url}`);
+    
+    const url = new URL(destination.destination_url);
+    const normalizedHostPath = `${url.hostname}${url.pathname}`.toLowerCase();
+    
+    // Generate random IDs
+    const deviceId = uuidv4();
+    const correlationId = uuidv4();
+    
+    // Prepare the request body with proper typing
+    const payload: SmartScreenRequest = {
+      correlationId: correlationId,
+      destination: {
+        uri: normalizedHostPath
+      },
+      identity: {
+        client: {
+          version: "1664"
+        },
+        device: {
+          id: deviceId
+        },
+        user: {
+          locale: "en-US"
+        }
+      },
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+    };
+    
+    const payloadStr = JSON.stringify(payload);
+    
+    // Generate the authorization hash using the PatentHash utility
+    const hashResult = PatentHash.hash(payloadStr);
+    
+    const authObj: SmartScreenAuthObject = {
+      authId: "6D2E7D9C-1334-4FC2-A549-5EC504F0E8F1", // SmartScreen fixed auth ID
+      hash: hashResult.hash,
+      key: hashResult.key
+    };
+    
+    // Create the authorization header
+    const authHeader = "SmartScreenHash " + Buffer.from(JSON.stringify(authObj)).toString('base64');
+    
+    // Make request to SmartScreen API
+    const response = await fetch("https://bf.smartscreen.microsoft.com/api/browser/Navigate/1", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Authorization": authHeader,
+        "User-Agent": payload.userAgent
+      },
+      body: payloadStr
+    });
+    
+    if (!response.ok) {
+      console.log(`SmartScreen API error: ${response.status} ${response.statusText}`);
+      return;
     }
+    
+    const data = await response.json() as SmartScreenResponse;
+    
+    // Check if the URL is flagged by SmartScreen
+    let isFlagged = false;
+    
+    if (!data.allow || 
+        data.responseCategory === "Malicious" || 
+        data.responseCategory === "Phishing") {
+      isFlagged = true;
+      console.log(`SmartScreen flagged: ${destination.destination_url} as ${data.responseCategory}`);
+    }
+    
+    // If flagged, update the database
+    if (isFlagged) {
+      const client = await pool.connect();
+      try {
+        await client.query(
+          "UPDATE takedown_status SET smartscreen_flagged_at = NOW() WHERE id = $1",
+          [destination.id]
+        );
+      } finally {
+        client.release();
+      }
+    }
+  } catch (error) {
+    console.error(`Error checking SmartScreen status for ${destination.destination_url}: ${error}`);
   }
 }
 

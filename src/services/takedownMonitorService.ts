@@ -91,8 +91,6 @@ export async function initTakedownStatusForDestination(destinationId: number, is
 }
 
 export async function monitorTakedownStatus(): Promise<void> {
-  console.log("Starting takedown monitoring...");
-
   try {
     const destinations = await getDestinationsToCheck();
 

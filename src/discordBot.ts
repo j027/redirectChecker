@@ -8,6 +8,8 @@ import {
   stopRedirectChecker,
   startBatchReportProcessor,
   stopBatchReportProcessor,
+  startTakedownMonitor,
+  stopTakedownMonitor,
 } from "./services/schedulerService.js";
 import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
@@ -25,6 +27,7 @@ async function main() {
   // Log in to Discord with your client's token
   console.log("Logging into discord");
   await discordClient.login(token);
+  startTakedownMonitor();
   startRedirectChecker();
   startBatchReportProcessor();
 
@@ -56,15 +59,17 @@ async function main() {
   });
 }
 
-// Graceful shutdown
 async function gracefulShutdown() {
   console.log("Shutting down gracefully...");
   stopRedirectChecker();
-  await stopBatchReportProcessor();
-  await browserReportService.close();
-  await browserRedirectService.close();
-  await closePool();
-  await discordClient.destroy();
+  stopTakedownMonitor();
+  await Promise.allSettled([
+    stopBatchReportProcessor(),
+    browserReportService.close(),
+    browserRedirectService.close(),
+    closePool(),
+    discordClient.destroy()
+  ]);
   process.exit(0);
 }
 

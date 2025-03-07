@@ -241,20 +241,16 @@ async function checkNetcraft(destination: TakedownStatusRecord): Promise<void> {
   }
 }
 
-async function checkSmartScreen(destination: TakedownStatusRecord): Promise<void> {
+export async function isSmartScreenFlagged(url: string): Promise<{
+  isFlagged: boolean;
+  category?: string;
+}> {
   try {
-    console.log(`Checking SmartScreen status for ${destination.destination_url}`);
+    const urlObj = new URL(url);
+    const normalizedHostPath = `${urlObj.hostname}${urlObj.pathname}`.toLowerCase();
     
-    const url = new URL(destination.destination_url);
-    const normalizedHostPath = `${url.hostname}${url.pathname}`.toLowerCase();
-    
-    // Generate random IDs
-    const deviceId = uuidv4();
-    const correlationId = uuidv4();
-    
-    // Prepare the request body with proper typing
     const payload: SmartScreenRequest = {
-      correlationId: correlationId,
+      correlationId: uuidv4(),
       destination: {
         uri: normalizedHostPath
       },
@@ -263,7 +259,7 @@ async function checkSmartScreen(destination: TakedownStatusRecord): Promise<void
           version: "1664"
         },
         device: {
-          id: deviceId
+          id: uuidv4()
         },
         user: {
           locale: "en-US"
@@ -299,35 +295,44 @@ async function checkSmartScreen(destination: TakedownStatusRecord): Promise<void
     
     if (!response.ok) {
       console.log(`SmartScreen API error: ${response.status} ${response.statusText}`);
-      return;
+      return { isFlagged: false };
     }
     
     const data = await response.json() as SmartScreenResponse;
     
     // Check if the URL is flagged by SmartScreen
-    let isFlagged = false;
-    
-    if (!data.allow || 
+    const isFlagged = !data.allow || 
         data.responseCategory === "Malicious" || 
-        data.responseCategory === "Phishing") {
-      isFlagged = true;
-      console.log(`SmartScreen flagged: ${destination.destination_url} as ${data.responseCategory}`);
+        data.responseCategory === "Phishing";
+        
+    if (isFlagged) {
+      console.log(`SmartScreen flagged: ${url} as ${data.responseCategory}`);
     }
     
-    // If flagged, update the database
-    if (isFlagged) {
-      const client = await pool.connect();
-      try {
-        await client.query(
-          "UPDATE takedown_status SET smartscreen_flagged_at = NOW() WHERE id = $1",
-          [destination.id]
-        );
-      } finally {
-        client.release();
-      }
-    }
+    return { 
+      isFlagged: isFlagged,
+      category: data.responseCategory 
+    };
   } catch (error) {
-    console.error(`Error checking SmartScreen status for ${destination.destination_url}: ${error}`);
+    console.error(`Error checking SmartScreen status for ${url}: ${error}`);
+    return { isFlagged: false };
+  }
+}
+
+async function checkSmartScreen(destination: TakedownStatusRecord): Promise<void> {
+  const result = await isSmartScreenFlagged(destination.destination_url);
+  
+  // Only update database if SmartScreen flagged the URL
+  if (result.isFlagged) {
+    const client = await pool.connect();
+    try {
+      await client.query(
+        "UPDATE takedown_status SET smartscreen_flagged_at = NOW() WHERE id = $1",
+        [destination.id]
+      );
+    } finally {
+      client.release();
+    }
   }
 }
 

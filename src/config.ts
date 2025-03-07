@@ -16,6 +16,7 @@ type Config = {
     metaDefenderApiKey: string;
     checkPhishApiKey: string;
     hybridAnalysisApiKey: string;
+    googleSafeBrowsingApiKey: string;
 };
 
 export async function readConfig(): Promise<Config> {

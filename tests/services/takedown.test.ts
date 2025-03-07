@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { isDnsResolvable, isSmartScreenFlagged, isNetcraftFlagged } from '../../src/services/takedownMonitorService';
+import {
+  isDnsResolvable,
+  isSmartScreenFlagged,
+  isNetcraftFlagged,
+  isSafeBrowsingBatchFlagged,
+} from "../../src/services/takedownMonitorService";
 
 describe('Takedown Service Tests', () => {
   
@@ -87,6 +92,52 @@ describe('Takedown Service Tests', () => {
       const result = await isNetcraftFlagged('not-a-valid-url');
       // Even though URL is invalid, the function should gracefully handle it
       expect(typeof result).toBe('boolean');
+    });
+  });
+
+  describe('SafeBrowsing Detection', () => {
+  
+    it('should identify a safe website', async () => {
+      const urls = ['https://www.google.com'];
+      const results = await isSafeBrowsingBatchFlagged(urls);
+      const result = results.get(urls[0]);
+      
+      expect(result?.isFlagged).toBe(false);
+    }, 10000);
+    
+    it('should identify Google test malware URL', async () => {
+      const urls = ['https://testsafebrowsing.appspot.com/s/malware.html'];
+      const results = await isSafeBrowsingBatchFlagged(urls);
+      const result = results.get(urls[0]);
+      
+      expect(result?.isFlagged).toBe(true);
+      expect(result?.threatTypes).toContain('MALWARE');
+    }, 10000);
+    
+    it('should process multiple URLs in one batch', async () => {
+      const urls = [
+        'https://www.google.com',                                // safe
+        'https://testsafebrowsing.appspot.com/s/malware.html',   // malware
+        'https://testsafebrowsing.appspot.com/s/phishing.html'   // phishing
+      ];
+      
+      const results = await isSafeBrowsingBatchFlagged(urls);
+      
+      // Safe URL should not be flagged
+      expect(results.get(urls[0])?.isFlagged).toBe(false);
+      
+      // Malware URL should be flagged
+      expect(results.get(urls[1])?.isFlagged).toBe(true);
+      expect(results.get(urls[1])?.threatTypes).toContain('MALWARE');
+      
+      // Phishing URL should be flagged
+      expect(results.get(urls[2])?.isFlagged).toBe(true);
+      expect(results.get(urls[2])?.threatTypes).toContain('SOCIAL_ENGINEERING');
+    }, 10000);
+    
+    it('should handle empty URL arrays', async () => {
+      const results = await isSafeBrowsingBatchFlagged([]);
+      expect(results.size).toBe(0);
     });
   });
 });

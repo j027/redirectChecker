@@ -331,35 +331,54 @@ async function checkSmartScreen(destination: TakedownStatusRecord): Promise<void
   }
 }
 
-async function checkDnsResolvability(destination: TakedownStatusRecord): Promise<void> {
-  const url = new URL(destination.destination_url);
-  const hostname = url.hostname;
-  
+// New function that only checks DNS and returns a result
+export async function isDnsResolvable(url: string): Promise<boolean> {
   try {
+    const hostname = new URL(url).hostname;
     await lookup(hostname);
-  } catch (error: any) {
-    if (error.code === "ENOTFOUND") {
-      const client = await pool.connect();
-      try {
-        await client.query(
-          `
-          UPDATE takedown_status 
-          SET dns_unresolvable_at = NOW(),
-              check_active = FALSE
-          WHERE id = $1
-        `,
-          [destination.id]
-        );
-
-        console.log(`Marked ${hostname} as DNS unresolvable (NXDOMAIN)`);
-      } finally {
-        client.release();
+    return true; // DNS resolved successfully
+  } catch (error: unknown) {
+    // Type-safe error handling
+    if (error && typeof error === 'object' && 'code' in error) {
+      const dnsError = error as NodeJS.ErrnoException;
+      
+      // Only ENOTFOUND means the domain truly doesn't exist
+      if (dnsError.code === 'ENOTFOUND') {
+        console.log(`DNS unresolvable (NXDOMAIN): ${url}`);
+        return false;
       }
+      
+      // Other DNS errors (timeouts, server failures, etc.) are likely temporary
+      console.log(`Temporary DNS error for ${url}: ${dnsError.code} - ${dnsError.message}`);
     } else {
-      // Log network or other errors, but don't mark the domain as unresolvable
-      console.log(
-        `Temporary DNS error for ${hostname}: ${error.code} - ${error.message}`
+      console.error(`Unknown DNS error type for ${url}:`, error);
+    }
+    
+    // For all other errors, treat as "possibly resolvable" (temporary issue)
+    return true;
+  }
+}
+
+// Keep the original function but have it use the new one
+async function checkDnsResolvability(destination: TakedownStatusRecord): Promise<void> {
+  const isResolvable = await isDnsResolvable(destination.destination_url);
+  
+  // Only update database if DNS is unresolvable
+  if (!isResolvable) {
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `UPDATE takedown_status 
+         SET dns_unresolvable_at = NOW(),
+             check_active = FALSE
+         WHERE id = $1`,
+        [destination.id]
       );
+      
+      const hostname = new URL(destination.destination_url).hostname;
+      console.log(`Marked ${hostname} as DNS unresolvable (NXDOMAIN)`);
+    } finally {
+      client.release();
     }
   }
 }

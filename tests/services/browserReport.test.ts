@@ -1,5 +1,5 @@
 import { describe, it, beforeAll, afterAll, expect } from "vitest";
-import { BrowserReportService } from "../src/services/browserReportService.js";
+import { BrowserReportService } from "../../src/services/browserReportService.js";
 
 describe("BrowserReportService", () => {
   let service: BrowserReportService;

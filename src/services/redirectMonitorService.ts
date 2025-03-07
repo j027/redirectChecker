@@ -1,7 +1,8 @@
 import pool from "../dbPool.js";
 import { handleRedirect } from "./redirectHandlerService.js";
 import { RedirectType } from "../redirectType.js";
-import {reportSite} from "./reportService.js";
+import { reportSite } from "./reportService.js";
+import { initTakedownStatusForDestination } from "./takedownMonitorService.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();
@@ -61,10 +62,14 @@ async function processRedirectEntry(
       );
     } else {
       // If not found, create a new entry with the redirect id, destination, and is_popup flag
-      await client.query(
-        "INSERT INTO redirect_destinations (redirect_id, destination_url, is_popup) VALUES ($1, $2, $3)",
+      const insertResult = await client.query(
+        "INSERT INTO redirect_destinations (redirect_id, destination_url, is_popup) VALUES ($1, $2, $3) RETURNING id",
         [redirectId, redirectDestination, isPopup]
       );
+
+      // Initialize security status for this new destination
+      const destinationId = insertResult.rows[0].id;
+      await initTakedownStatusForDestination(destinationId, isPopup);
 
       // if it is a popup, make sure to report it
       if (isPopup) {

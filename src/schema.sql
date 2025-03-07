@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS redirect_destinations
     is_popup        BOOLEAN     DEFAULT FALSE              -- Indicates if the destination is a popup
 );
 
--- Table for tracking security status of redirect destinations over time
-CREATE TABLE IF NOT EXISTS security_status
+-- Table for tracking takendown status of redirect destinations over time
+CREATE TABLE IF NOT EXISTS takedown_status
 (
     id                      SERIAL PRIMARY KEY,
     redirect_destination_id INTEGER NOT NULL REFERENCES redirect_destinations (id) ON DELETE CASCADE,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS security_status
 );
 
 -- Index for efficient lookup of active checks
-CREATE INDEX idx_security_status_active ON security_status(check_active);
+CREATE INDEX idx_takedown_status_active ON takedown_status(check_active);
 
 -- Table for storing and caching user agents
 CREATE TABLE IF NOT EXISTS user_agents

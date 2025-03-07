@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'; // or jest, whichever you prefer
-import { isDnsResolvable, isSmartScreenFlagged } from '../../src/services/takedownMonitorService';
+import { describe, it, expect } from 'vitest';
+import { isDnsResolvable, isSmartScreenFlagged, isNetcraftFlagged } from '../../src/services/takedownMonitorService';
 
 describe('Takedown Service Tests', () => {
   
@@ -60,5 +60,33 @@ describe('Takedown Service Tests', () => {
       // Should return not flagged on error
       expect(result.isFlagged).toBe(false);
     }, 10000);
+  });
+
+  describe('Netcraft Detection', () => {
+  
+    it('should identify a safe website', async () => {
+      const result = await isNetcraftFlagged('https://www.microsoft.com');
+      expect(result).toBe(false);
+    }, 10000);
+    
+    it('should identify Netcraft test phishing URL', async () => {
+      // This is Netcraft's test URL for phishing detection
+      const result = await isNetcraftFlagged('https://www.examp1eb4nk.com/');
+      
+      // This URL should be flagged by Netcraft
+      expect(result).toBe(true);
+    }, 15000); // Longer timeout as Netcraft API can be slow
+    
+    it('should handle network errors gracefully', async () => {
+      // Testing with a URL that won't connect
+      const result = await isNetcraftFlagged('https://not-even-a-real-tld.INVALID');
+      expect(result).toBe(false);
+    });
+    
+    it('should handle malformed URLs without crashing', async () => {
+      const result = await isNetcraftFlagged('not-a-valid-url');
+      // Even though URL is invalid, the function should gracefully handle it
+      expect(typeof result).toBe('boolean');
+    });
   });
 });

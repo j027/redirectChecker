@@ -183,61 +183,79 @@ async function checkSafeBrowsingBatch(urls: string[]): Promise<void> {
   }
 }
 
-async function checkNetcraft(destination: TakedownStatusRecord): Promise<void> {
+export async function isNetcraftFlagged(url: string): Promise<Boolean> {
   try {
-    console.log(`Checking Netcraft status for ${destination.destination_url}`);
-    
     // Extract the base domain without the path
-    const urlObj = new URL(destination.destination_url);
+    const urlObj = new URL(url);
     const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-    
+
     // Encode the base URL in base64
-    const encodedUrl = Buffer.from(baseUrl).toString('base64');
-    
+    const encodedUrl = Buffer.from(baseUrl).toString("base64");
+
     // Construct the Netcraft API URL
     const netcraftApiUrl = `https://mirror2.extension.netcraft.com/check_url/v4/${encodedUrl}/dodns`;
-    
+
     // Make the request to Netcraft API
     const response = await fetch(netcraftApiUrl);
-    
+
     if (!response.ok) {
-      console.log(`Netcraft API error: ${response.status} ${response.statusText}`);
-      return;
+      console.log(
+        `Netcraft API error: ${response.status} ${response.statusText}`
+      );
+      return false;
     }
-    
-    const data = await response.json() as NetcraftApiResponse;
-    
+
+    const data = (await response.json()) as NetcraftApiResponse;
+
     // Check if there are any patterns to match against
-    if (data.patterns && Array.isArray(data.patterns) && data.patterns.length > 0) {
+    if (
+      data.patterns &&
+      Array.isArray(data.patterns) &&
+      data.patterns.length > 0
+    ) {
       // Try to match each pattern against our full URL
-      const isFlagged = data.patterns.some(patternObj => {
+      for (const patternObj of data.patterns) {
         try {
-          // The pattern comes as base64 encoded regex string
-          const regexStr = patternObj.pattern;
+          // The pattern comes as a regex string
+          const regexStr = Buffer.from(patternObj.pattern, "base64").toString("utf-8");
           const regex = new RegExp(regexStr);
-          return regex.test(destination.destination_url);
+
+          if (regex.test(url)) {
+            console.log(
+              `Netcraft flagged: ${url} as ${patternObj.type} (${patternObj.message_override})`
+            );
+
+            return true;
+          }
         } catch (error) {
           console.error(`Error with Netcraft regex pattern: ${error}`);
-          return false;
-        }
-      });
-      
-      // If flagged, update the database
-      if (isFlagged) {
-        const client = await pool.connect();
-        try {
-          await client.query(
-            "UPDATE takedown_status SET netcraft_flagged_at = NOW() WHERE id = $1",
-            [destination.id]
-          );
-          console.log(`Netcraft flagged: ${destination.destination_url}`);
-        } finally {
-          client.release();
         }
       }
     }
+
+    return false;
   } catch (error) {
-    console.error(`Error checking Netcraft status for ${destination.destination_url}: ${error}`);
+    console.error(`Error checking Netcraft status for ${url}: ${error}`);
+    return false;
+  }
+}
+
+// Keep the original function but have it use the new one
+async function checkNetcraft(destination: TakedownStatusRecord): Promise<void> {
+  const isFlagged = await isNetcraftFlagged(destination.destination_url);
+  
+  // Only update database if Netcraft flagged the URL
+  if (isFlagged) {
+    const client = await pool.connect();
+    try {
+      await client.query(
+        "UPDATE takedown_status SET netcraft_flagged_at = NOW() WHERE id = $1",
+        [destination.id]
+      );
+      console.log(`Updated database: Netcraft flagged ${destination.destination_url}`);
+    } finally {
+      client.release();
+    }
   }
 }
 

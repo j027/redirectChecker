@@ -2,10 +2,8 @@ import pool from "../dbPool.js";
 import dns from "dns";
 import { promisify } from "util";
 import { PatentHash } from "../utils/patentHash.js";
-import { v4 as uuidv4 } from 'uuid'; // Make sure to install this dependency
-
-// DNS lookup as a promise
-const dnsLookup = promisify(dns.lookup);
+import { v4 as uuidv4 } from 'uuid';
+import { lookup } from 'dns/promises';
 
 // Configuration
 const BATCH_SIZE = 500; // Maximum URLs to check in one SafeBrowsing batch
@@ -338,22 +336,30 @@ async function checkDnsResolvability(destination: TakedownStatusRecord): Promise
   const hostname = url.hostname;
   
   try {
-    await dnsLookup(hostname);
-    // DNS resolved successfully
-  } catch (error) {
-    // DNS resolution failed, mark as unresolvable
-    const client = await pool.connect();
-    try {
-      await client.query(`
-        UPDATE takedown_status 
-        SET dns_unresolvable_at = NOW(),
-            check_active = FALSE
-        WHERE id = $1
-      `, [destination.id]);
-      
-      console.log(`Marked ${hostname} as DNS unresolvable`);
-    } finally {
-      client.release();
+    await lookup(hostname);
+  } catch (error: any) {
+    if (error.code === "ENOTFOUND") {
+      const client = await pool.connect();
+      try {
+        await client.query(
+          `
+          UPDATE takedown_status 
+          SET dns_unresolvable_at = NOW(),
+              check_active = FALSE
+          WHERE id = $1
+        `,
+          [destination.id]
+        );
+
+        console.log(`Marked ${hostname} as DNS unresolvable (NXDOMAIN)`);
+      } finally {
+        client.release();
+      }
+    } else {
+      // Log network or other errors, but don't mark the domain as unresolvable
+      console.log(
+        `Temporary DNS error for ${hostname}: ${error.code} - ${error.message}`
+      );
     }
   }
 }

@@ -5,6 +5,7 @@ import { TextChannel } from "discord.js";
 import { userAgentService } from "./userAgentService.js";
 import { enqueueReport } from "./batchReportService.js";
 import { browserReportService } from "./browserReportService.js";
+import { setTimeout } from 'timers/promises';
 
 async function reportToGoogleSafeBrowsing(site: string) {
   // fail hard if the user agent is not available - this ensures this is properly fixed
@@ -237,7 +238,7 @@ async function reportToHybridAnalysis(site: string) {
 
 export async function reportSite(site: string, redirect: string) {
   // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
-  // checkphish, and hybrid analysis
+  // and checkphish
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));
@@ -246,7 +247,6 @@ export async function reportSite(site: string, redirect: string) {
   reports.push(reportToMetaDefender(site));
   reports.push(browserReportService.reportToSmartScreen(site));
   reports.push(reportToCheckPhish(site));
-  reports.push(reportToHybridAnalysis(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));
@@ -259,7 +259,9 @@ export async function reportSite(site: string, redirect: string) {
 
   // report to urlscan last, to ensure that my netcraft report credits more often
   // otherwise the popup scanner scraping urlscan sometimes reports before I can and gets the credit
-  await reportToUrlscan(site);
+  // hybrid analysis also reports to urlscan
+  await setTimeout(60000)
+  await Promise.allSettled([reportToHybridAnalysis(site), reportToUrlscan(site)]);
 }
 
 async function sendMessageToDiscord(site: string, redirect: string) {

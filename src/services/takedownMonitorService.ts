@@ -35,19 +35,10 @@ interface NetcraftPattern {
 export async function initTakedownStatusForDestination(destinationId: number, isPopup: boolean): Promise<void> {
   const client = await pool.connect();
   try {
-    // Only create takedown status entry if it doesn't exist yet
-    const result = await client.query(
-      "SELECT * FROM takedown_status WHERE redirect_destination_id = $1",
-      [destinationId]
+    await client.query(
+      "INSERT INTO takedown_status (redirect_destination_id, check_active) VALUES ($1, $2) ON CONFLICT (redirect_destination_id) DO NOTHING",
+      [destinationId, isPopup] // Only actively monitor popups by default
     );
-    
-    if (result.rows.length === 0) {
-      // Initialize takedown status entry - set check_active based on popup status
-      await client.query(
-        "INSERT INTO takedown_status (redirect_destination_id, check_active) VALUES ($1, $2)",
-        [destinationId, isPopup] // Only actively monitor popups by default
-      );
-    }
   } catch (error) {
     console.error("Error initializing takedown status:", error);
   } finally {

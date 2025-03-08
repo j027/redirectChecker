@@ -210,13 +210,19 @@ interface HybridAnalysisResponse {
 
 async function reportToHybridAnalysis(site: string) {
   const { hybridAnalysisApiKey } = await readConfig();
+
+  // fail hard if the user agent is not available - this ensures this is properly fixed
+  const userAgent = await userAgentService.getUserAgent();
+  if (userAgent == null) {
+    throw new Error("Failed to get user agent");
+  }
   
   try {
     const response = await fetch("https://www.hybrid-analysis.com/api/v2/submit/url", {
       method: "POST",
       headers: {
         "api-key": hybridAnalysisApiKey,
-        "User-Agent": "Falcon Sandbox",
+        "User-Agent": userAgent,
         "Content-Type": "application/x-www-form-urlencoded"
       },
       body: new URLSearchParams({
@@ -229,7 +235,7 @@ async function reportToHybridAnalysis(site: string) {
       const data = await response.json() as HybridAnalysisResponse;
       console.info(`Reported to Hybrid Analysis: ${site} (job_id: ${data.job_id})`);
     } else {
-      console.error(`Hybrid Analysis report failed for ${site}: ${response.status} ${await response.json()}`);
+      console.error(`Hybrid Analysis report failed for ${site}: ${response.status} ${await response.text()}`);
     }
   } catch (err) {
     console.error(`Error reporting to Hybrid Analysis: ${err}`);

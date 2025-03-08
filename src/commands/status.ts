@@ -1,6 +1,35 @@
 import { CommandDefinition } from "./commands.js";
-import {SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction} from "discord.js";
+import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from "discord.js";
 import pool from "../dbPool.js";
+
+const EMOJI = {
+  SAFEBROWSING: "<:google_safe_browsing:1347648584727662713>", // Replace with your emoji IDs
+  NETCRAFT: "<:netcraft:1347647539616157787>",
+  SMARTSCREEN: "<:ms_smartscreen:1347648053045231636>",
+  DNS: "🌐",
+  BLOCKED: "🛑",
+  CLEAN: "✅",
+};
+
+// Helper function for time to takedown
+function formatTimeDifference(startDate: Date, endDate: Date): string {
+  const diffMs = endDate.getTime() - startDate.getTime();
+  const diffSeconds = Math.floor(diffMs / 1000);
+  
+  const days = Math.floor(diffSeconds / 86400);
+  const hours = Math.floor((diffSeconds % 86400) / 3600);
+  const minutes = Math.floor((diffSeconds % 3600) / 60);
+  
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  } else if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m`;
+  } else {
+    return `${diffSeconds}s`;
+  }
+}
 
 export const statusCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
@@ -18,15 +47,21 @@ export const statusCommand: CommandDefinition = {
                r.source_url,
                r.regex_pattern,
                r.type,
+               d.id AS destination_id,
                d.destination_url,
                d.first_seen,
                d.last_seen,
-               d.is_popup
+               d.is_popup,
+               ts.safebrowsing_flagged_at,
+               ts.netcraft_flagged_at, 
+               ts.smartscreen_flagged_at,
+               ts.dns_unresolvable_at
         FROM redirects r
         LEFT JOIN (
           SELECT *, ROW_NUMBER() OVER (PARTITION BY redirect_id ORDER BY last_seen DESC) AS rn
           FROM redirect_destinations
         ) d ON r.id = d.redirect_id AND d.rn <= 8
+        LEFT JOIN takedown_status ts ON d.id = ts.redirect_destination_id
         ORDER BY r.id, d.last_seen DESC;
       `;
       const result = await client.query(query);
@@ -52,6 +87,11 @@ export const statusCommand: CommandDefinition = {
           firstSeen: string;
           lastSeen: string;
           isPopup: boolean;
+          firstSeenDate: Date;
+          safebrowsingFlaggedAt: Date | null;
+          netcraftFlaggedAt: Date | null;
+          smartscreenFlaggedAt: Date | null;
+          dnsUnresolvableAt: Date | null;
         }>;
       }>();
 
@@ -70,7 +110,12 @@ export const statusCommand: CommandDefinition = {
             url: row.destination_url,
             firstSeen,
             lastSeen,
-            isPopup: row.is_popup
+            isPopup: row.is_popup,
+            firstSeenDate: new Date(row.first_seen),
+            safebrowsingFlaggedAt: row.safebrowsing_flagged_at ? new Date(row.safebrowsing_flagged_at) : null,
+            netcraftFlaggedAt: row.netcraft_flagged_at ? new Date(row.netcraft_flagged_at) : null, 
+            smartscreenFlaggedAt: row.smartscreen_flagged_at ? new Date(row.smartscreen_flagged_at) : null,
+            dnsUnresolvableAt: row.dns_unresolvable_at ? new Date(row.dns_unresolvable_at) : null
           });
         }
       }
@@ -89,6 +134,40 @@ export const statusCommand: CommandDefinition = {
         // Add destination fields (max 8 destinations = 24 fields)
         for (const dest of info.destinations) {
           const destUrl = formatUrl(dest.url);
+          
+          // Build takedown status lines
+          let takedownStatusLines = [];
+          
+          if (dest.safebrowsingFlaggedAt) {
+            const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.safebrowsingFlaggedAt);
+            takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${EMOJI.BLOCKED} ${timeDiff}`);
+          } else {
+            takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${EMOJI.CLEAN}`);
+          }
+          
+          if (dest.netcraftFlaggedAt) {
+            const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.netcraftFlaggedAt);
+            takedownStatusLines.push(`${EMOJI.NETCRAFT} ${EMOJI.BLOCKED} ${timeDiff}`);
+          } else {
+            takedownStatusLines.push(`${EMOJI.NETCRAFT} ${EMOJI.CLEAN}`);
+          }
+          
+          if (dest.smartscreenFlaggedAt) {
+            const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.smartscreenFlaggedAt);
+            takedownStatusLines.push(`${EMOJI.SMARTSCREEN} ${EMOJI.BLOCKED} ${timeDiff}`);
+          } else {
+            takedownStatusLines.push(`${EMOJI.SMARTSCREEN} ${EMOJI.CLEAN}`);
+          }
+          
+          if (dest.dnsUnresolvableAt) {
+            const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.dnsUnresolvableAt);
+            takedownStatusLines.push(`${EMOJI.DNS} ${EMOJI.BLOCKED} ${timeDiff}`);
+          } else {
+            takedownStatusLines.push(`${EMOJI.DNS} ${EMOJI.CLEAN}`);
+          }
+          
+          const securityStatus = takedownStatusLines.join('\n');
+          
           embed.addFields(
             {
               name: "Destination",
@@ -101,8 +180,8 @@ export const statusCommand: CommandDefinition = {
               inline: true
             },
             {
-              name: "Popup",
-              value: dest.isPopup ? "Yes" : "No",
+              name: "Status",
+              value: `${dest.isPopup ? "Popup: Yes" : "Popup: No"}\n${securityStatus}`,
               inline: true
             }
           );

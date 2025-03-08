@@ -325,9 +325,28 @@ export async function isNetcraftFlagged(url: string): Promise<Boolean> {
       // Try to match each pattern against our full URL
       for (const patternObj of data.patterns) {
         try {
-          // The pattern comes as a regex string
+          // The pattern comes as a base64 encoded regex string
           const regexStr = Buffer.from(patternObj.pattern, "base64").toString("utf-8");
-          const regex = new RegExp(regexStr);
+          
+          // Convert PCRE flags to JavaScript RegExp flags
+          let flags = '';
+          let cleanPattern = regexStr;
+          
+          // Handle case-insensitive flag
+          if (cleanPattern.startsWith('(?i)')) {
+            flags += 'i';
+            cleanPattern = cleanPattern.substring(4); // Remove the (?i) part
+          }
+          
+          // Handle other PCRE flags as needed
+          // For example: (?m) for multiline, (?s) for dotall, etc.
+          if (cleanPattern.startsWith('(?m)')) {
+            flags += 'm';
+            cleanPattern = cleanPattern.substring(4);
+          }
+          
+          // Create the RegExp with extracted flags
+          const regex = new RegExp(cleanPattern, flags);
 
           if (regex.test(url)) {
             console.log(

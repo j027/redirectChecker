@@ -539,14 +539,9 @@ async function updateLastChecked(statusId: number): Promise<void> {
   }
 }
 
-async function processInBatches<T>(tasks: Promise<T>[], batchSize: number): Promise<T[]> {
-  const results: T[] = [];
-
+async function processInBatches<T>(tasks: Promise<T>[], batchSize: number): Promise<void> {
   for (let i = 0; i < tasks.length; i += batchSize) {
     const batch = tasks.slice(i, i + batchSize);
-    const batchResults = await Promise.all(batch);
-    results.push(...batchResults);
+    await Promise.allSettled(batch);
   }
-
-  return results;
 }

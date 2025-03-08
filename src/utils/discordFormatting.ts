@@ -3,8 +3,6 @@ export const EMOJI = {
   NETCRAFT: "<:netcraft:1347647539616157787>",
   SMARTSCREEN: "<:ms_smartscreen:1347648053045231636>",
   DNS: "🌐",
-  BLOCKED: "🚫",
-  CLEAN: "✅",
 };
 
 export function formatTimeDifference(startDate: Date, endDate: Date): string {

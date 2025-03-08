@@ -117,34 +117,26 @@ export const statusCommand: CommandDefinition = {
           if (dest.isPopup && dest.hasTakedownStatus) {
             if (dest.safebrowsingFlaggedAt) {
               const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.safebrowsingFlaggedAt);
-              takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${EMOJI.BLOCKED} ${timeDiff}`);
-            } else {
-              takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${EMOJI.CLEAN}`);
+              takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${timeDiff}`);
             }
             
             if (dest.netcraftFlaggedAt) {
               const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.netcraftFlaggedAt);
-              takedownStatusLines.push(`${EMOJI.NETCRAFT} ${EMOJI.BLOCKED} ${timeDiff}`);
-            } else {
-              takedownStatusLines.push(`${EMOJI.NETCRAFT} ${EMOJI.CLEAN}`);
+              takedownStatusLines.push(`${EMOJI.NETCRAFT} ${timeDiff}`);
             }
             
             if (dest.smartscreenFlaggedAt) {
               const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.smartscreenFlaggedAt);
-              takedownStatusLines.push(`${EMOJI.SMARTSCREEN} ${EMOJI.BLOCKED} ${timeDiff}`);
-            } else {
-              takedownStatusLines.push(`${EMOJI.SMARTSCREEN} ${EMOJI.CLEAN}`);
+              takedownStatusLines.push(`${EMOJI.SMARTSCREEN} ${timeDiff}`);
             }
             
             if (dest.dnsUnresolvableAt) {
               const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.dnsUnresolvableAt);
-              takedownStatusLines.push(`${EMOJI.DNS} ${EMOJI.BLOCKED} ${timeDiff}`);
-            } else {
-              takedownStatusLines.push(`${EMOJI.DNS} ${EMOJI.CLEAN}`);
+              takedownStatusLines.push(`${EMOJI.DNS} ${timeDiff}`);
             }
           }
           
-          let takedownStatus = takedownStatusLines.join('');
+          let takedownStatus = takedownStatusLines.join(' | ');
           
           embed.addFields(
             {

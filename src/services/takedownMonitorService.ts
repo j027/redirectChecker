@@ -98,8 +98,6 @@ export async function monitorTakedownStatus(): Promise<void> {
       return;
     }
 
-    console.log(`Checking takedown status for ${destinations.length} destinations`);
-
     // Batch process SafeBrowsing checks
     await processSafeBrowsingChecks(destinations);
 
@@ -264,8 +262,6 @@ async function checkSafeBrowsingBatch(urls: string[]): Promise<void> {
   // Skip if no URLs to check
   if (urls.length === 0) return;
 
-  console.log(`Checking ${urls.length} URLs against SafeBrowsing`);
-
   const results = await isSafeBrowsingBatchFlagged(urls);
 
   // Get list of flagged URLs
@@ -367,7 +363,6 @@ export async function isNetcraftFlagged(url: string): Promise<Boolean> {
     return false;
   }
 }
-// Keep the original function but have it use the new one
 
 async function checkNetcraft(destination: TakedownStatusRecord): Promise<void> {
   const isFlagged = await isNetcraftFlagged(destination.destination_url);
@@ -481,7 +476,6 @@ async function checkSmartScreen(destination: TakedownStatusRecord): Promise<void
     }
   }
 }
-// New function that only checks DNS and returns a result
 
 export async function isDnsResolvable(url: string): Promise<boolean> {
   try {
@@ -509,7 +503,6 @@ export async function isDnsResolvable(url: string): Promise<boolean> {
     return true;
   }
 }
-// Keep the original function but have it use the new one
 
 async function checkDnsResolvability(destination: TakedownStatusRecord): Promise<void> {
   const isResolvable = await isDnsResolvable(destination.destination_url);
@@ -533,7 +526,6 @@ async function checkDnsResolvability(destination: TakedownStatusRecord): Promise
     }
   }
 }
-
 
 async function updateLastChecked(statusId: number): Promise<void> {
   const client = await pool.connect();

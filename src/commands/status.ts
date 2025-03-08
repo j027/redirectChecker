@@ -55,7 +55,8 @@ export const statusCommand: CommandDefinition = {
                ts.safebrowsing_flagged_at,
                ts.netcraft_flagged_at, 
                ts.smartscreen_flagged_at,
-               ts.dns_unresolvable_at
+               ts.dns_unresolvable_at,
+               CASE WHEN ts.id IS NULL THEN FALSE ELSE TRUE END AS has_takedown_status
         FROM redirects r
         LEFT JOIN (
           SELECT *, ROW_NUMBER() OVER (PARTITION BY redirect_id ORDER BY last_seen DESC) AS rn
@@ -88,6 +89,7 @@ export const statusCommand: CommandDefinition = {
           lastSeen: string;
           isPopup: boolean;
           firstSeenDate: Date;
+          hasTakedownStatus: boolean;
           safebrowsingFlaggedAt: Date | null;
           netcraftFlaggedAt: Date | null;
           smartscreenFlaggedAt: Date | null;
@@ -112,6 +114,7 @@ export const statusCommand: CommandDefinition = {
             lastSeen,
             isPopup: row.is_popup,
             firstSeenDate: new Date(row.first_seen),
+            hasTakedownStatus: row.has_takedown_status,
             safebrowsingFlaggedAt: row.safebrowsing_flagged_at ? new Date(row.safebrowsing_flagged_at) : null,
             netcraftFlaggedAt: row.netcraft_flagged_at ? new Date(row.netcraft_flagged_at) : null, 
             smartscreenFlaggedAt: row.smartscreen_flagged_at ? new Date(row.smartscreen_flagged_at) : null,
@@ -138,7 +141,8 @@ export const statusCommand: CommandDefinition = {
           // Build takedown status lines
           let takedownStatusLines = [];
           
-          if (dest.isPopup) {
+          // Only show status for destinations that have been checked
+          if (dest.isPopup && dest.hasTakedownStatus) {
             if (dest.safebrowsingFlaggedAt) {
               const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.safebrowsingFlaggedAt);
               takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${EMOJI.BLOCKED} ${timeDiff}`);

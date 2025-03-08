@@ -7,7 +7,7 @@ const EMOJI = {
   NETCRAFT: "<:netcraft:1347647539616157787>",
   SMARTSCREEN: "<:ms_smartscreen:1347648053045231636>",
   DNS: "🌐",
-  BLOCKED: "🛑",
+  BLOCKED: "🚫",
   CLEAN: "✅",
 };
 
@@ -138,40 +138,42 @@ export const statusCommand: CommandDefinition = {
           // Build takedown status lines
           let takedownStatusLines = [];
           
-          if (dest.safebrowsingFlaggedAt) {
-            const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.safebrowsingFlaggedAt);
-            takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${EMOJI.BLOCKED} ${timeDiff}`);
-          } else {
-            takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${EMOJI.CLEAN}`);
+          if (dest.isPopup) {
+            if (dest.safebrowsingFlaggedAt) {
+              const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.safebrowsingFlaggedAt);
+              takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${EMOJI.BLOCKED} ${timeDiff}`);
+            } else {
+              takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${EMOJI.CLEAN}`);
+            }
+            
+            if (dest.netcraftFlaggedAt) {
+              const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.netcraftFlaggedAt);
+              takedownStatusLines.push(`${EMOJI.NETCRAFT} ${EMOJI.BLOCKED} ${timeDiff}`);
+            } else {
+              takedownStatusLines.push(`${EMOJI.NETCRAFT} ${EMOJI.CLEAN}`);
+            }
+            
+            if (dest.smartscreenFlaggedAt) {
+              const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.smartscreenFlaggedAt);
+              takedownStatusLines.push(`${EMOJI.SMARTSCREEN} ${EMOJI.BLOCKED} ${timeDiff}`);
+            } else {
+              takedownStatusLines.push(`${EMOJI.SMARTSCREEN} ${EMOJI.CLEAN}`);
+            }
+            
+            if (dest.dnsUnresolvableAt) {
+              const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.dnsUnresolvableAt);
+              takedownStatusLines.push(`${EMOJI.DNS} ${EMOJI.BLOCKED} ${timeDiff}`);
+            } else {
+              takedownStatusLines.push(`${EMOJI.DNS} ${EMOJI.CLEAN}`);
+            }
           }
           
-          if (dest.netcraftFlaggedAt) {
-            const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.netcraftFlaggedAt);
-            takedownStatusLines.push(`${EMOJI.NETCRAFT} ${EMOJI.BLOCKED} ${timeDiff}`);
-          } else {
-            takedownStatusLines.push(`${EMOJI.NETCRAFT} ${EMOJI.CLEAN}`);
-          }
-          
-          if (dest.smartscreenFlaggedAt) {
-            const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.smartscreenFlaggedAt);
-            takedownStatusLines.push(`${EMOJI.SMARTSCREEN} ${EMOJI.BLOCKED} ${timeDiff}`);
-          } else {
-            takedownStatusLines.push(`${EMOJI.SMARTSCREEN} ${EMOJI.CLEAN}`);
-          }
-          
-          if (dest.dnsUnresolvableAt) {
-            const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.dnsUnresolvableAt);
-            takedownStatusLines.push(`${EMOJI.DNS} ${EMOJI.BLOCKED} ${timeDiff}`);
-          } else {
-            takedownStatusLines.push(`${EMOJI.DNS} ${EMOJI.CLEAN}`);
-          }
-          
-          const securityStatus = takedownStatusLines.join('\n');
+          let takedownStatus = takedownStatusLines.join('');
           
           embed.addFields(
             {
               name: "Destination",
-              value: `[${destUrl.display}](${destUrl.full})`,
+              value: `[${destUrl.display}](${destUrl.full})\n${takedownStatus}`,
               inline: true
             },
             {
@@ -180,8 +182,8 @@ export const statusCommand: CommandDefinition = {
               inline: true
             },
             {
-              name: "Status",
-              value: `${dest.isPopup ? "Popup: Yes" : "Popup: No"}\n${securityStatus}`,
+              name: "Popup",
+              value: `${dest.isPopup ? "Yes" : "No"}`,
               inline: true
             }
           );

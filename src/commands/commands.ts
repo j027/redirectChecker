@@ -5,6 +5,7 @@ import {
 import { addCommand } from "./add.js";
 import { statusCommand } from "./status.js";
 import { removeCommand } from "./remove.js";
+import { takedownStatusCommand } from "./takedownStatus.js";
 
 export type CommandDefinition = {
   execute(interaction: ChatInputCommandInteraction): Promise<void>;
@@ -15,4 +16,5 @@ export const commands: CommandDefinition[] = [
   addCommand,
   statusCommand,
   removeCommand,
+  takedownStatusCommand
 ];

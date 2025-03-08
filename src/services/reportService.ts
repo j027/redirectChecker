@@ -229,7 +229,7 @@ async function reportToHybridAnalysis(site: string) {
       const data = await response.json() as HybridAnalysisResponse;
       console.info(`Reported to Hybrid Analysis: ${site} (job_id: ${data.job_id})`);
     } else {
-      console.error(`Hybrid Analysis report failed for ${site}: ${response.status}`);
+      console.error(`Hybrid Analysis report failed for ${site}: ${response.status} ${await response.json()}`);
     }
   } catch (err) {
     console.error(`Error reporting to Hybrid Analysis: ${err}`);

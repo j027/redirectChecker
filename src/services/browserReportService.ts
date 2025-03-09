@@ -1,5 +1,6 @@
 import { chromium, Browser } from "patchright";
 import { readConfig } from "../config.js";
+import { browserRedirectService } from "./browserRedirectService.js";
 
 export class BrowserReportService {
   private browser: Browser | null;
@@ -53,6 +54,7 @@ export class BrowserReportService {
       console.log("Successfully reported to microsoft smartscreen");
     } catch (error) {
       console.log(`Error when reporting to microsoft smartscreen: ${error}`);
+      await page.screenshot({ path: 'smartscreen_report_failure.png', fullPage: true });
       return false;
     } finally {
       await page.close();
@@ -60,6 +62,37 @@ export class BrowserReportService {
     }
 
     return true;
+  }
+
+  async collectSafeBrowsingReportDetails(url: string) {
+    if (this.browser == null) {
+      console.error(
+        "Browser has not been initialized - getting safebrowsing report data failed",
+      );
+      return null;
+    }
+
+    // setup page and block google analytics
+    const context = await this.browser.newContext();
+    const page = await context.newPage();
+    await browserRedirectService.blockGoogleAnalytics(page);
+
+    try {
+      await page.goto(url);
+      const screenshot: Buffer = await page.screenshot();
+      const pageContent = await page.content();
+      await page.screenshot({ path: 'safebrowsing_report_screenshot.png' });
+
+      return [screenshot.toString("base64"), pageContent];
+    }
+    catch (error) {
+      console.log(`Error while attempting to get google safe browsing report details: ${error}`);
+      await page.screenshot({ path: 'safebrowsing_report_screenshot_failure.png' });
+      return null;
+    } finally {
+      await page.close();
+      await context.close();
+    }
   }
 
   async close() {

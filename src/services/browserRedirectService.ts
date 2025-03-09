@@ -112,7 +112,7 @@ export class BrowserRedirectService {
     return { server, username, password };
   }
 
-  private async blockGoogleAnalytics(page: Page) {
+  async blockGoogleAnalytics(page: Page) {
     await page.route("https://www.google-analytics.com/g/collect*", (route) => {
       route.fulfill({
         status: 204,
@@ -127,35 +127,6 @@ export class BrowserRedirectService {
     }
 
     await this.browser.close();
-  }
-
-  async collectSafeBrowsingReportDetails(url: string) {
-    if (this.browser == null) {
-      console.error(
-        "Browser has not been initialized - getting safebrowsing report data failed",
-      );
-      return null;
-    }
-
-    // setup page and block google analytics
-    const context = await this.browser.newContext();
-    const page = await context.newPage();
-    await this.blockGoogleAnalytics(page);
-
-    try {
-      await page.goto(url);
-      const screenshot: Buffer = await page.screenshot();
-      const pageContent = await page.content();
-
-      return [screenshot.toString("base64"), pageContent];
-    }
-    catch (error) {
-      console.log(`Error while attempting to get google safe browsing report details: ${error}`);
-      return null;
-    } finally {
-      await page.close();
-      await context.close();
-    }
   }
 }
 

@@ -5,7 +5,6 @@ import { TextChannel } from "discord.js";
 import { userAgentService } from "./userAgentService.js";
 import { enqueueReport } from "./batchReportService.js";
 import { browserReportService } from "./browserReportService.js";
-import { browserRedirectService } from "./browserRedirectService.js";
 
 async function reportToGoogleSafeBrowsing(site: string) {
   // fail hard if the user agent is not available - this ensures this is properly fixed
@@ -16,8 +15,8 @@ async function reportToGoogleSafeBrowsing(site: string) {
 
   // request format can be found here
   // https://github.com/chromium/suspicious-site-reporter/blob/444666114ec758df1c151514cfd9e2218141da42/extension/client_request.proto#L21
-  const reportBody = [site, null]
-  const additionalDetails = await browserRedirectService.collectSafeBrowsingReportDetails(site);
+  const reportBody = [site, null];
+  const additionalDetails = await browserReportService.collectSafeBrowsingReportDetails(site);
 
   // if we have the details, add them to the report
   if (additionalDetails != null) {

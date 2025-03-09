@@ -1,7 +1,6 @@
 import { chromium, Browser } from "patchright";
 import { readConfig } from "../config.js";
-import { browserRedirectService } from "./browserRedirectService.js";
-
+import { blockGoogleAnalytics } from "../utils/playwrightUtilities.js";
 export class BrowserReportService {
   private browser: Browser | null;
 
@@ -75,7 +74,7 @@ export class BrowserReportService {
     // setup page and block google analytics
     const context = await this.browser.newContext();
     const page = await context.newPage();
-    await browserRedirectService.blockGoogleAnalytics(page);
+    await blockGoogleAnalytics(page);
 
     try {
       await page.goto(url);

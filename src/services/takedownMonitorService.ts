@@ -375,7 +375,6 @@ async function checkNetcraft(destination: TakedownStatusRecord): Promise<void> {
         "UPDATE takedown_status SET netcraft_flagged_at = NOW() WHERE id = $1",
         [destination.id]
       );
-      console.log(`Updated database: Netcraft flagged ${destination.destination_url}`);
     } finally {
       client.release();
     }

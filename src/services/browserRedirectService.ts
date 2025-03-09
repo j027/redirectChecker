@@ -1,6 +1,5 @@
-import { chromium, Browser, Page } from "patchright";
-import { readConfig } from "../config.js";
-
+import { chromium, Browser } from "patchright";
+import { blockGoogleAnalytics, parseProxy } from "../utils/playwrightUtilities.js";
 export class BrowserRedirectService {
   private browser: Browser | null;
 
@@ -22,12 +21,12 @@ export class BrowserRedirectService {
 
     const context = await this.browser.newContext({
       proxy: {
-        ...(await this.parseProxy()),
+        ...(await parseProxy()),
       },
     });
 
     const page = await context.newPage();
-    await this.blockGoogleAnalytics(page);
+    await blockGoogleAnalytics(page);
 
     try {
       await page.goto(redirectUrl, { waitUntil: "commit" });
@@ -56,7 +55,7 @@ export class BrowserRedirectService {
 
     const context = await this.browser.newContext({
       proxy: {
-        ...(await this.parseProxy()),
+        ...(await parseProxy()),
       },
       // HACK: redirect needs an old chrome version to work
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
@@ -67,7 +66,7 @@ export class BrowserRedirectService {
     });
 
     const page = await context.newPage();
-    await this.blockGoogleAnalytics(page);
+    await blockGoogleAnalytics(page);
 
     try {
       await page.goto(redirectUrl, { waitUntil: "commit", referer: "https://www.pornhub.com/" });
@@ -84,41 +83,6 @@ export class BrowserRedirectService {
       await page.close();
       await context.close();
     }
-  }
-
-  private async parseProxy() {
-    const { proxy } = await readConfig();
-
-    // Parse proxy URL to extract username and password
-    let server = proxy;
-    let username = undefined;
-    let password = undefined;
-
-    try {
-      const proxyUrl = new URL(proxy);
-
-      // Check if there are auth credentials in the URL
-      if (proxyUrl.username || proxyUrl.password) {
-        username = decodeURIComponent(proxyUrl.username);
-        password = decodeURIComponent(proxyUrl.password);
-
-        // Reconstruct proxy URL without auth for server parameter
-        server = `${proxyUrl.protocol}//${proxyUrl.host}${proxyUrl.pathname}${proxyUrl.search}`;
-      }
-    } catch (err) {
-      console.error(`Failed to parse proxy URL: ${err}`);
-    }
-
-    return { server, username, password };
-  }
-
-  async blockGoogleAnalytics(page: Page) {
-    await page.route("https://www.google-analytics.com/g/collect*", (route) => {
-      route.fulfill({
-        status: 204,
-        body: "",
-      });
-    });
   }
 
   async close() {

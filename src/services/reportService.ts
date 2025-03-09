@@ -5,7 +5,6 @@ import { TextChannel } from "discord.js";
 import { userAgentService } from "./userAgentService.js";
 import { enqueueReport } from "./batchReportService.js";
 import { browserReportService } from "./browserReportService.js";
-import { setTimeout } from 'timers/promises';
 import { browserRedirectService } from "./browserRedirectService.js";
 
 async function reportToGoogleSafeBrowsing(site: string) {
@@ -255,7 +254,7 @@ async function reportToHybridAnalysis(site: string) {
 
 export async function reportSite(site: string, redirect: string) {
   // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
-  // and checkphish
+  // checkphish, hybrid analysis, and urlscan
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site));
@@ -264,6 +263,8 @@ export async function reportSite(site: string, redirect: string) {
   reports.push(reportToMetaDefender(site));
   reports.push(browserReportService.reportToSmartScreen(site));
   reports.push(reportToCheckPhish(site));
+  reports.push(reportToHybridAnalysis(site));
+  reports.push(reportToUrlscan(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));
@@ -273,12 +274,6 @@ export async function reportSite(site: string, redirect: string) {
 
   // wait for all the reports to finish
   await Promise.allSettled(reports);
-
-  // report to urlscan last, to ensure that my netcraft report credits more often
-  // otherwise the popup scanner scraping urlscan sometimes reports before I can and gets the credit
-  // hybrid analysis also reports to urlscan
-  await setTimeout(60000)
-  await Promise.allSettled([reportToHybridAnalysis(site), reportToUrlscan(site)]);
 }
 
 async function sendMessageToDiscord(site: string, redirect: string) {

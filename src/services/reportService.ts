@@ -24,14 +24,32 @@ async function reportToGoogleSafeBrowsing(site: string) {
     reportBody.push(...additionalDetails);
   }
 
-  await fetch(
-    "https://safebrowsing.google.com/safebrowsing/clientreport/crx-report",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": userAgent },
-      body: JSON.stringify(reportBody),
-    },
-  );
+  try {
+    const response = await fetch(
+      "https://safebrowsing.google.com/safebrowsing/clientreport/crx-report",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "User-Agent": userAgent },
+        body: JSON.stringify(reportBody),
+      },
+    );
+    
+    if (response.status === 200) {
+      console.info(`Successfully reported to Google Safe Browsing: ${site}`);
+    } else {
+      // Try to include response body for better error context
+      let responseText = '';
+      try {
+        responseText = await response.text();
+        responseText = responseText ? ` - ${responseText}` : '';
+      } catch (e) {
+        // Ignore text extraction errors
+      }
+      console.error(`Google Safe Browsing report failed for ${site}: Status ${response.status}${responseText}`);
+    }
+  } catch (err) {
+    console.error(`Error reporting to Google Safe Browsing: ${err}`);
+  }
 }
 
 interface NetcraftApiResponse {

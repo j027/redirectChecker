@@ -80,7 +80,6 @@ export class BrowserReportService {
       await page.goto(url);
       const screenshot: Buffer = await page.screenshot();
       const pageContent = await page.content();
-      await page.screenshot({ path: 'safebrowsing_report_screenshot.png' });
 
       return [screenshot.toString("base64"), pageContent];
     }

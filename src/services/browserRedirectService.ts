@@ -1,5 +1,5 @@
 import { chromium, Browser } from "patchright";
-import { blockGoogleAnalytics, parseProxy } from "../utils/playwrightUtilities.js";
+import { blockGoogleAnalytics, blockPageResources, parseProxy } from "../utils/playwrightUtilities.js";
 export class BrowserRedirectService {
   private browser: Browser | null;
 
@@ -27,6 +27,7 @@ export class BrowserRedirectService {
 
     const page = await context.newPage();
     await blockGoogleAnalytics(page);
+    await blockPageResources(page);
 
     try {
       await page.goto(redirectUrl, { waitUntil: "commit" });
@@ -67,6 +68,7 @@ export class BrowserRedirectService {
 
     const page = await context.newPage();
     await blockGoogleAnalytics(page);
+    await blockPageResources(page);
 
     try {
       await page.goto(redirectUrl, { waitUntil: "commit", referer: "https://www.pornhub.com/" });

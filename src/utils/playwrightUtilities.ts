@@ -11,29 +11,19 @@ export async function blockGoogleAnalytics(page: Page) {
 }
 
 export async function blockPageResources(page: Page) {
-  // Block all external images (but allow inline/base64)
-  await page.route(/\.(png|jpg|jpeg|gif|webp|svg|ico|bmp)($|\?)/, (route) => {
-    route.abort();
-  });
-
-  // Block all CSS files
-  await page.route(/\.css($|\?)/, (route) => {
-    route.abort();
-  });
-
-  // Block all video formats
-  await page.route(/\.(mp4|webm|ogg|avi|mov|flv|wmv|mkv)($|\?)/, (route) => {
-    route.abort();
-  });
-
-  // Block all audio formats
-  await page.route(/\.(mp3|wav|ogg|aac|flac|m4a)($|\?)/, (route) => {
-    route.abort();
-  });
-
-  // Block all JavaScript files
-  await page.route(/\.js($|\?)/, (route) => {
-    route.abort();
+  // block all images, fonts, stylesheets, scripts, and media
+  await page.route("**/*", (route) => {
+    switch(route.request().resourceType()) {
+      case "image":
+      case "font":
+      case "stylesheet":
+      case "script":
+      case "media":
+        route.abort();
+        break;
+      default:
+        route.continue();
+    }
   });
 }
 

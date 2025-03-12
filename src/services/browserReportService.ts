@@ -9,7 +9,7 @@ export class BrowserReportService {
   }
 
   async init() {
-    this.browser = await chromium.launch();
+    this.browser = await chromium.launch({ headless: false });
   }
 
   async reportToSmartScreen(url: string): Promise<boolean> {

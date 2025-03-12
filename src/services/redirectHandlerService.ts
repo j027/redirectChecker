@@ -58,8 +58,6 @@ async function httpRedirect(redirectUrl: string): Promise<string | null> {
 async function weeblyDigitalOceanJs(
   redirectUrl: string,
 ): Promise<string | null> {
-  const { proxy } = await readConfig();
-  const proxyAgent = new ProxyAgent(proxy);
 
   // fail hard if the user agent is not available - this ensures this is properly fixed
   const userAgent = await userAgentService.getUserAgent();
@@ -69,7 +67,6 @@ async function weeblyDigitalOceanJs(
 
   const weeblyPage = await fetch(redirectUrl, {
     method: "GET",
-    dispatcher: proxyAgent,
     redirect: "manual",
     headers: {
       "User-Agent": userAgent,

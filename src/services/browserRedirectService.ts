@@ -1,5 +1,5 @@
 import { chromium, Browser } from "patchright";
-import { blockGoogleAnalytics, blockPageResources, createWindowsContext, parseProxy } from "../utils/playwrightUtilities.js";
+import { blockGoogleAnalytics, blockPageResources, spoofWindowsChrome, parseProxy } from "../utils/playwrightUtilities.js";
 export class BrowserRedirectService {
   private browser: Browser | null;
 
@@ -19,10 +19,13 @@ export class BrowserRedirectService {
       return null;
     }
 
-    // create a browser context that looks like chrome on windows
-    const context = await createWindowsContext(this.browser);
+    const context = await this.browser.newContext({
+      proxy: await parseProxy(),
+      viewport: null,
+    });
 
     const page = await context.newPage();
+    await spoofWindowsChrome(context, page);
     await blockGoogleAnalytics(page);
     await blockPageResources(page);
 

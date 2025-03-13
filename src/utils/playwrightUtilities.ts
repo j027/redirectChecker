@@ -53,6 +53,8 @@ export async function parseProxy() {
   return { server, username, password };
 }
 
+// most of the code below is based on puppeteer extra stealth
+// https://github.com/berstend/puppeteer-extra/tree/master/packages/puppeteer-extra-plugin-stealth/evasions
 
 export function processUserAgent(userAgent: string): string {
   // Strip headless identifier if present
@@ -106,6 +108,97 @@ function generateBrandData(version: string): Array<{brand: string, version: stri
   return brands;
 }
 
+// Type definitions for WebGL spoofing
+interface WebGLConfig {
+  vendor: string;
+  renderer: string;
+}
+
+// Common Windows WebGL configurations
+const WEBGL_CONFIGS: WebGLConfig[] = [
+  // Intel configurations
+  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) HD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) HD Graphics 520 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) HD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  
+  // NVIDIA configurations
+  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1050 Ti Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 2060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3050 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  
+  // AMD configurations
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 550 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 560 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 570 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 580 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 5500 XT Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 5600 XT Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 6600 XT Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 580 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  
+  // Laptop integrated/mobile GPUs
+  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce MX350 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3050 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX Vega 8 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon 680M Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' }
+];
+
+
+export async function spoofWebGL(
+  page: Page,
+  config?: WebGLConfig
+): Promise<void> {
+  // If no specific config is provided, pick a random one
+  const webGLConfig = config || WEBGL_CONFIGS[Math.floor(Math.random() * WEBGL_CONFIGS.length)];
+  
+  await page.addInitScript(({ vendor, renderer }) => {
+    const getParameterProxyHandler = {
+      apply: function(
+        target: (pname: number) => any, 
+        ctx: any, 
+        args: any[]
+      ): any {
+        const param = (args || [])[0];
+        const result = Reflect.apply(target, ctx, args);
+        // UNMASKED_VENDOR_WEBGL
+        if (param === 37445) {
+          return vendor;
+        }
+        // UNMASKED_RENDERER_WEBGL
+        if (param === 37446) {
+          return renderer;
+        }
+        return result;
+      }
+    };
+
+    // Add proxies for both WebGL rendering contexts
+    if (typeof WebGLRenderingContext !== 'undefined' && WebGLRenderingContext.prototype) {
+      const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = new Proxy(originalGetParameter, getParameterProxyHandler);
+    }
+    
+    if (typeof WebGL2RenderingContext !== 'undefined' && WebGL2RenderingContext.prototype) {
+      const originalGetParameter = WebGL2RenderingContext.prototype.getParameter;
+      WebGL2RenderingContext.prototype.getParameter = new Proxy(originalGetParameter, getParameterProxyHandler);
+    }
+  }, webGLConfig);
+}
+
+// Update the spoofWindowsChrome function to include WebGL spoofing
 export async function spoofWindowsChrome(context: BrowserContext, page: Page): Promise<void> {
   const actualUserAgent = await page.evaluate(() => navigator.userAgent);
   
@@ -133,9 +226,12 @@ export async function spoofWindowsChrome(context: BrowserContext, page: Page): P
       fullVersion: chromeVersion,
       platform: "Windows",
       platformVersion: "10.0.0",
-      architecture: "x86_64",
+      architecture: "x86",
       model: "",
       mobile: false
     }
   });
+  
+  // Add WebGL spoofing with a random Windows-compatible configuration
+  await spoofWebGL(page);
 }

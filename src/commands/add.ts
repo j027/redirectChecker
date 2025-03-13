@@ -97,14 +97,15 @@ export const addCommand: CommandDefinition = {
 
     if (!isPopup) {
       await interaction.editReply(
-        `Popup not detected, the redirect may not be redirecting to the expected location or the regex may be incorrect.\n
-        The current destination is ${redirectDestination}`,
+        `Popup not detected, the redirect may not be redirecting to the expected location or the regex may be incorrect.
+        The current destination is \`${redirectDestination}\``,
       );
       return;
     }
 
     await interaction.editReply(
-      "The redirect has been detected as valid, it will be added shortly.",
+      `The redirect has been detected as valid, it will be added shortly.
+      The current destination is \`${redirectDestination}\``,
     );
 
     const client = await pool.connect();

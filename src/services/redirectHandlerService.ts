@@ -22,7 +22,7 @@ export async function handleRedirect(
       location = await browserRedirectService.handleRedirect(redirectUrl);
       break;
     case RedirectType.BrowserRedirectPornhub:
-      location = await browserRedirectService.handlePornhubRedirect(redirectUrl);
+      location = await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/");
       break;
     default:
       console.warn(`Redirect type ${redirectType} is supported yet`);

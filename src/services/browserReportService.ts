@@ -1,6 +1,6 @@
 import { chromium, Browser } from "patchright";
 import { readConfig } from "../config.js";
-import { blockGoogleAnalytics } from "../utils/playwrightUtilities.js";
+import { blockGoogleAnalytics, spoofWindowsChrome } from "../utils/playwrightUtilities.js";
 export class BrowserReportService {
   private browser: Browser | null;
 
@@ -9,7 +9,11 @@ export class BrowserReportService {
   }
 
   async init() {
-    this.browser = await chromium.launch({ headless: false });
+    this.browser = await chromium.launch({
+      headless: false,
+      executablePath: "/snap/bin/chromium",
+      chromiumSandbox: true,
+    });
   }
 
   async reportToSmartScreen(url: string): Promise<boolean> {
@@ -74,6 +78,7 @@ export class BrowserReportService {
     // setup page and block google analytics
     const context = await this.browser.newContext();
     const page = await context.newPage();
+    await spoofWindowsChrome(context, page);
     await blockGoogleAnalytics(page);
 
     try {

@@ -143,6 +143,7 @@ async function getDestinationsToCheck(): Promise<TakedownStatusRecord[]> {
       FROM takedown_status ss
       JOIN redirect_destinations rd ON ss.redirect_destination_id = rd.id
       WHERE ss.check_active = TRUE
+        AND rd.last_seen > NOW() - INTERVAL '1 day'
     `);
 
     return result.rows;

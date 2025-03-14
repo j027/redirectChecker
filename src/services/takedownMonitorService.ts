@@ -1,6 +1,4 @@
 import pool from "../dbPool.js";
-import dns from "dns";
-import { promisify } from "util";
 import { PatentHash } from "../utils/patentHash.js";
 import { v4 as uuidv4 } from 'uuid';
 import { lookup } from 'dns/promises';
@@ -10,7 +8,7 @@ import { userAgentService } from "./userAgentService.js";
 import { fetch, ProxyAgent } from "undici";
 
 // Configuration
-const BATCH_SIZE = 500; // Maximum URLs to check in one SafeBrowsing batch
+const SAFEBROWSING_BATCH_SIZE = 500; // Maximum URLs to check in one SafeBrowsing batch
 const NETCRAFT_DELAY_MS = 500; // 0.5 seconds between requests
 
 interface TakedownStatusRecord {
@@ -166,8 +164,8 @@ async function processSafeBrowsingChecks(destinations: TakedownStatusRecord[]): 
   if (urlsToCheck.length === 0) return;
 
   // Process in batches
-  for (let i = 0; i < urlsToCheck.length; i += BATCH_SIZE) {
-    const batch = urlsToCheck.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < urlsToCheck.length; i += SAFEBROWSING_BATCH_SIZE) {
+    const batch = urlsToCheck.slice(i, i + SAFEBROWSING_BATCH_SIZE);
     await checkSafeBrowsingBatch(batch);
   }
 }

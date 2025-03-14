@@ -1,34 +1,70 @@
 import { checkRedirects } from './redirectMonitorService.js';
 import { flushQueues } from './batchReportService.js';
-import { monitorTakedownStatus } from './takedownMonitorService.js'; // Add this import
+import { monitorTakedownStatus } from './takedownMonitorService.js';
 
-let checkInterval: NodeJS.Timeout;
-let batchInterval: NodeJS.Timeout;
-let takedownInterval: NodeJS.Timeout; // Add this variable
+let checkInterval: NodeJS.Timeout | null = null;
+let batchInterval: NodeJS.Timeout | null = null;
+let takedownInterval: NodeJS.Timeout | null = null;
+let isRunning = {
+  redirectChecker: false,
+  batchProcessor: false,
+  takedownMonitor: false
+};
 
 export function startRedirectChecker() {
-  checkInterval = setInterval(async () => {
+  isRunning.redirectChecker = true;
+  
+  async function runRedirectCheck() {
+    if (!isRunning.redirectChecker) return;
+    
     try {
       await checkRedirects();
     } catch (error) {
       console.error("Error checking redirects:", error);
     }
-  }, 60 * 1000);
+    
+    // Schedule next run only after this one completes
+    checkInterval = setTimeout(runRedirectCheck, 60 * 1000);
+  }
+  
+  // Start the first check immediately
+  runRedirectCheck();
 }
 
 export function stopRedirectChecker() {
+  isRunning.redirectChecker = false;
   if (checkInterval) {
-    clearInterval(checkInterval);
+    clearTimeout(checkInterval);
+    checkInterval = null;
   }
 }
 
-// Start a scheduled job to flush queues every minute
 export function startBatchReportProcessor(): void {
-  batchInterval = setInterval(flushQueues, 60 * 1000);
+  isRunning.batchProcessor = true;
+  
+  async function runBatchProcess() {
+    if (!isRunning.batchProcessor) return;
+    
+    try {
+      await flushQueues();
+    } catch (error) {
+      console.error("Error flushing queues:", error);
+    }
+    
+    // Schedule next run only after this one completes
+    batchInterval = setTimeout(runBatchProcess, 60 * 1000);
+  }
+  
+  // Start the first batch process immediately
+  runBatchProcess();
 }
 
 export async function stopBatchReportProcessor(): Promise<void> {
-  clearInterval(batchInterval);
+  isRunning.batchProcessor = false;
+  if (batchInterval) {
+    clearTimeout(batchInterval);
+    batchInterval = null;
+  }
 
   try {
     await flushQueues();
@@ -39,17 +75,29 @@ export async function stopBatchReportProcessor(): Promise<void> {
 }
 
 export function startTakedownMonitor(): void {
-  takedownInterval = setInterval(async () => {
+  isRunning.takedownMonitor = true;
+  
+  async function runTakedownMonitor() {
+    if (!isRunning.takedownMonitor) return;
+    
     try {
       await monitorTakedownStatus();
     } catch (error) {
       console.error("Error during takedown monitoring:", error);
     }
-  }, 60 * 1000);
+    
+    // Schedule next run only after this one completes
+    takedownInterval = setTimeout(runTakedownMonitor, 60 * 1000);
+  }
+  
+  // Start the first monitoring immediately
+  runTakedownMonitor();
 }
 
 export function stopTakedownMonitor(): void {
+  isRunning.takedownMonitor = false;
   if (takedownInterval) {
-    clearInterval(takedownInterval);
+    clearTimeout(takedownInterval);
+    takedownInterval = null;
   }
 }

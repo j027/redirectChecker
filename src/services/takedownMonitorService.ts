@@ -5,9 +5,13 @@ import { PatentHash } from "../utils/patentHash.js";
 import { v4 as uuidv4 } from 'uuid';
 import { lookup } from 'dns/promises';
 import { readConfig } from "../config.js";
+import { setTimeout } from 'timers/promises';
+import { userAgentService } from "./userAgentService.js";
+import { fetch, ProxyAgent } from "undici";
 
 // Configuration
 const BATCH_SIZE = 500; // Maximum URLs to check in one SafeBrowsing batch
+const NETCRAFT_DELAY_MS = 500; // 0.5 seconds between requests
 
 interface TakedownStatusRecord {
   id: number;
@@ -289,80 +293,100 @@ async function checkSafeBrowsingBatch(urls: string[]): Promise<void> {
   }
 }
 
-export async function isNetcraftFlagged(url: string): Promise<Boolean> {
+const netcraftRequestQueue: Array<() => Promise<void>> = [];
+let isProcessingNetcraftQueue = false;
+
+function enqueueNetcraftRequest(request: () => Promise<void>): void {
+  netcraftRequestQueue.push(request);
+  if (!isProcessingNetcraftQueue) {
+    void processNetcraftQueue();
+  }
+}
+
+async function processNetcraftQueue(): Promise<void> {
+  if (isProcessingNetcraftQueue) return;
+  isProcessingNetcraftQueue = true;
+
   try {
-    // Extract the base domain without the path
-    const urlObj = new URL(url);
-    const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
+    while (netcraftRequestQueue.length > 0) {
+      const nextRequest = netcraftRequestQueue.shift();
+      if (!nextRequest) continue;
+      await nextRequest();
 
-    // Encode the base URL in base64
-    const encodedUrl = Buffer.from(baseUrl).toString("base64");
-
-    // Construct the Netcraft API URL
-    const netcraftApiUrl = `https://mirror2.extension.netcraft.com/check_url/v4/${encodedUrl}/dodns`;
-
-    // Make the request to Netcraft API
-    const response = await fetch(netcraftApiUrl);
-
-    if (!response.ok) {
-      console.log(
-        `Netcraft API error: ${response.status} ${response.statusText}`
-      );
-      return false;
-    }
-
-    const data = (await response.json()) as NetcraftApiResponse;
-
-    // Check if there are any patterns to match against
-    if (
-      data.patterns &&
-      Array.isArray(data.patterns) &&
-      data.patterns.length > 0
-    ) {
-      // Try to match each pattern against our full URL
-      for (const patternObj of data.patterns) {
-        try {
-          // The pattern comes as a base64 encoded regex string
-          const regexStr = Buffer.from(patternObj.pattern, "base64").toString("utf-8");
-          
-          // Convert PCRE flags to JavaScript RegExp flags
-          let flags = '';
-          let cleanPattern = regexStr;
-          
-          // Handle case-insensitive flag
-          if (cleanPattern.startsWith('(?i)')) {
-            flags += 'i';
-            cleanPattern = cleanPattern.substring(4); // Remove the (?i) part
-          }
-          
-          // Handle other PCRE flags as needed
-          // For example: (?m) for multiline, (?s) for dotall, etc.
-          if (cleanPattern.startsWith('(?m)')) {
-            flags += 'm';
-            cleanPattern = cleanPattern.substring(4);
-          }
-          
-          // Create the RegExp with extracted flags
-          const regex = new RegExp(cleanPattern, flags);
-
-          if (regex.test(url)) {
-            console.log(
-              `Netcraft flagged: ${url} as ${patternObj.type} (${patternObj.message_override})`
-            );
-
-            return true;
-          }
-        } catch (error) {
-          console.error(`Error with Netcraft regex pattern: ${error}`);
-        }
+      if (netcraftRequestQueue.length > 0) {
+        await setTimeout(NETCRAFT_DELAY_MS);
       }
     }
-
-    return false;
-  } catch (error) {
-    console.error(`Error checking Netcraft status for ${url}: ${error}`);
-    return false;
+  } finally {
+    isProcessingNetcraftQueue = false;
   }
+}
+
+export async function isNetcraftFlagged(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    enqueueNetcraftRequest(async () => {
+      try {
+        // fail hard if the user agent is not available - this ensures this is properly fixed
+        const userAgent = await userAgentService.getUserAgent();
+        if (userAgent == null) {
+          console.log("Failed to get user agent");
+          resolve(false);
+          return;
+        }
+
+        const { proxy } = await readConfig();
+        const proxyAgent = new ProxyAgent(proxy);
+
+        const urlObj = new URL(url);
+        const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
+        const encodedUrl = Buffer.from(baseUrl).toString("base64");
+        const netcraftApiUrl = `https://mirror2.extension.netcraft.com/check_url/v4/${encodedUrl}/dodns`;
+        
+        const response = await fetch(netcraftApiUrl, {
+          headers: { "User-Agent": userAgent },
+          dispatcher: proxyAgent,
+        });
+
+        if (!response.ok) {
+          // Handle errors and potential rate limit (429)
+          console.log(`Netcraft API error: ${response.status} ${response.statusText} ${await response.text()}`);
+          resolve(false);
+          return;
+        }
+        
+        const data = (await response.json()) as NetcraftApiResponse;
+        if (data.patterns?.length) {
+          for (const patternObj of data.patterns) {
+            // Decode the base64 regex pattern
+            const regexStr = Buffer.from(patternObj.pattern, "base64").toString("utf-8");
+            
+            // Convert PCRE flags to JS flags
+            let flags = '';
+            let cleanPattern = regexStr;
+            if (cleanPattern.startsWith('(?i)')) {
+              flags += 'i';
+              cleanPattern = cleanPattern.substring(4);
+            }
+            if (cleanPattern.startsWith('(?m)')) {
+              flags += 'm';
+              cleanPattern = cleanPattern.substring(4);
+            }
+            
+            const regex = new RegExp(cleanPattern, flags);
+            if (regex.test(url)) {
+              console.log(`Netcraft flagged: ${url} as ${patternObj.type} (${patternObj.message_override})`);
+              resolve(true);
+              return;
+            }
+          }
+        }
+        resolve(false);
+      } catch (error) {
+        console.error(`Error checking Netcraft status for ${url}: ${error}`);
+        resolve(false);
+      }
+    });
+  });
 }
 
 async function checkNetcraft(destination: TakedownStatusRecord): Promise<void> {
@@ -390,6 +414,15 @@ export async function isSmartScreenFlagged(url: string): Promise<{
     const urlObj = new URL(url);
     const normalizedHostPath = `${urlObj.hostname}${urlObj.pathname}`.toLowerCase();
 
+    // fail hard if the user agent is not available - this ensures this is properly fixed
+    const userAgent = await userAgentService.getUserAgent();
+    if (userAgent == null) {
+      throw new Error("Failed to get user agent");
+    }
+
+    const { proxy } = await readConfig();
+    const proxyAgent = new ProxyAgent(proxy);
+
     const payload: SmartScreenRequest = {
       correlationId: uuidv4(),
       destination: {
@@ -406,7 +439,7 @@ export async function isSmartScreenFlagged(url: string): Promise<{
           locale: "en-US"
         }
       },
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+      userAgent: userAgent
     };
 
     const payloadStr = JSON.stringify(payload);
@@ -431,7 +464,8 @@ export async function isSmartScreenFlagged(url: string): Promise<{
         "Authorization": authHeader,
         "User-Agent": payload.userAgent
       },
-      body: payloadStr
+      body: payloadStr,
+      dispatcher: proxyAgent,
     });
 
     if (!response.ok) {

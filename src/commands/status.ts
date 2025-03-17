@@ -99,12 +99,35 @@ export const statusCommand: CommandDefinition = {
       for (const [redirectId, info] of redirects.entries()) {
         const embed = new EmbedBuilder()
           .setTitle(`Redirect ID: ${redirectId}`)
-          .setColor(0x00ae86)
-          .addFields({
-            name: "Configuration",
-            value: info.header,
-            inline: false
-          });
+          .setColor(0x00ae86);
+        
+        // Truncate the header if it's too long
+        let header = info.header;
+        if (header.length > 1000) {
+          // Find the URL in the header
+          const urlMatch = header.match(/\[.+?\]\((.+?)\)/);
+          if (urlMatch && urlMatch[1].length > 100) {
+            // Get the domain part of the URL
+            let domain = "";
+            try {
+              domain = new URL(urlMatch[1]).hostname;
+            } catch (e) {
+              domain = urlMatch[1].split('/')[0];
+            }
+            
+            // Replace the long URL with just the domain
+            const truncatedUrl = `${domain}... (truncated)`;
+            header = header.replace(urlMatch[1], truncatedUrl);
+          }
+        }
+        
+        embed.addFields({
+          name: "Configuration",
+          value: header.length > 1024 ? 
+            header.substring(0, 1000) + "... (truncated)" : 
+            header,
+          inline: false
+        });
 
         // Add destination fields (max 8 destinations = 24 fields)
         for (const dest of info.destinations) {

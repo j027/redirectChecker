@@ -123,7 +123,8 @@ export const addCommand: CommandDefinition = {
         "INSERT INTO redirects (source_url, regex_pattern, type) VALUES ($1, $2, $3)";
       await client.query(insertQuery, [url, regex, redirectType]);
 
-      await interaction.editReply(`The url "${url}" was added`);
+      await interaction.editReply(`The url "${url}" was added
+        The current destination is \`${redirectDestination}\``);
     } finally {
       if (client != null) {
         client.release();

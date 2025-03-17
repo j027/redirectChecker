@@ -1,5 +1,11 @@
 import { chromium, Browser } from "patchright";
-import { blockGoogleAnalytics, blockPageResources, spoofWindowsChrome, parseProxy } from "../utils/playwrightUtilities.js";
+import {
+  blockGoogleAnalytics,
+  blockPageResources,
+  spoofWindowsChrome,
+  parseProxy,
+  simulateRandomMouseMovements,
+} from "../utils/playwrightUtilities.js";
 export class BrowserRedirectService {
   private browser: Browser | null;
 
@@ -42,9 +48,11 @@ export class BrowserRedirectService {
       // wait for the url to change
       await page.waitForURL("**");
       
-      // HACK: static delay for the url to change
-      // also makes it easier to debug if something isn't working right
-      await page.waitForTimeout(10000);
+      // randomly move mouse a bit (some redirects check for this)
+      // then wait to ensure the new page loads
+      await simulateRandomMouseMovements(page);
+      await page.waitForTimeout(2000);
+
       const destinationUrl = page.url();
 
       return destinationUrl != redirectUrl ? destinationUrl : null;

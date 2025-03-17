@@ -97,15 +97,13 @@ export const addCommand: CommandDefinition = {
 
     if (!isPopup) {
       await interaction.editReply(
-        `Popup not detected, the redirect may not be redirecting to the expected location or the regex may be incorrect.
-        The current destination is \`${redirectDestination}\``,
+        `Popup not detected, the redirect may not be redirecting to the expected location or the regex may be incorrect.\nThe current destination is \`${redirectDestination}\``
       );
       return;
     }
 
     await interaction.editReply(
-      `The redirect has been detected as valid, it will be added shortly.
-      The current destination is \`${redirectDestination}\``,
+      `The redirect has been detected as valid, it will be added shortly. \nThe current destination is \`${redirectDestination}\``,
     );
 
     const client = await pool.connect();
@@ -123,8 +121,7 @@ export const addCommand: CommandDefinition = {
         "INSERT INTO redirects (source_url, regex_pattern, type) VALUES ($1, $2, $3)";
       await client.query(insertQuery, [url, regex, redirectType]);
 
-      await interaction.editReply(`The url "${url}" was added
-        The current destination is \`${redirectDestination}\``);
+      await interaction.editReply(`The url \`${url}\` was added \nThe current destination is \`${redirectDestination}\``);
     } finally {
       if (client != null) {
         client.release();

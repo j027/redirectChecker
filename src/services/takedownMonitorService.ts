@@ -454,38 +454,48 @@ export async function isSmartScreenFlagged(url: string): Promise<{
     // Create the authorization header
     const authHeader = "SmartScreenHash " + Buffer.from(JSON.stringify(authObj)).toString('base64');
 
-    // Make request to SmartScreen API
-    const response = await fetch("https://bf.smartscreen.microsoft.com/api/browser/Navigate/1", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Authorization": authHeader,
-        "User-Agent": payload.userAgent
-      },
-      body: payloadStr,
-      dispatcher: proxyAgent,
-    });
+    try {
+      // Make request to SmartScreen API
+      const response = await fetch(
+        "https://bf.smartscreen.microsoft.com/api/browser/Navigate/1",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            Authorization: authHeader,
+            "User-Agent": payload.userAgent,
+          },
+          body: payloadStr,
+          dispatcher: proxyAgent,
+        }
+      );
 
-    if (!response.ok) {
-      console.log(`SmartScreen API error: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        const responseText = await response.text();
+        console.error(`Error checking SmartScreen status for ${url}: HTTP ${response.status} ${response.statusText}. Response: ${responseText}`);
+        return { isFlagged: false };
+      }
+
+      const data = await response.json() as SmartScreenResponse;
+
+      // Check if the URL is flagged by SmartScreen
+      const isFlagged = !data.allow ||
+          data.responseCategory === "Malicious" ||
+          data.responseCategory === "Phishing";
+
+      if (isFlagged) {
+        console.log(`SmartScreen flagged: ${url} as ${data.responseCategory}`);
+      }
+
+      return {
+        isFlagged: isFlagged,
+        category: data.responseCategory
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      console.error(`Error checking SmartScreen status for ${url}: ${errorMsg}`);
       return { isFlagged: false };
     }
-
-    const data = await response.json() as SmartScreenResponse;
-
-    // Check if the URL is flagged by SmartScreen
-    const isFlagged = !data.allow ||
-        data.responseCategory === "Malicious" ||
-        data.responseCategory === "Phishing";
-
-    if (isFlagged) {
-      console.log(`SmartScreen flagged: ${url} as ${data.responseCategory}`);
-    }
-
-    return {
-      isFlagged: isFlagged,
-      category: data.responseCategory
-    };
   } catch (error) {
     console.error(`Error checking SmartScreen status for ${url}: ${error}`);
     return { isFlagged: false };

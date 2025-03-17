@@ -236,62 +236,18 @@ export async function spoofWindowsChrome(context: BrowserContext, page: Page): P
   await spoofWebGL(page);
 }
 
-/**
- * Performs random mouse movements across the page to simulate human behavior
- * @param page - The Playwright page object
- * @param options - Optional configuration parameters
- * @returns Promise that resolves when all movements are complete
- */
 export async function simulateRandomMouseMovements(
   page: Page,
-  options: { 
-    movements?: number,     // Number of mouse movements to perform
-    minDelay?: number,      // Minimum delay between movements in ms
-    maxDelay?: number       // Maximum delay between movements in ms
-  } = {}
 ): Promise<void> {
-  // Set default values for options
-  const movements = options.movements || Math.floor(Math.random() * 4) + 2; // 2-5 movements
-  const minDelay = options.minDelay || 100;
-  const maxDelay = options.maxDelay || 800;
-  
-  // Get viewport size
-  const viewportSize = page.viewportSize();
-  
-  if (!viewportSize) {
-    console.warn("Could not determine viewport size for mouse movements");
-    return;
-  }
-  
-  const { width, height } = viewportSize;
-  
-  // Current position (start near center)
-  let currentX = Math.floor(width / 2);
-  let currentY = Math.floor(height / 2);
-  
-  for (let i = 0; i < movements; i++) {
-    // Generate random target position within viewport
-    // Avoid edges by using 80% of viewport
-    const targetX = Math.floor(Math.random() * (width * 0.8)) + (width * 0.1);
-    const targetY = Math.floor(Math.random() * (height * 0.8)) + (height * 0.1);
-    
-    // Calculate steps based on distance (more steps for longer distances)
-    const distance = Math.sqrt(
-      Math.pow(targetX - currentX, 2) + Math.pow(targetY - currentY, 2)
-    );
-    const steps = Math.max(5, Math.floor(distance / 10));
-    
-    // Perform the mouse movement
-    await page.mouse.move(targetX, targetY, { steps });
-    
-    // Update current position
-    currentX = targetX;
-    currentY = targetY;
-    
-    // Random delay before next movement
-    if (i < movements - 1) {
-      const delay = Math.floor(Math.random() * (maxDelay - minDelay)) + minDelay;
-      await page.waitForTimeout(delay);
-    }
+  // move the mouse in a 100x100 square 10 times
+  // https://playwright.dev/docs/api/class-mouse
+  for (let i = 0; i < 10; i++) {
+    await page.mouse.move(0, 0);
+    await page.mouse.down();
+    await page.mouse.move(0, 100);
+    await page.mouse.move(100, 100);
+    await page.mouse.move(100, 0);
+    await page.mouse.move(0, 0);
+    await page.mouse.up();
   }
 }

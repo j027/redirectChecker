@@ -83,6 +83,9 @@ export class BrowserReportService {
 
     try {
       await page.goto(url);
+
+      // click on the top left, to ensure that the popup is fully activated
+      await page.mouse.click(0, 0);
       const screenshot: Buffer = await page.screenshot();
       const pageContent = await page.content();
 

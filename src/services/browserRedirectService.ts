@@ -41,6 +41,10 @@ export class BrowserRedirectService {
 
       // wait for the url to change
       await page.waitForURL("**");
+      
+      // HACK: static delay for the url to change
+      // also makes it easier to debug if something isn't working right
+      await page.waitForTimeout(10000);
       const destinationUrl = page.url();
 
       return destinationUrl != redirectUrl ? destinationUrl : null;

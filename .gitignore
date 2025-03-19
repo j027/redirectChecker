@@ -9,3 +9,5 @@ dist/
 install-state.gz
 safebrowsing_report_screenshot_failure.png
 smartscreen_report_failure.png
+scam_screenshots/
+non_scam_screenshots/

@@ -3,6 +3,7 @@ import { handleRedirect } from "./redirectHandlerService.js";
 import { RedirectType } from "../redirectType.js";
 import { reportSite } from "./reportService.js";
 import { initTakedownStatusForDestination } from "./takedownMonitorService.js";
+import { browserReportService } from "./browserReportService.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();
@@ -74,6 +75,9 @@ async function processRedirectEntry(
       // if it is a popup, make sure to report it
       if (isPopup) {
         await reportSite(redirectDestination, sourceUrl);
+      }
+      else {
+        await browserReportService.collectNonPopupWebsiteScreenshot(redirectDestination);
       }
     }
   } catch (error) {

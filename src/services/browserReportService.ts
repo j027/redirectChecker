@@ -1,6 +1,10 @@
 import { chromium, Browser } from "patchright";
 import { readConfig } from "../config.js";
-import { blockGoogleAnalytics, spoofWindowsChrome } from "../utils/playwrightUtilities.js";
+import {
+  blockGoogleAnalytics,
+  spoofWindowsChrome,
+  parseProxy,
+} from "../utils/playwrightUtilities.js";
 export class BrowserReportService {
   private browser: Browser | null;
 
@@ -53,7 +57,7 @@ export class BrowserReportService {
       await page.getByRole("button", { name: "Submit" }).click();
 
       // ensure that the submission was successful
-      await page.getByText("Thank you for your submission").waitFor({timeout: 5000});
+      await page.getByText("Thank you for your submission").waitFor({timeout: 30000});
       console.log("Successfully reported to microsoft smartscreen");
     } catch (error) {
       console.log(`Error when reporting to microsoft smartscreen: ${error}`);
@@ -76,7 +80,10 @@ export class BrowserReportService {
     }
 
     // setup page and block google analytics
-    const context = await this.browser.newContext();
+    const context = await this.browser.newContext({
+      proxy: await parseProxy(),
+      viewport: null,
+    });
     const page = await context.newPage();
     await spoofWindowsChrome(context, page);
     await blockGoogleAnalytics(page);
@@ -88,12 +95,43 @@ export class BrowserReportService {
       await page.mouse.click(0, 0);
       const screenshot: Buffer = await page.screenshot();
       const pageContent = await page.content();
+      await page.screenshot({ path: `scam_screenshots/${crypto.randomUUID()}.png`})
 
       return [screenshot.toString("base64"), pageContent];
     }
     catch (error) {
       console.log(`Error while attempting to get google safe browsing report details: ${error}`);
       await page.screenshot({ path: 'safebrowsing_report_screenshot_failure.png' });
+      return null;
+    } finally {
+      await page.close();
+      await context.close();
+    }
+  }
+
+  async collectNonPopupWebsiteScreenshot(url: string) {
+    if (this.browser == null) {
+      console.error(
+        "Browser has not been initialized - getting non-popup website screenshot failed",
+      );
+      return null;
+    }
+
+    // setup page and block google analytics
+    const context = await this.browser.newContext({
+      proxy: await parseProxy(),
+      viewport: null,
+    });
+    const page = await context.newPage(); 
+    await spoofWindowsChrome(context, page);
+    await blockGoogleAnalytics(page);
+
+    try {
+      await page.goto(url);
+      await page.screenshot({ path: `non_scam_screenshots/${crypto.randomUUID()}_${new URL(url).hostname}.png`});
+    }
+    catch (error) {
+      console.log(`Error while attempting to get non-popup website screenshot: ${error}`);
       return null;
     } finally {
       await page.close();

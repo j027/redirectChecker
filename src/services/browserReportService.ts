@@ -30,6 +30,7 @@ export class BrowserReportService {
 
     const context = await this.browser.newContext();
     const page = await context.newPage();
+    await spoofWindowsChrome(context, page);
 
     try {
       await page.goto(
@@ -81,7 +82,7 @@ export class BrowserReportService {
 
     // setup page and block google analytics
     const context = await this.browser.newContext({
-      proxy: await parseProxy(),
+      proxy: await parseProxy(true),
       viewport: null,
     });
     const page = await context.newPage();
@@ -119,7 +120,7 @@ export class BrowserReportService {
 
     // setup page and block google analytics
     const context = await this.browser.newContext({
-      proxy: await parseProxy(),
+      proxy: await parseProxy(true),
       viewport: null,
     });
     const page = await context.newPage(); 

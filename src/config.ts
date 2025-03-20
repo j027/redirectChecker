@@ -5,6 +5,7 @@ type Config = {
     guildId: string;
     clientId: string;
     proxy: string;
+    hunterProxy: string;
     channelId: string;
     netcraftReportEmail: string;
     urlscanApiKey: string;

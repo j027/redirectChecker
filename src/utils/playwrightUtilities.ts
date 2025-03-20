@@ -27,8 +27,9 @@ export async function blockPageResources(page: Page) {
   });
 }
 
-export async function parseProxy() {
-  const { proxy } = await readConfig();
+export async function parseProxy(isHunterProxy = false): Promise<{server: string, username?: string, password?: string}> {
+  const config = await readConfig();
+  const proxy = isHunterProxy ? config.hunterProxy : config.proxy;
 
   // Parse proxy URL to extract username and password
   let server = proxy;

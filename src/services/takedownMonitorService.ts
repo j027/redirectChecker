@@ -418,8 +418,8 @@ export async function isSmartScreenFlagged(url: string): Promise<{
       throw new Error("Failed to get user agent");
     }
 
-    const { proxy } = await readConfig();
-    const proxyAgent = new ProxyAgent(proxy);
+    const { hunterProxy } = await readConfig();
+    const proxyAgent = new ProxyAgent(hunterProxy);
 
     const payload: SmartScreenRequest = {
       correlationId: uuidv4(),

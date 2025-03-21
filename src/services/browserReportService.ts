@@ -5,6 +5,9 @@ import {
   spoofWindowsChrome,
   parseProxy,
 } from "../utils/playwrightUtilities.js";
+import { promises as fs } from "fs";
+import pool from "../dbPool.js";
+
 export class BrowserReportService {
   private browser: Browser | null;
 
@@ -88,6 +91,8 @@ export class BrowserReportService {
     const page = await context.newPage();
     await spoofWindowsChrome(context, page);
     await blockGoogleAnalytics(page);
+    const uuid = crypto.randomUUID();
+    const client = await pool.connect();
 
     try {
       await page.goto(url);
@@ -96,7 +101,14 @@ export class BrowserReportService {
       await page.mouse.click(0, 0);
       const screenshot: Buffer = await page.screenshot();
       const pageContent = await page.content();
-      await page.screenshot({ path: `scam_screenshots/${crypto.randomUUID()}.png`})
+
+      // save the data for ai model training
+      await fs.writeFile(`data/screenshots/scam/${uuid}.png`, screenshot);
+      await fs.writeFile(`data/html/scam/${uuid}.html`, pageContent);
+      client.query(
+        "INSERT INTO url_training_dataset (uuid, url, is_scam) VALUES ($1, $2, $3)",
+        [uuid, page.url(), true]
+      );
 
       return [screenshot.toString("base64"), pageContent];
     }
@@ -107,6 +119,7 @@ export class BrowserReportService {
     } finally {
       await page.close();
       await context.close();
+      client.release();
     }
   }
 
@@ -126,10 +139,20 @@ export class BrowserReportService {
     const page = await context.newPage(); 
     await spoofWindowsChrome(context, page);
     await blockGoogleAnalytics(page);
+    const uuid = crypto.randomUUID();
+    const client = await pool.connect();
 
     try {
       await page.goto(url);
-      await page.screenshot({ path: `non_scam_screenshots/${crypto.randomUUID()}_${new URL(url).hostname}.png`});
+
+      // this data is being saved for future ai model training
+      await page.screenshot({ path: `data/screenshots/non_scam/${uuid}.png`});
+      const pageContent = await page.content();
+      await fs.writeFile(`data/html/non_scam/${uuid}.html`, pageContent);
+      client.query(
+        "INSERT INTO url_training_dataset (uuid, url, is_scam) VALUES ($1, $2, $3)",
+        [uuid, page.url(), false]
+      );
     }
     catch (error) {
       console.log(`Error while attempting to get non-popup website screenshot: ${error}`);
@@ -137,6 +160,7 @@ export class BrowserReportService {
     } finally {
       await page.close();
       await context.close();
+      client.release();
     }
   }
 

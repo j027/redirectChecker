@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS user_agents
     last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE url_training_dataset (
+CREATE TABLE IF NOT EXISTS url_training_dataset (
     uuid UUID PRIMARY KEY,
     url TEXT UNIQUE NOT NULL,
     is_scam BOOLEAN,

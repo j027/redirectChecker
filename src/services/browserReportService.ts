@@ -105,10 +105,16 @@ export class BrowserReportService {
       // save the data for ai model training
       await fs.writeFile(`data/screenshots/scam/${uuid}.png`, screenshot);
       await fs.writeFile(`data/html/scam/${uuid}.html`, pageContent);
-      client.query(
-        "INSERT INTO url_training_dataset (uuid, url, is_scam) VALUES ($1, $2, $3)",
-        [uuid, page.url(), true]
-      );
+      
+      try {
+        await client.query(
+          "INSERT INTO url_training_dataset (uuid, url, is_scam) VALUES ($1, $2, $3)",
+          [uuid, page.url(), true]
+        );
+      }
+      catch (error) {
+        console.log(`Error while trying to save url to the training dataset ${error}`);
+      }
 
       return [screenshot.toString("base64"), pageContent];
     }
@@ -149,7 +155,7 @@ export class BrowserReportService {
       await page.screenshot({ path: `data/screenshots/non_scam/${uuid}.png`});
       const pageContent = await page.content();
       await fs.writeFile(`data/html/non_scam/${uuid}.html`, pageContent);
-      client.query(
+      await client.query(
         "INSERT INTO url_training_dataset (uuid, url, is_scam) VALUES ($1, $2, $3)",
         [uuid, page.url(), false]
       );

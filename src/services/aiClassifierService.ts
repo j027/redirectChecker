@@ -8,8 +8,8 @@ import crypto from 'crypto';
 import sharp from 'sharp';
 
 // Constants for the model
-const INPUT_WIDTH = 1080;
-const INPUT_HEIGHT = 1080;
+const INPUT_WIDTH = 1280;
+const INPUT_HEIGHT = 1280;
 const CONFIDENCE_THRESHOLD = 0.7;
 
 interface ClassificationResult {
@@ -113,60 +113,86 @@ export class AiClassifierService {
   
   private async runInference(imageBuffer: Buffer): Promise<{isScam: boolean; confidenceScore: number}> {
     try {
+      // Log start of inference
+      console.log('Starting inference for image');
+      
       // Preprocess the image
       const preprocessedImage = await this.preprocessImage(imageBuffer);
       
-      // Create input tensor
+      // Create input tensor with correct dimensions
       const inputTensor = new onnx.Tensor('float32', preprocessedImage, [1, 3, INPUT_HEIGHT, INPUT_WIDTH]);
       
+      // Get dynamic input name
+      const inputName = this.model!.inputNames[0];
+      console.log(`Using model input name: ${inputName}`);
+      
       // Run inference
-      const feeds = { 'images': inputTensor };
+      const feeds = { [inputName]: inputTensor };
       const results = await this.model!.run(feeds);
       
+      // Get dynamic output name
+      const outputName = this.model!.outputNames[0];
+      console.log(`Using model output name: ${outputName}`);
+      
       // Process output tensor
-      const output = results['output'].data as Float32Array;
+      const output = results[outputName].data as Float32Array;
+      console.log('Raw output:', Array.from(output));
       
-      // Extract predictions - assuming binary classification (non_scam, scam)
-      const [nonScamConf, scamConf] = output;
+      // Find the class with highest confidence
+      let maxConfidenceIdx = 0;
+      let maxConfidence = output[0];
       
-      // Get max confidence and predicted class
-      const confidenceScore = Math.max(nonScamConf, scamConf);
-      const isScam = scamConf > nonScamConf;
+      for (let i = 1; i < output.length; i++) {
+        if (output[i] > maxConfidence) {
+          maxConfidence = output[i];
+          maxConfidenceIdx = i;
+        }
+      }
+      
+      // Map to class (0 = non_scam, 1 = scam)
+      const isScam = maxConfidenceIdx === 1;
+      const confidenceScore = maxConfidence;
+      
+      console.log(`Prediction: class=${maxConfidenceIdx} (${isScam ? 'scam' : 'non_scam'}), confidence=${confidenceScore}`);
       
       return { isScam, confidenceScore };
     } catch (error) {
       console.error('Error during model inference:', error);
-      // Return a fallback prediction
       return { isScam: false, confidenceScore: 0 };
     }
   }
   
   private async preprocessImage(imageBuffer: Buffer): Promise<Float32Array> {
-    // Resize and normalize the image using sharp
-    const processedBuffer = await sharp(imageBuffer)
-      .resize(INPUT_WIDTH, INPUT_HEIGHT)
-      .removeAlpha()
-      .raw()
-      .toBuffer();
-    
-    // Convert to float32 and normalize
-    const tensorData = new Float32Array(processedBuffer.length);
-    
-    // RGB channel order for ONNX models
-    const channelSize = INPUT_WIDTH * INPUT_HEIGHT;
-    const redChannel = new Uint8Array(processedBuffer.buffer, 0, channelSize);
-    const greenChannel = new Uint8Array(processedBuffer.buffer, channelSize, channelSize);
-    const blueChannel = new Uint8Array(processedBuffer.buffer, 2 * channelSize, channelSize);
-    
-    // Normalize each pixel value
-    for (let i = 0; i < channelSize; i++) {
-      // ONNX models typically expect CHW format (channels, height, width)
-      tensorData[i] = redChannel[i] / 255.0;
-      tensorData[i + channelSize] = greenChannel[i] / 255.0;
-      tensorData[i + 2 * channelSize] = blueChannel[i] / 255.0;
+    try {
+      // Resize and normalize the image using sharp
+      const processedBuffer = await sharp(imageBuffer)
+        .resize(INPUT_WIDTH, INPUT_HEIGHT)
+        .removeAlpha()
+        .raw()
+        .toBuffer();
+      
+      // Create tensor with proper dimensions
+      const pixelCount = INPUT_WIDTH * INPUT_HEIGHT;
+      const tensorData = new Float32Array(3 * pixelCount);
+      
+      // Convert from interleaved RGB to planar CHW format
+      for (let i = 0; i < pixelCount; i++) {
+        // Sharp gives pixels in interleaved RGB format (R,G,B,R,G,B,...)
+        const r = processedBuffer[i * 3] / 255.0;     // R value
+        const g = processedBuffer[i * 3 + 1] / 255.0; // G value
+        const b = processedBuffer[i * 3 + 2] / 255.0; // B value
+        
+        // Store in CHW format (all R values, then all G values, then all B values)
+        tensorData[i] = r;                     // R channel
+        tensorData[i + pixelCount] = g;        // G channel
+        tensorData[i + 2 * pixelCount] = b;    // B channel
+      }
+      
+      return tensorData;
+    } catch (error) {
+      console.error('Error in preprocessImage:', error);
+      throw error;
     }
-    
-    return tensorData;
   }
   
   private async saveData(

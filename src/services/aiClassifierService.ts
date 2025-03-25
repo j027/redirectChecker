@@ -52,7 +52,7 @@ export class AiClassifierService {
     }
   }
   
-  async classifyUrl(url: string, isHunterProxy = false): Promise<ClassificationResult | null> {
+  async classifyUrl(url: string): Promise<ClassificationResult | null> {
     if (!this.browser || !this.model) {
       console.error('Browser or model not initialized');
       return null;
@@ -60,7 +60,7 @@ export class AiClassifierService {
     
     // Setup page and navigation
     const context = await this.browser.newContext({
-      proxy: await parseProxy(isHunterProxy),
+      proxy: await parseProxy(true),
       viewport: null,
     });
     const page = await context.newPage();

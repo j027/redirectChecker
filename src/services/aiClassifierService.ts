@@ -32,7 +32,6 @@ export class AiClassifierService {
         executablePath: "/snap/bin/chromium",
         chromiumSandbox: true,
       });
-      console.log('AI Classifier browser launched successfully');
       
       // Load the ONNX model
       const modelPath = path.join(process.cwd(), 'models', 'image_scam_detector.onnx');
@@ -48,7 +47,6 @@ export class AiClassifierService {
     if (this.browser) {
       await this.browser.close();
       this.browser = null;
-      console.log('AI Classifier browser closed');
     }
   }
   

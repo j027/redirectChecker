@@ -13,12 +13,6 @@ export const addCommand: CommandDefinition = {
     )
     .addStringOption((option) =>
       option
-        .setName("regex")
-        .setDescription("Regex for popup detection")
-        .setRequired(true),
-    )
-    .addStringOption((option) =>
-      option
         .setName("redirect_type")
         .setDescription("The type of redirect")
         .setRequired(true)
@@ -41,7 +35,6 @@ export const addCommand: CommandDefinition = {
     .toJSON(),
   async execute(interaction: ChatInputCommandInteraction) {
     const url = interaction.options.getString("url");
-    const regex = interaction.options.getString("regex");
     const redirectType = interaction.options.getString(
       "redirect_type",
     ) as RedirectType;
@@ -54,13 +47,6 @@ export const addCommand: CommandDefinition = {
       return;
     }
 
-    if (regex == null || !isValidRegex(regex)) {
-      await interaction.editReply(
-        "Invalid regex provided. Please enter a valid regex.",
-      );
-      return;
-    }
-
     if (redirectType == null) {
       await interaction.editReply(
         "Invalid redirect type provided. Please enter a valid redirect type.",
@@ -68,16 +54,16 @@ export const addCommand: CommandDefinition = {
       return;
     }
 
-    const parsedRegex = new RegExp(regex);
     let redirectDestination: string | null = null;
-    let isPopup: boolean = false;
+    let isScam: boolean = false;
+    let screenshot: Buffer | null = null;
+    let html: string | null = null;
 
-    // verify the user's regidrect is valid against the regex
+    // Verify the redirect with AI classification
     try {
-      await interaction.editReply("Attempting to validate redirect");
-      [redirectDestination, isPopup] = await handleRedirect(
+      await interaction.editReply("Attempting to validate redirect...");
+      [redirectDestination, isScam, screenshot, html] = await handleRedirect(
         url,
-        parsedRegex,
         redirectType,
       );
     } catch (error) {
@@ -95,15 +81,15 @@ export const addCommand: CommandDefinition = {
       return;
     }
 
-    if (!isPopup) {
+    if (!isScam) {
       await interaction.editReply(
-        `Popup not detected, the redirect may not be redirecting to the expected location or the regex may be incorrect.\nThe current destination is \`${redirectDestination}\``
+        `No scam detected, the redirect may not be redirecting to a malicious site.\nThe current destination is \`${redirectDestination}\``
       );
       return;
     }
 
     await interaction.editReply(
-      `The redirect has been detected as valid, it will be added shortly. \nThe current destination is \`${redirectDestination}\``,
+      `The redirect has been detected as a scam, it will be added to monitoring.\nThe current destination is \`${redirectDestination}\``,
     );
 
     const client = await pool.connect();
@@ -113,15 +99,17 @@ export const addCommand: CommandDefinition = {
       const result = await client.query(query, [url]);
 
       if (result.rowCount != null && result.rowCount > 0) {
-        await interaction.editReply(`This url already exists in the database`);
+        await interaction.editReply(`This URL already exists in the database`);
         return;
       }
 
       const insertQuery =
-        "INSERT INTO redirects (source_url, regex_pattern, type) VALUES ($1, $2, $3)";
-      await client.query(insertQuery, [url, regex, redirectType]);
+        "INSERT INTO redirects (source_url, type) VALUES ($1, $2)";
+      await client.query(insertQuery, [url, redirectType]);
 
-      await interaction.editReply(`The url \`${url}\` was added \nThe current destination is \`${redirectDestination}\``);
+      await interaction.editReply(
+        `The URL \`${url}\` was added to monitoring.\nThe current destination is \`${redirectDestination}\`\nAI classification: ${isScam ? '⚠️ SCAM' : '✅ SAFE'}`
+      );
     } finally {
       if (client != null) {
         client.release();
@@ -133,14 +121,6 @@ export const addCommand: CommandDefinition = {
 function isValidUrl(url: string) {
   try {
     return Boolean(new URL(url));
-  } catch (e) {
-    return false;
-  }
-}
-
-function isValidRegex(regex: string) {
-  try {
-    return Boolean(new RegExp(regex));
   } catch (e) {
     return false;
   }

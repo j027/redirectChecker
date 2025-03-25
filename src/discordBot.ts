@@ -13,6 +13,7 @@ import {
 } from "./services/schedulerService.js";
 import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
+import { aiClassifierService } from "./services/aiClassifierService.js";
 
 export const discordClient = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
@@ -23,6 +24,7 @@ async function main() {
   const { token } = await readConfig();
   await browserReportService.init();
   await browserRedirectService.init();
+  await aiClassifierService.init();
 
   // Log in to Discord with your client's token
   console.log("Logging into discord");
@@ -67,6 +69,7 @@ async function gracefulShutdown() {
     stopBatchReportProcessor(),
     browserReportService.close(),
     browserRedirectService.close(),
+    aiClassifierService.close(),
     closePool(),
     discordClient.destroy()
   ]);

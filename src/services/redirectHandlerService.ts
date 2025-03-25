@@ -3,14 +3,18 @@ import { readConfig } from "../config.js";
 import { RedirectType } from "../redirectType.js";
 import { userAgentService } from "./userAgentService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
+import { aiClassifierService } from "./aiClassifierService.js";
 
 export async function handleRedirect(
   redirectUrl: string,
-  regex: RegExp,
   redirectType: RedirectType,
-): Promise<[string | null, boolean]> {
+): Promise<[string | null, boolean, Buffer | null, string | null]> {
   let location: string | null = null;
+  let isScam = false;
+  let screenshot: Buffer | null = null;
+  let html: string | null = null;
 
+  // Step 1: Get the destination URL based on redirect type
   switch (redirectType) {
     case RedirectType.HTTP:
       location = await httpRedirect(redirectUrl);
@@ -25,11 +29,31 @@ export async function handleRedirect(
       location = await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/");
       break;
     default:
-      console.warn(`Redirect type ${redirectType} is supported yet`);
-      throw new Error("Redirect type is supported");
+      console.warn(`Redirect type ${redirectType} is not supported yet`);
+      throw new Error("Redirect type not supported");
   }
 
-  return [location, location != null ? regex.test(location) : false];
+  // If we got a destination URL, classify it
+  if (location != null) {
+    const classificationResult = await aiClassifierService.classifyUrl(location);
+    
+    if (classificationResult) {
+      isScam = classificationResult.isScam;
+      screenshot = classificationResult.screenshot;
+      html = classificationResult.html;
+      
+      // Log classification result
+      console.log(`Classified ${location}: ${isScam ? 'SCAM' : 'SAFE'} (confidence: ${classificationResult.confidenceScore})`);
+      return [location, isScam, screenshot, html]
+    } else {
+      // AI classification failed
+      console.warn(`AI classification failed for ${location}, assuming it is not a scam`);
+      return [location, false, null, null];
+    }
+  }
+  else {
+    return [location, false, null, null]
+  }
 }
 
 async function httpRedirect(redirectUrl: string): Promise<string | null> {

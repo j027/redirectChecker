@@ -17,7 +17,6 @@ export const statusCommand: CommandDefinition = {
       const query = `
         SELECT r.id AS redirect_id,
                r.source_url,
-               r.regex_pattern,
                r.type,
                d.id AS destination_id,
                d.destination_url,
@@ -73,7 +72,7 @@ export const statusCommand: CommandDefinition = {
         const id = row.redirect_id;
         if (!redirects.has(id)) {
           const sourceUrl = formatUrl(row.source_url);
-          const header = `**Source URL:** [${sourceUrl.display}](${sourceUrl.full})\n**Regex Pattern:** \`${row.regex_pattern}\`\n**Type:** ${row.type}`;
+          const header = `**Source URL:** [${sourceUrl.display}](${sourceUrl.full})\n**Type:** ${row.type}`;
           redirects.set(id, { header, destinations: [] });
         }
         if (row.destination_url) {

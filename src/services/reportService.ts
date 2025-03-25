@@ -6,7 +6,7 @@ import { userAgentService } from "./userAgentService.js";
 import { enqueueReport } from "./batchReportService.js";
 import { browserReportService } from "./browserReportService.js";
 
-async function reportToGoogleSafeBrowsing(site: string) {
+async function reportToGoogleSafeBrowsing(site: string, screenshot: Buffer | null, html: string | null) {
   // fail hard if the user agent is not available - this ensures this is properly fixed
   const userAgent = await userAgentService.getUserAgent();
   if (userAgent == null) {
@@ -16,11 +16,10 @@ async function reportToGoogleSafeBrowsing(site: string) {
   // request format can be found here
   // https://github.com/chromium/suspicious-site-reporter/blob/444666114ec758df1c151514cfd9e2218141da42/extension/client_request.proto#L21
   const reportBody = [site, null];
-  const additionalDetails = await browserReportService.collectSafeBrowsingReportDetails(site);
-
-  // if we have the details, add them to the report
-  if (additionalDetails != null) {
-    reportBody.push(...additionalDetails);
+  
+  // If screenshot and HTML are provided, use them directly
+  if (screenshot && html) {
+    reportBody.push(screenshot.toString("base64"), html);
   }
 
   try {
@@ -269,12 +268,17 @@ async function reportToHybridAnalysis(site: string) {
   }
 }
 
-export async function reportSite(site: string, redirect: string) {
+export async function reportSite(
+  site: string, 
+  redirect: string, 
+  screenshot: Buffer | null, 
+  html: string | null
+) {
   // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
   // checkphish, hybrid analysis, and urlscan
   const reports = [];
   reports.push(reportToNetcraft(site));
-  reports.push(reportToGoogleSafeBrowsing(site));
+  reports.push(reportToGoogleSafeBrowsing(site, screenshot, html));
   reports.push(reportToVirusTotal(site));
   reports.push(reportToKaspersky(site));
   reports.push(reportToMetaDefender(site));

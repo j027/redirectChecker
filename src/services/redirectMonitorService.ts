@@ -9,7 +9,7 @@ export async function checkRedirects() {
   const client = await pool.connect();
   let redirects;
   try {
-    redirects = await client.query("SELECT * FROM redirects");
+    redirects = await client.query("SELECT id, source_url, type FROM redirects");
   } catch (e) {
     console.log(e);
     return;
@@ -21,10 +21,9 @@ export async function checkRedirects() {
 
   redirects.rows.forEach((row) => {
     const sourceUrl: string = row.source_url;
-    const regex = new RegExp(row.regex_pattern);
     const type = row.type as RedirectType;
     const redirectId = row.id as number;
-    redirectHandlers.push(processRedirectEntry(sourceUrl, regex, type, redirectId));
+    redirectHandlers.push(processRedirectEntry(sourceUrl, type, redirectId));
   });
 
   await Promise.allSettled(redirectHandlers);
@@ -32,13 +31,12 @@ export async function checkRedirects() {
 
 async function processRedirectEntry(
   sourceUrl: string,
-  regex: RegExp,
   redirectType: RedirectType,
   redirectId: number
 ): Promise<void> {
-  const [redirectDestination, isPopup] = await handleRedirect(
+
+  const [redirectDestination, isScam, screenshot, html] = await handleRedirect(
     sourceUrl,
-    regex,
     redirectType,
   );
 
@@ -62,22 +60,19 @@ async function processRedirectEntry(
         [redirectDestination]
       );
     } else {
-      // If not found, create a new entry with the redirect id, destination, and is_popup flag
+      // If not found, create a new entry with the redirect id, destination, and us_popup flag
       const insertResult = await client.query(
         "INSERT INTO redirect_destinations (redirect_id, destination_url, is_popup) VALUES ($1, $2, $3) RETURNING id",
-        [redirectId, redirectDestination, isPopup]
+        [redirectId, redirectDestination, isScam]
       );
 
       // Initialize security status for this new destination
       const destinationId = insertResult.rows[0].id;
-      await initTakedownStatusForDestination(destinationId, isPopup);
+      await initTakedownStatusForDestination(destinationId, isScam);
 
-      // if it is a popup, make sure to report it
-      if (isPopup) {
-        await reportSite(redirectDestination, sourceUrl);
-      }
-      else {
-        await browserReportService.collectNonPopupWebsiteScreenshot(redirectDestination);
+      // If it's a scam site, report it with the screenshot and HTML
+      if (isScam) {
+        await reportSite(redirectDestination, sourceUrl, screenshot, html);
       }
     }
   } catch (error) {

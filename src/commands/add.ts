@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { CommandDefinition } from "./commands.js";
 import { RedirectType } from "../redirectType.js";
 import { handleRedirect } from "../services/redirectHandlerService.js";
+import { aiClassifierService } from "../services/aiClassifierService.js";
 import pool from "../dbPool.js";
 
 export const addCommand: CommandDefinition = {
@@ -55,14 +56,10 @@ export const addCommand: CommandDefinition = {
     }
 
     let redirectDestination: string | null = null;
-    let isScam: boolean = false;
-    let screenshot: Buffer | null = null;
-    let html: string | null = null;
 
-    // Verify the redirect with AI classification
     try {
       await interaction.editReply("Attempting to validate redirect...");
-      [redirectDestination, isScam, screenshot, html] = await handleRedirect(
+      redirectDestination = await handleRedirect(
         url,
         redirectType,
       );
@@ -78,6 +75,24 @@ export const addCommand: CommandDefinition = {
       await interaction.editReply(
         "Redirect did not go anywhere, please provide a valid redirect or ensure the redirect type is correct.",
       );
+      return;
+    }
+
+    // attempt classification
+    let isScam = false;
+    try {
+      const classificationResult = await aiClassifierService.classifyUrl(redirectDestination);
+      if (classificationResult == null) {
+        throw new Error("Failed to get classification result");
+      }
+
+      isScam = classificationResult.isScam;
+    }
+    catch (error) {
+      await interaction.editReply(
+        "There was an error attempting to classify the redirect destination.",
+      );
+      console.log(error);
       return;
     }
 

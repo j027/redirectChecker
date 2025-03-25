@@ -3,7 +3,7 @@ import { handleRedirect } from "./redirectHandlerService.js";
 import { RedirectType } from "../redirectType.js";
 import { reportSite } from "./reportService.js";
 import { initTakedownStatusForDestination } from "./takedownMonitorService.js";
-import { browserReportService } from "./browserReportService.js";
+import { aiClassifierService } from "./aiClassifierService.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();
@@ -35,10 +35,7 @@ async function processRedirectEntry(
   redirectId: number
 ): Promise<void> {
 
-  const [redirectDestination, isScam, screenshot, html] = await handleRedirect(
-    sourceUrl,
-    redirectType,
-  );
+  const redirectDestination = await handleRedirect(sourceUrl, redirectType);
 
   // if we didn't redirect anywhere
   if (redirectDestination == null) {
@@ -60,19 +57,30 @@ async function processRedirectEntry(
         [redirectDestination]
       );
     } else {
-      // If not found, create a new entry with the redirect id, destination, and us_popup flag
+      // If not found, classify the redirect and handle appropriately
+      const classificationResult = await aiClassifierService.classifyUrl(redirectDestination);
+      if (classificationResult == null) {
+        console.log("Could not get a classification result - giving up");
+        return;
+      }
+
       const insertResult = await client.query(
         "INSERT INTO redirect_destinations (redirect_id, destination_url, is_popup) VALUES ($1, $2, $3) RETURNING id",
-        [redirectId, redirectDestination, isScam]
+        [redirectId, redirectDestination, classificationResult.isScam]
       );
 
       // Initialize security status for this new destination
       const destinationId = insertResult.rows[0].id;
-      await initTakedownStatusForDestination(destinationId, isScam);
+      await initTakedownStatusForDestination(destinationId, classificationResult.isScam);
 
       // If it's a scam site, report it with the screenshot and HTML
-      if (isScam) {
-        await reportSite(redirectDestination, sourceUrl, screenshot, html);
+      if (classificationResult.isScam) {
+        await reportSite(
+          redirectDestination,
+          sourceUrl,
+          classificationResult.screenshot,
+          classificationResult.html
+        );
       }
     }
   } catch (error) {

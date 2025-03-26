@@ -4,7 +4,7 @@ import {
   isSmartScreenFlagged,
   isNetcraftFlagged,
   isSafeBrowsingBatchFlagged,
-} from "../../src/services/takedownMonitorService";
+} from "../../src/services/takedownMonitorService.js";
 
 describe('Takedown Service Tests', () => {
   

@@ -28,7 +28,7 @@ export class AiClassifierService {
     try {
       // Launch our own browser instance
       this.browser = await chromium.launch({
-        headless: false,
+        headless: true,
         executablePath: "/snap/bin/chromium",
         chromiumSandbox: true,
       });

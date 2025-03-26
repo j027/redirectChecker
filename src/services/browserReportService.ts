@@ -17,7 +17,7 @@ export class BrowserReportService {
 
   async init() {
     this.browser = await chromium.launch({
-      headless: false,
+      headless: true,
       executablePath: "/snap/bin/chromium",
       chromiumSandbox: true,
     });

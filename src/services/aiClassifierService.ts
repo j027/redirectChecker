@@ -36,7 +36,6 @@ export class AiClassifierService {
       // Load the ONNX model
       const modelPath = path.join(process.cwd(), 'models', 'image_scam_detector.onnx');
       this.model = await onnx.InferenceSession.create(modelPath);
-      console.log('AI Classifier model loaded successfully');
     } catch (error) {
       console.error('Error initializing AI Classifier:', error);
       throw error;
@@ -210,16 +209,17 @@ export class AiClassifierService {
       
       await fs.mkdir(screenshotDir, { recursive: true });
       await fs.mkdir(htmlDir, { recursive: true });
-      
-      // Save to filesystem
-      await fs.writeFile(path.join(screenshotDir, `${uuid}.png`), screenshot);
-      await fs.writeFile(path.join(htmlDir, `${uuid}.html`), html);
-      
-      // Save to database
+
+      // Save to database first, so duplicates cann't get saved because
+      // this database query will throw an exception if there is a duplicate url
       await client.query(
         "INSERT INTO url_training_dataset (uuid, url, is_scam, confidence_score) VALUES ($1, $2, $3, $4)",
         [uuid, url, isScam, confidenceScore]
       );
+      
+      // Save to filesystem
+      await fs.writeFile(path.join(screenshotDir, `${uuid}.png`), screenshot);
+      await fs.writeFile(path.join(htmlDir, `${uuid}.html`), html);
       
       console.log(`Saved classification data for ${url} (${isScam ? 'scam' : 'non_scam'}, confidence: ${confidenceScore.toFixed(4)})`);
     } catch (error) {

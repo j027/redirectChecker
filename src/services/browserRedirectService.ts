@@ -47,7 +47,7 @@ export class BrowserRedirectService {
 
       // wait for the url to change
       await page.waitForURL("**");
-      
+
       // randomly move mouse a bit (some redirects check for this)
       // then wait to ensure the new page loads
       await simulateRandomMouseMovements(page);

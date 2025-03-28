@@ -1,12 +1,6 @@
 import { chromium, Browser } from "patchright";
 import { readConfig } from "../config.js";
-import {
-  blockGoogleAnalytics,
-  spoofWindowsChrome,
-  parseProxy,
-} from "../utils/playwrightUtilities.js";
-import { promises as fs } from "fs";
-import pool from "../dbPool.js";
+import { spoofWindowsChrome } from "../utils/playwrightUtilities.js";
 
 export class BrowserReportService {
   private browser: Browser | null;
@@ -76,11 +70,10 @@ export class BrowserReportService {
   }
 
   async close() {
-    if (this.browser == null) {
-      return;
+    if (this.browser) {
+      await this.browser.close();
+      this.browser == null;
     }
-
-    await this.browser.close();
   }
 }
 

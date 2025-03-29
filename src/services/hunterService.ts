@@ -139,7 +139,6 @@ export class HunterService {
         );
         
         console.log(`Skipping already known scam ad: ${adDestination}`);
-        client.release();
         return;
       }
     } finally {

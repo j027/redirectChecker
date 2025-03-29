@@ -12,6 +12,11 @@ const INPUT_WIDTH = 1280;
 const INPUT_HEIGHT = 1280;
 const CONFIDENCE_THRESHOLD = 0.7;
 
+const MODEL_VERSIONS = {
+  IMAGE: 'v0.0.1',
+  HTML: 'v0.0.1'
+};
+
 interface ClassificationResult {
   isScam: boolean;
   confidenceScore: number;
@@ -213,8 +218,8 @@ export class AiClassifierService {
       // Save to database first, so duplicates cann't get saved because
       // this database query will throw an exception if there is a duplicate url
       await client.query(
-        "INSERT INTO url_training_dataset (uuid, url, is_scam, confidence_score) VALUES ($1, $2, $3, $4)",
-        [uuid, url, isScam, confidenceScore]
+        "INSERT INTO url_training_dataset (uuid, url, is_scam, confidence_score, model_type, model_version) VALUES ($1, $2, $3, $4, $5, $6)",
+        [uuid, url, isScam, confidenceScore, "IMAGE", MODEL_VERSIONS.IMAGE]
       );
       
       // Save to filesystem

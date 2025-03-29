@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS url_training_dataset (
     url TEXT UNIQUE NOT NULL,
     is_scam BOOLEAN,
     confidence_score FLOAT,
-    created_at TIMESTAMP DEFAULT NOW()
+    model_type VARCHAR(50), -- 'IMAGE', 'HTML', etc.
+    model_version VARCHAR(50), -- Version string
+    created_at TIMESTAMP DEFAULT NOW(),
 );
 
 -- Main ads table - generic for all ad types

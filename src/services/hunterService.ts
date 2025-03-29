@@ -85,7 +85,7 @@ export class HunterService {
           continue;
         }
 
-        adProcessRequests.push(this.handleSearchAd(adLink, adText));
+        adProcessRequests.push(this.handleSearchAd(adLink, adText, searchUrl));
       }
 
       await Promise.allSettled(adProcessRequests);
@@ -100,7 +100,7 @@ export class HunterService {
     }
   }
 
-  private async handleSearchAd(adLink: string, adText: string) {
+  private async handleSearchAd(adLink: string, adText: string, searchUrl: string) {
     // grab where the ad is going to, without opening the ad
     // this is because we want to avoid damaging ip quality
     let adDestination = new URL(adLink).searchParams.get("adurl");

@@ -57,3 +57,42 @@ CREATE TABLE IF NOT EXISTS url_training_dataset (
     confidence_score FLOAT,
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Main ads table - generic for all ad types
+CREATE TABLE IF NOT EXISTS ads (
+    id UUID PRIMARY KEY,
+    ad_type VARCHAR(50) NOT NULL,
+    initial_url TEXT NOT NULL,     -- Original ad URL
+    final_url TEXT NOT NULL,       -- Where it ultimately leads
+    redirect_path TEXT[] NOT NULL, -- PostgreSQL array of URLs in redirect chain
+    is_scam BOOLEAN NOT NULL,
+    confidence_score FLOAT,        -- Optional confidence in classification
+    first_seen TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CHECK (ad_type IN ('search', 'typosquat', 'pornsite', 'pornhub'))
+);
+
+-- Search ad specific attributes
+CREATE TABLE IF NOT EXISTS search_ads (
+    ad_id UUID PRIMARY KEY REFERENCES ads(id) ON DELETE CASCADE,
+    ad_url TEXT NOT NULL,          -- The actual clickable URL in the ad
+    ad_text TEXT,                  -- The displayed ad text
+    search_url TEXT                -- Optional: the URL used to find this ad
+);
+
+-- History table to track status changes
+CREATE TABLE IF NOT EXISTS ad_status_history (
+    id SERIAL PRIMARY KEY,
+    ad_id UUID REFERENCES ads(id) ON DELETE CASCADE,
+    previous_status BOOLEAN,
+    new_status BOOLEAN,
+    change_date TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    reason TEXT                   -- Reason for status change
+);
+
+-- Indexes
+CREATE INDEX idx_ads_type ON ads(ad_type);
+CREATE INDEX idx_ads_scam ON ads(is_scam);
+CREATE INDEX idx_ads_last_seen ON ads(last_seen);
+CREATE INDEX idx_search_ads_search_url ON search_ads(search_url);

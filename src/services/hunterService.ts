@@ -1,8 +1,9 @@
-import { chromium, Browser } from "patchright";
+import { chromium, Browser, Page, Frame } from "patchright";
 import {
   blockGoogleAnalytics,
   parseProxy,
   spoofWindowsChrome,
+  simulateRandomMouseMovements
 } from "../utils/playwrightUtilities.js";
 import crypto from "crypto";
 
@@ -26,7 +27,7 @@ export class HunterService {
   async huntSearchAds() {
     if (this.browser == null) {
       console.error(
-        "Browser has not been initialized - redirect handling failed"
+        "Browser has not been initialized - search ad hunter failed"
       );
       return null;
     }
@@ -38,6 +39,7 @@ export class HunterService {
 
     // not spoofing chrome on windows because that breaks ad load
     const page = await context.newPage();
+    blockGoogleAnalytics(page);
     const searchUrl = this.generateSearchUrl();
 
     try {
@@ -69,7 +71,7 @@ export class HunterService {
 
       console.log(`Found ${adContainers.length} search ads`);
 
-      const adProcessRequests = [];
+      const adProcessRequests: Promise<void>[] = [];
 
       for (const adContainer of adContainers) {
         const adLink = await adContainer
@@ -77,8 +79,16 @@ export class HunterService {
           .first()
           .getAttribute("href");
         const adText = await adContainer.innerText();
-        console.log(`${adText} - ${adLink}`);
+
+        if (adLink == null) {
+          console.log("Failed to get search ad link, trying the next ad");
+          continue;
+        }
+
+        adProcessRequests.push(this.handleSearchAd(adLink, adText));
       }
+
+      await Promise.allSettled(adProcessRequests);
 
       return true;
     } catch (error) {
@@ -88,6 +98,93 @@ export class HunterService {
       await page.close();
       await context.close();
     }
+  }
+
+  private async handleSearchAd(adLink: string, adText: string) {
+    // grab where the ad is going to, without opening the ad
+    // this is because we want to avoid damaging ip quality
+    let adDestination = new URL(adLink).searchParams.get("adurl");
+    if (adDestination == null) {
+      console.log("Failed to extract destination from search ad url");
+      return;
+    }
+
+    adDestination = decodeURIComponent(adDestination);
+    adDestination = this.canonicalizeSearchAdUrl(adDestination);
+
+    if (this.browser == null) {
+      console.error(
+        "Browser has not been initialized - search ad hunter failed"
+      );
+      return;
+    }
+
+    const context = await this.browser.newContext({
+      proxy: await parseProxy(true),
+      viewport: null,
+    });
+
+    const page = await context.newPage();
+    spoofWindowsChrome(context, page);
+    blockGoogleAnalytics(page);
+
+    // will be used later to classify if it is a scam
+    // and for storage in the database
+    let screenshot : Buffer | null = null;
+    let html : string | null = null;
+    let redirectionPath : string[] | null = null;
+
+    try {
+      const redirectTracker = this.trackRedirectionPath(page);
+      await page.goto(adDestination, {
+        referer: "https://syndicatedsearch.goog/",
+      });
+
+      // randomly move mouse a bit (some redirects check for this)
+      // then wait to ensure the new page loads
+      await simulateRandomMouseMovements(page);
+      await page.waitForTimeout(5000);
+
+      // finally click, to ensure popup is fully activated
+      await page.mouse.click(0, 0);
+
+      screenshot = await page.screenshot();
+      html = await page.content();
+      redirectionPath = redirectTracker.getPath();
+
+    } catch (error) {
+      console.log(
+        `There was an error when processing search ad destination ${error}`
+      );
+      return;
+    } finally {
+      page.close();
+      context.close();
+    }
+
+    // TODO: classify popup with AI model, save info to database, and send discord message
+  }
+
+  private canonicalizeSearchAdUrl(adUrlRaw: string): string {
+    // strip out parameters that are in the decoded url
+    // that aren't actually there if you followed the redirect
+    const url = new URL(adUrlRaw);
+    const stripParams = [
+      "q",
+      "nb",
+      "nm",
+      "nx",
+      "ny",
+      "is",
+      "_agid",
+      "gad_source",
+      "rid",
+      "gclid",
+    ];
+
+    stripParams.forEach((param) => url.searchParams.delete(param));
+
+    return url.toString();
   }
 
   private generateSearchUrl() {
@@ -114,14 +211,31 @@ export class HunterService {
 
     const randomSearchWebsite =
       searchWebsites[crypto.randomInt(searchWebsites.length)];
-    const randomSearchTerm =
-      searchTerms[crypto.randomInt(searchWebsites.length)];
+    const randomSearchTerm = searchTerms[crypto.randomInt(searchTerms.length)];
 
     // Encode the search term to make it URL-safe
     const encodedSearchTerm = encodeURIComponent(randomSearchTerm);
 
     // Combine the search website and encoded search term
     return `${randomSearchWebsite}${encodedSearchTerm}`;
+  }
+
+  private trackRedirectionPath(page: Page) {
+    const redirectionPath: Set<string> = new Set();
+
+    const navigationListener = async (frame: Frame) => {
+      if (frame === page.mainFrame()) {
+        redirectionPath.add(frame.url());
+      }
+    };
+
+    page.on("framenavigated", navigationListener);
+
+    return {
+      getPath: () => {
+        return Array.from(redirectionPath);
+      }
+    };
   }
 
   async close() {

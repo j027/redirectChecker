@@ -1,5 +1,6 @@
 import { Page, Browser, BrowserContext } from "patchright";
 import { readConfig } from "../config.js";
+import crypto from 'crypto';
 
 export async function blockGoogleAnalytics(page: Page) {
   await page.route("https://www.google-analytics.com/g/collect*", (route) => {
@@ -239,16 +240,32 @@ export async function spoofWindowsChrome(context: BrowserContext, page: Page): P
 
 export async function simulateRandomMouseMovements(
   page: Page,
+  options = { maxX: 500, maxY: 500, minDrags: 3, maxDrags: 7 }
 ): Promise<void> {
-  // move the mouse in a 100x100 square 10 times
-  // https://playwright.dev/docs/api/class-mouse
-  for (let i = 0; i < 10; i++) {
-    await page.mouse.move(0, 0);
+  // Determine number of random drag operations
+  const dragCount = crypto.randomInt(options.minDrags, options.maxDrags + 1);
+  
+  for (let i = 0; i < dragCount; i++) {
+    const startX = crypto.randomInt(options.maxX + 1);
+    const startY = crypto.randomInt(options.maxY + 1);
+    await page.mouse.move(startX, startY);
+    
+    // Press mouse down to start dragging
     await page.mouse.down();
-    await page.mouse.move(0, 100);
-    await page.mouse.move(100, 100);
-    await page.mouse.move(100, 0);
-    await page.mouse.move(0, 0);
+    
+    // Make 3-6 random movements while dragging
+    const moveCount = crypto.randomInt(3, 7);
+    
+    for (let j = 0; j < moveCount; j++) {
+      const nextX = crypto.randomInt(options.maxX + 1);
+      const nextY = crypto.randomInt(options.maxY + 1);
+      
+      await page.waitForTimeout(crypto.randomInt(50, 151));
+      await page.mouse.move(nextX, nextY);
+    }
+    
+    // Release mouse button to end drag
     await page.mouse.up();
+    await page.waitForTimeout(crypto.randomInt(200, 501));
   }
 }

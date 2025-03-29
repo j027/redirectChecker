@@ -268,6 +268,50 @@ async function reportToHybridAnalysis(site: string) {
   }
 }
 
+interface CloudflareUrlScannerResponse {
+  uuid: string;
+  api: string;
+  visibility: string;
+  url: string;
+  message: string;
+}
+
+async function reportToCloudflareUrlScanner(site: string) {
+  const { cloudflareUrlScannerApiKey, cloudflareAccountId } =
+    await readConfig();
+
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${cloudflareAccountId}/urlscanner/v2/scan`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${cloudflareUrlScannerApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: site,
+        }),
+      }
+    );
+    
+    if (response.ok) {
+      const data = await response.json() as CloudflareUrlScannerResponse;
+      console.info(`Reported to Cloudflare URL Scanner: ${site} (uuid: ${data.uuid}, message: ${data.message})`);
+    } else {
+      let errorText = '';
+      try {
+        errorText = ` - ${await response.text()}`;
+      } catch (e) {
+        // Ignore text extraction errors
+      }
+      console.error(`Cloudflare URL Scanner report failed for ${site}: ${response.status}${errorText}`);
+    }
+  } catch (err) {
+    console.error(`Error reporting to Cloudflare URL Scanner: ${err}`);
+  }
+}
+
 export async function reportSite(
   site: string, 
   redirect: string, 
@@ -275,7 +319,7 @@ export async function reportSite(
   html: string | null
 ) {
   // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
-  // checkphish, hybrid analysis, and urlscan
+  // checkphish, hybrid analysis, urlscan, and cloudflare url scanner
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site, screenshot, html));
@@ -286,6 +330,7 @@ export async function reportSite(
   reports.push(reportToCheckPhish(site));
   reports.push(reportToHybridAnalysis(site));
   reports.push(reportToUrlscan(site));
+  reports.push(reportToCloudflareUrlScanner(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));

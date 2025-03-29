@@ -18,6 +18,8 @@ type Config = {
     checkPhishApiKey: string;
     hybridAnalysisApiKey: string;
     googleSafeBrowsingApiKey: string;
+    cloudflareUrlScannerApiKey: string;
+    cloudflareAccountId: string;
 };
 
 export async function readConfig(): Promise<Config> {

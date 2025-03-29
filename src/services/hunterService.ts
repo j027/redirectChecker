@@ -259,7 +259,8 @@ export class HunterService {
             
             console.log(`Ad status changed from ${existingAd.is_scam} to ${isScam}`);
             if (isScam) {
-              await this.sendAdScamAlert(adDestination, finalUrl, adText, false, confidenceScore);
+              // TODO: fix ai model to tell apart non-scams better so I can re-enable and verify
+              //await this.sendAdScamAlert(adDestination, finalUrl, adText, false, confidenceScore);
               
               // Uncomment to add to redirect checker automatically  
               // const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
@@ -288,7 +289,8 @@ export class HunterService {
           
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
           if (isScam) {
-            await this.sendAdScamAlert(adDestination, finalUrl, adText, true, confidenceScore);
+            // TODO: fix ai model to tell apart non-scams better so I can re-enable and verify
+            // await this.sendAdScamAlert(adDestination, finalUrl, adText, true, confidenceScore);
             
             // Uncomment to add to redirect checker automatically
             // const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);

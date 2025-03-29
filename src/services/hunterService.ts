@@ -231,7 +231,7 @@ export class HunterService {
                last_seen = CURRENT_TIMESTAMP,
                last_updated = CURRENT_TIMESTAMP,
                final_url = $1,
-               redirect_path = $2,
+               redirect_path = $2::text[],
                confidence_score = $3
              WHERE id = $4`,
             [finalUrl, redirectionPath, confidenceScore, existingAd.id]
@@ -275,7 +275,7 @@ export class HunterService {
           await client.query(
             `INSERT INTO ads
              (id, ad_type, initial_url, final_url, redirect_path, is_scam, confidence_score)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             VALUES ($1, $2, $3, $4, $5::text[], $6, $7)`,
             [adId, 'search', adDestination, finalUrl, redirectionPath, isScam, confidenceScore]
           );
           

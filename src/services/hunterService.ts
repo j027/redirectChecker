@@ -63,6 +63,9 @@ export class HunterService {
         { timeout: 30000 }
       );
 
+      // HACK: ensure the page has a few seconds to load
+      await page.waitForTimeout(5000);
+
       // ads are in iframes, so need to grab all of them to be able to see the ads inside
       const adFrames = page
         .frames()

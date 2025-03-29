@@ -494,3 +494,5 @@ export class HunterService {
     }
   }
 }
+
+export const hunterService = new HunterService();

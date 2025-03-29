@@ -10,6 +10,8 @@ import {
   stopBatchReportProcessor,
   startTakedownMonitor,
   stopTakedownMonitor,
+  startAdHunter,
+  stopAdHunter,
 } from "./services/schedulerService.js";
 import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
@@ -19,19 +21,36 @@ export const discordClient = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 });
 
-async function main() {
-  console.log("Starting browsers");
-  const { token } = await readConfig();
+async function initializeServices() {
+  await aiClassifierService.init();
   await browserReportService.init();
   await browserRedirectService.init();
-  await aiClassifierService.init();
+  
+  startRedirectChecker();
+  startBatchReportProcessor();
+  startTakedownMonitor();
+  startAdHunter();
+}
+
+async function shutdownServices() {
+  await stopBatchReportProcessor();
+  await stopAdHunter();
+  stopRedirectChecker();
+  stopTakedownMonitor();
+  await aiClassifierService.close();
+  await browserReportService.close();
+  await browserRedirectService.close();
+  await closePool();
+}
+
+async function main() {
+  console.log("Starting up...");
+  const { token } = await readConfig();
+  await initializeServices();
 
   // Log in to Discord with your client's token
   console.log("Logging into discord");
   await discordClient.login(token);
-  startTakedownMonitor();
-  startRedirectChecker();
-  startBatchReportProcessor();
 
   console.log("Logged in and ready to go");
 
@@ -63,16 +82,8 @@ async function main() {
 
 async function gracefulShutdown() {
   console.log("Shutting down gracefully...");
-  stopRedirectChecker();
-  stopTakedownMonitor();
-  await Promise.allSettled([
-    stopBatchReportProcessor(),
-    browserReportService.close(),
-    browserRedirectService.close(),
-    aiClassifierService.close(),
-    closePool(),
-    discordClient.destroy()
-  ]);
+  await shutdownServices();
+  await discordClient.destroy();
   process.exit(0);
 }
 

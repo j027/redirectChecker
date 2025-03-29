@@ -1,14 +1,18 @@
 import { checkRedirects } from './redirectMonitorService.js';
 import { flushQueues } from './batchReportService.js';
 import { monitorTakedownStatus } from './takedownMonitorService.js';
+import { hunterService } from './hunterService.js';
 
 let checkInterval: NodeJS.Timeout | null = null;
 let batchInterval: NodeJS.Timeout | null = null;
 let takedownInterval: NodeJS.Timeout | null = null;
+let adHunterInterval: NodeJS.Timeout | null = null;
+
 let isRunning = {
   redirectChecker: false,
   batchProcessor: false,
-  takedownMonitor: false
+  takedownMonitor: false,
+  adHunter: false
 };
 
 export function startRedirectChecker() {
@@ -100,4 +104,55 @@ export function stopTakedownMonitor(): void {
     clearTimeout(takedownInterval);
     takedownInterval = null;
   }
+}
+
+
+export function startAdHunter(): void {
+  if (isRunning.adHunter) return;
+  isRunning.adHunter = true;
+  console.log("Starting ad hunter service");
+  
+  async function runAdHunter() {
+    if (!isRunning.adHunter) return;
+    
+    try {
+      console.log("Starting search ad hunting cycle...");
+      
+      // Run all hunt operations in parallel
+      const huntPromises = [
+        hunterService.huntSearchAds().catch(error => {
+          console.error("Error during search ad hunting:", error);
+          return null;
+        })
+        // Future hunt types can be added here
+      ];
+      
+      // Wait for all hunt operations to complete
+      await Promise.allSettled(huntPromises);
+      
+      console.log("Completed ad hunting cycle");
+    } catch (error) {
+      console.error("Unexpected error in ad hunter:", error);
+    }
+    
+    // Schedule next run only after this one completes
+    if (isRunning.adHunter) {
+      adHunterInterval = setTimeout(runAdHunter, 60 * 1000);
+    }
+  }
+  
+  // Start the first hunt immediately
+  runAdHunter();
+}
+
+export function stopAdHunter(): Promise<void> {
+  return new Promise(resolve => {
+    isRunning.adHunter = false;
+    if (adHunterInterval) {
+      clearTimeout(adHunterInterval);
+      adHunterInterval = null;
+    }
+    console.log("Ad hunter service stopped");
+    resolve();
+  });
 }

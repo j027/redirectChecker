@@ -16,6 +16,7 @@ import {
 import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
 import { aiClassifierService } from "./services/aiClassifierService.js";
+import { hunterService } from "./services/hunterService.js";
 
 export const discordClient = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
@@ -25,6 +26,7 @@ async function initializeServices() {
   await aiClassifierService.init();
   await browserReportService.init();
   await browserRedirectService.init();
+  await hunterService.init();
   
   startRedirectChecker();
   startBatchReportProcessor();

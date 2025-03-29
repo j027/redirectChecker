@@ -259,7 +259,7 @@ export class HunterService {
             
             console.log(`Ad status changed from ${existingAd.is_scam} to ${isScam}`);
             if (isScam) {
-              await this.sendAdScamAlert(adDestination, finalUrl, adText, false);
+              await this.sendAdScamAlert(adDestination, finalUrl, adText, false, confidenceScore);
               
               // Uncomment to add to redirect checker automatically  
               // const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
@@ -288,7 +288,7 @@ export class HunterService {
           
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
           if (isScam) {
-            await this.sendAdScamAlert(adDestination, finalUrl, adText, true);
+            await this.sendAdScamAlert(adDestination, finalUrl, adText, true, confidenceScore);
             
             // Uncomment to add to redirect checker automatically
             // const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
@@ -313,15 +313,24 @@ export class HunterService {
     }
   }
 
-  private async sendAdScamAlert(adDestination: string, finalUrl: string, adText: string, isNew: boolean = true) {
+  private async sendAdScamAlert(
+    adDestination: string, 
+    finalUrl: string, 
+    adText: string, 
+    isNew: boolean = true,
+    confidenceScore: number
+  ) {
     try {
       const { channelId } = await readConfig();
       const channel = discordClient.channels.cache.get(channelId) as TextChannel;
       
       if (channel) {
+        // Format confidence as percentage with 2 decimal places
+        const confidencePercent = (confidenceScore * 100).toFixed(2);
+        
         const messageText = isNew
-          ? `🚨 NEW SCAM AD DETECTED 🚨\nText: ${adText.substring(0, 100)}${adText.length > 100 ? '...' : ''}\nInitial URL: ${adDestination}\nFinal URL: ${finalUrl}`
-          : `⚠️ EXISTING AD NOW MARKED AS SCAM ⚠️\nText: ${adText.substring(0, 100)}${adText.length > 100 ? '...' : ''}\nInitial URL: ${adDestination}\nFinal URL: ${finalUrl}`;
+          ? `🚨 NEW SCAM AD DETECTED 🚨 (Confidence: ${confidencePercent}%)\nText: ${adText.substring(0, 100)}${adText.length > 100 ? '...' : ''}\nInitial URL: ${adDestination}\nFinal URL: ${finalUrl}`
+          : `⚠️ EXISTING AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)\nText: ${adText.substring(0, 100)}${adText.length > 100 ? '...' : ''}\nInitial URL: ${adDestination}\nFinal URL: ${finalUrl}`;
         
         await channel.send(messageText);
         console.log('Discord alert sent');

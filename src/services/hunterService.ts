@@ -5,7 +5,12 @@ import {
   spoofWindowsChrome,
   simulateRandomMouseMovements
 } from "../utils/playwrightUtilities.js";
+import { aiClassifierService } from "./aiClassifierService.js";
 import crypto from "crypto";
+import pool from "../dbPool.js";
+import { discordClient } from "../discordBot.js";
+import { TextChannel } from "discord.js";
+import { readConfig } from "../config.js";
 
 export class HunterService {
   private browser: Browser | null = null;
@@ -112,6 +117,33 @@ export class HunterService {
     adDestination = decodeURIComponent(adDestination);
     adDestination = this.canonicalizeSearchAdUrl(adDestination);
 
+    const client = await pool.connect();
+    try {
+      // Check if this URL is already known to be a scam
+      const existingAdQuery = await client.query(
+        `SELECT id, is_scam FROM ads 
+         WHERE initial_url = $1 AND ad_type = 'search'`,
+        [adDestination]
+      );
+      
+      const existingAd = existingAdQuery.rows[0];
+      
+      // If ad exists and is already marked as a scam, just update last_seen and return
+      if (existingAd && existingAd.is_scam) {
+        await client.query(
+          `UPDATE ads SET last_seen = CURRENT_TIMESTAMP 
+           WHERE id = $1`,
+          [existingAd.id]
+        );
+        
+        console.log(`Skipping already known scam ad: ${adDestination}`);
+        client.release();
+        return;
+      }
+    } finally {
+      client.release();
+    }
+
     if (this.browser == null) {
       console.error(
         "Browser has not been initialized - search ad hunter failed"
@@ -162,7 +194,130 @@ export class HunterService {
       context.close();
     }
 
-    // TODO: classify popup with AI model, save info to database, and send discord message
+    const classifierResult = await aiClassifierService.runInference(screenshot);
+
+    try {
+      // First save to training dataset
+      await aiClassifierService.saveData(
+        adDestination, screenshot, html, classifierResult.isScam, 
+        classifierResult.confidenceScore
+      );
+      
+      // Now handle our ads tracking database
+      const { isScam, confidenceScore } = classifierResult;
+      const finalUrl = redirectionPath[redirectionPath.length - 1] || adDestination;
+      
+      // Get a client from the pool for transaction support
+      const client = await pool.connect();
+      
+      try {
+        // Start transaction
+        await client.query('BEGIN');
+        
+        // Check if ad exists
+        const existingAdQuery = await client.query(
+          `SELECT id, is_scam FROM ads 
+           WHERE initial_url = $1 AND ad_type = 'search'`,
+          [adDestination]
+        );
+        
+        const existingAd = existingAdQuery.rows[0];
+        
+        if (existingAd) {
+          // Update existing ad
+          await client.query(
+            `UPDATE ads SET 
+               last_seen = CURRENT_TIMESTAMP,
+               last_updated = CURRENT_TIMESTAMP,
+               final_url = $1,
+               redirect_path = $2,
+               confidence_score = $3
+             WHERE id = $4`,
+            [finalUrl, redirectionPath, confidenceScore, existingAd.id]
+          );
+          
+          // Check if status changed
+          if (existingAd.is_scam !== isScam) {
+            await client.query(
+              `UPDATE ads SET is_scam = $1 WHERE id = $2`,
+              [isScam, existingAd.id]
+            );
+            
+            // Add history record
+            const reason = isScam 
+              ? `Changed to scam with confidence ${confidenceScore}` 
+              : `No longer classified as scam`;
+              
+            await client.query(
+              `INSERT INTO ad_status_history 
+               (ad_id, previous_status, new_status, reason)
+               VALUES ($1, $2, $3, $4)`,
+              [existingAd.id, existingAd.is_scam, isScam, reason]
+            );
+            
+            console.log(`Ad status changed from ${existingAd.is_scam} to ${isScam}`);
+            await this.sendAdScamAlert(adDestination, finalUrl, adText, false);
+          }
+          
+          console.log(`Updated existing ad: ${existingAd.id}`);
+        } else {
+          // Insert new ad
+          const adId = crypto.randomUUID();
+          
+          await client.query(
+            `INSERT INTO ads
+             (id, ad_type, initial_url, final_url, redirect_path, is_scam, confidence_score)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [adId, 'search', adDestination, finalUrl, redirectionPath, isScam, confidenceScore]
+          );
+          
+          await client.query(
+            `INSERT INTO search_ads
+             (ad_id, ad_url, ad_text, search_url)
+             VALUES ($1, $2, $3, $4)`,
+            [adId, adLink, adText, searchUrl]
+          );
+          
+          console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
+          await this.sendAdScamAlert(adDestination, finalUrl, adText, true);
+        }
+        
+        // Commit transaction
+        await client.query('COMMIT');
+        
+      } catch (error) {
+        // Rollback on error
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        // Always release the client back to the pool
+        client.release();
+      }
+      
+    } catch (dbError) {
+      console.error(`Database error while processing ad: ${dbError}`);
+    }
+  }
+
+  private async sendAdScamAlert(adDestination: string, finalUrl: string, adText: string, isNew: boolean = true) {
+    try {
+      const { channelId } = await readConfig();
+      const channel = discordClient.channels.cache.get(channelId) as TextChannel;
+      
+      if (channel) {
+        const messageText = isNew
+          ? `🚨 NEW SCAM AD DETECTED 🚨\nText: ${adText.substring(0, 100)}${adText.length > 100 ? '...' : ''}\nInitial URL: ${adDestination}\nFinal URL: ${finalUrl}`
+          : `⚠️ EXISTING AD NOW MARKED AS SCAM ⚠️\nText: ${adText.substring(0, 100)}${adText.length > 100 ? '...' : ''}\nInitial URL: ${adDestination}\nFinal URL: ${finalUrl}`;
+        
+        await channel.send(messageText);
+        console.log('Discord alert sent');
+      } else {
+        console.error("Ad hunter Discord channel not found");
+      }
+    } catch (error) {
+      console.error(`Error sending Discord notification: ${error}`);
+      // Don't throw - this is non-critical functionality
+    }
   }
 
   private canonicalizeSearchAdUrl(adUrlRaw: string): string {

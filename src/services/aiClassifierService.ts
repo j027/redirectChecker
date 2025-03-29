@@ -108,7 +108,7 @@ export class AiClassifierService {
     }
   }
   
-  private async runInference(imageBuffer: Buffer): Promise<{isScam: boolean; confidenceScore: number}> {
+  public async runInference(imageBuffer: Buffer): Promise<{isScam: boolean; confidenceScore: number}> {
     try {
       // Log start of inference
       console.log('Starting inference for image');
@@ -192,7 +192,7 @@ export class AiClassifierService {
     }
   }
   
-  private async saveData(
+  public async saveData(
     url: string, 
     screenshot: Buffer, 
     html: string, 

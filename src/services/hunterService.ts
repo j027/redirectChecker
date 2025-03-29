@@ -11,6 +11,8 @@ import pool from "../dbPool.js";
 import { discordClient } from "../discordBot.js";
 import { TextChannel } from "discord.js";
 import { readConfig } from "../config.js";
+import { handleRedirect } from "../services/redirectHandlerService.js";
+import { RedirectType } from "../redirectType.js";
 
 export class HunterService {
   private browser: Browser | null = null;
@@ -256,7 +258,13 @@ export class HunterService {
             );
             
             console.log(`Ad status changed from ${existingAd.is_scam} to ${isScam}`);
-            await this.sendAdScamAlert(adDestination, finalUrl, adText, false);
+            if (isScam) {
+              await this.sendAdScamAlert(adDestination, finalUrl, adText, false);
+              
+              // Uncomment to add to redirect checker automatically  
+              // const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
+              // console.log(`Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? 'Success' : 'Failed'}`);
+            }
           }
           
           console.log(`Updated existing ad: ${existingAd.id}`);
@@ -279,7 +287,13 @@ export class HunterService {
           );
           
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
-          await this.sendAdScamAlert(adDestination, finalUrl, adText, true);
+          if (isScam) {
+            await this.sendAdScamAlert(adDestination, finalUrl, adText, true);
+            
+            // Uncomment to add to redirect checker automatically
+            // const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
+            // console.log(`Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? 'Success' : 'Failed'}`);
+          }
         }
         
         // Commit transaction
@@ -391,6 +405,86 @@ export class HunterService {
         return Array.from(redirectionPath);
       }
     };
+  }
+
+  /**
+   * Attempts to automatically add a scam URL to the redirect checker
+   * by trying different redirect strategies in sequence
+   * 
+   * @param url The URL to add to the redirect checker
+   * @returns True if successfully added, false if all strategies failed
+   */
+  private async tryAddToRedirectChecker(url: string): Promise<boolean> {
+    console.log(`Attempting to add ${url} to redirect checker automatically`);
+    
+    // Check if URL already exists in the database
+    const checkClient = await pool.connect();
+    try {
+      const query = "SELECT 1 FROM redirects WHERE source_url = $1 LIMIT 1";
+      const result = await checkClient.query(query, [url]);
+      
+      if (result.rowCount && result.rowCount > 0) {
+        console.log(`URL ${url} already exists in redirect checker`);
+        return true; // Already being monitored, consider this a success
+      }
+    } finally {
+      checkClient.release();
+    }
+    
+    // Try each redirect type in priority order
+    const redirectTypesToTry = [
+      RedirectType.HTTP,
+      RedirectType.WeeblyDigitalOceanJs,
+      RedirectType.BrowserRedirect,
+      RedirectType.BrowserRedirectPornhub
+    ];
+    
+    for (const redirectType of redirectTypesToTry) {
+      try {
+        console.log(`Trying ${redirectType} for ${url}`);
+        const redirectDestination = await handleRedirect(url, redirectType);
+        
+        if (redirectDestination) {
+          console.log(`Got destination ${redirectDestination}, classifying...`);
+          
+          // Classify the destination URL
+          try {
+            const classificationResult = await aiClassifierService.classifyUrl(redirectDestination);
+            if (classificationResult == null) {
+              console.log("Failed to get classification result");
+              continue; // Try next redirect type
+            }
+            
+            const isScam = classificationResult.isScam;
+            
+            if (!isScam) {
+              console.log(`Destination ${redirectDestination} not classified as scam, trying next redirect type`);
+              continue; // Try next redirect type
+            }
+            
+            // Found a working redirect that leads to a scam, add to database
+            const client = await pool.connect();
+            try {
+              const insertQuery = "INSERT INTO redirects (source_url, type) VALUES ($1, $2)";
+              await client.query(insertQuery, [url, redirectType]);
+              console.log(`Successfully added ${url} to redirect checker as ${redirectType}`);
+              return true;
+            } finally {
+              client.release();
+            }
+          } catch (classificationError) {
+            console.log(`Classification failed: ${classificationError}`);
+            continue; // Try next redirect type
+          }
+        }
+      } catch (error) {
+        console.log(`Failed with ${redirectType}: ${error}`);
+        // Continue to next type
+      }
+    }
+    
+    console.log(`All redirect strategies failed or destinations were not classified as scams for ${url}`);
+    return false;
   }
 
   async close() {

@@ -194,8 +194,8 @@ export class HunterService {
       );
       return;
     } finally {
-      page.close();
-      context.close();
+      await page.close();
+      await context.close();
     }
 
     const classifierResult = await aiClassifierService.runInference(screenshot);

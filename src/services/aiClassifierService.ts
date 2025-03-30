@@ -204,10 +204,24 @@ export class AiClassifierService {
     isScam: boolean, 
     confidenceScore: number
   ): Promise<void> {
-    const uuid = crypto.randomUUID();
     const client = await pool.connect();
     
     try {
+      // Check if URL already exists in the dataset
+      const checkResult = await client.query(
+        "SELECT 1 FROM url_training_dataset WHERE url = $1",
+        [url]
+      );
+      
+      // If record already exists, abort
+      if (checkResult.rows.length > 0) {
+        console.log(`URL ${url} already exists in training dataset - skipping`);
+        return;
+      }
+      
+      // Continue with saving new data
+      const uuid = crypto.randomUUID();
+      
       // Ensure directories exist
       const screenshotDir = path.join(process.cwd(), 'data', 'screenshots', isScam ? 'scam' : 'non_scam');
       const htmlDir = path.join(process.cwd(), 'data', 'html', isScam ? 'scam' : 'non_scam');
@@ -215,8 +229,7 @@ export class AiClassifierService {
       await fs.mkdir(screenshotDir, { recursive: true });
       await fs.mkdir(htmlDir, { recursive: true });
 
-      // Save to database first, so duplicates cann't get saved because
-      // this database query will throw an exception if there is a duplicate url
+      // Insert into database
       await client.query(
         "INSERT INTO url_training_dataset (uuid, url, is_scam, confidence_score, model_type, model_version) VALUES ($1, $2, $3, $4, $5, $6)",
         [uuid, url, isScam, confidenceScore, "IMAGE", MODEL_VERSIONS.IMAGE]

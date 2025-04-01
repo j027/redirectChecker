@@ -106,14 +106,17 @@ export function stopTakedownMonitor(): void {
   }
 }
 
-
 export function startAdHunter(): void {
   if (isRunning.adHunter) return;
   isRunning.adHunter = true;
   console.log("Starting ad hunter service");
   
   async function runAdHunter() {
-    if (!isRunning.adHunter) return;
+    // Double-check that we're still supposed to be running
+    if (!isRunning.adHunter) {
+      console.log("Ad hunter no longer running, stopping scheduler");
+      return;
+    }
     
     try {
       console.log("Starting search ad hunting cycle...");
@@ -133,15 +136,20 @@ export function startAdHunter(): void {
       console.log("Completed ad hunting cycle");
     } catch (error) {
       console.error("Unexpected error in ad hunter:", error);
-    }
-    
-    // Schedule next run only after this one completes
-    if (isRunning.adHunter) {
-      adHunterInterval = setTimeout(runAdHunter, 60 * 1000);
+    } finally {
+      // ALWAYS schedule the next run, regardless of success or failure
+      // This ensures the scheduler keeps running even if something fails
+      if (isRunning.adHunter) {
+        console.log("Scheduling next ad hunter run in 60 seconds");
+        adHunterInterval = setTimeout(runAdHunter, 60 * 1000);
+      } else {
+        console.log("Ad hunter marked as stopped, not scheduling next run");
+      }
     }
   }
   
   // Start the first hunt immediately
+  console.log("Running initial ad hunter cycle");
   runAdHunter();
 }
 

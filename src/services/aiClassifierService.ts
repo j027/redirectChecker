@@ -13,7 +13,7 @@ const INPUT_HEIGHT = 1280;
 const CONFIDENCE_THRESHOLD = 0.7;
 
 const MODEL_VERSIONS = {
-  IMAGE: 'v0.0.1',
+  IMAGE: 'v0.0.2',
   HTML: 'v0.0.1'
 };
 

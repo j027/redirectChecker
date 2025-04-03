@@ -201,15 +201,13 @@ export class HunterService {
     const classifierResult = await aiClassifierService.runInference(screenshot);
 
     try {
-      // First save to training dataset
-      await aiClassifierService.saveData(
-        adDestination, screenshot, html, classifierResult.isScam, 
-        classifierResult.confidenceScore
-      );
-      
-      // Now handle our ads tracking database
       const { isScam, confidenceScore } = classifierResult;
       const finalUrl = redirectionPath[redirectionPath.length - 1] || adDestination;
+
+      await aiClassifierService.saveData(
+        finalUrl, screenshot, html, classifierResult.isScam, 
+        classifierResult.confidenceScore
+      );
       
       // Get a client from the pool for transaction support
       const client = await pool.connect();

@@ -396,25 +396,51 @@ export class HunterService {
   }
 
   private canonicalizeSearchAdUrl(adUrlRaw: string): string {
-    // strip out parameters that are in the decoded url
-    // that aren't actually there if you followed the redirect
-    const url = new URL(adUrlRaw);
-    const stripParams = [
-      "q",
-      "nb",
-      "nm",
-      "nx",
-      "ny",
-      "is",
-      "_agid",
-      "gad_source",
-      "rid",
-      "gclid",
-    ];
+    try {
+      // strip out parameters that are in the decoded url
+      // that aren't actually there if you followed the redirect
+      const url = new URL(adUrlRaw);
+      const stripParams = [
+        "q",
+        "nb",
+        "nm",
+        "nx",
+        "ny",
+        "is",
+        "_agid",
+        "gad_source",
+        "rid",
+        "gclid",
+      ];
 
-    stripParams.forEach((param) => url.searchParams.delete(param));
+      stripParams.forEach((param) => url.searchParams.delete(param));
 
-    return url.toString();
+      let newUrl: string | null = url.toString();
+
+      // Handle DoubleClick redirect URLs
+      if (newUrl.includes("https://ad.doubleclick.net/searchads/link/click")) {
+        const destUrl = new URL(newUrl).searchParams.get("ds_dest_url");
+
+        if (destUrl == null) {
+          console.log("Failed to extract destination from DoubleClick URL");
+          return newUrl; // Return the original URL rather than null
+        }
+        
+        try {
+          // Decode and recurse - in case the destination URL needs further canonicalization
+          const decodedUrl = decodeURIComponent(destUrl);
+          return this.canonicalizeSearchAdUrl(decodedUrl);
+        } catch (e) {
+          console.log(`Error decoding DoubleClick destination URL: ${e}`);
+          return newUrl; // Return original URL if decoding fails
+        }
+      }
+
+      return newUrl;
+    } catch (error) {
+      console.log(`Error canonicalizing URL ${adUrlRaw}: ${error}`);
+      return adUrlRaw; // Return the original URL if parsing fails
+    }
   }
 
   private generateSearchUrl() {

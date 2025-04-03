@@ -289,7 +289,7 @@ export class HunterService {
             
             console.log(`Ad status changed from ${existingAd.is_scam} to ${isScam}`);
             if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
-              await this.sendAdScamAlert(adDestination, finalUrl, adText, false, confidenceScore);
+              await this.sendAdScamAlert(adDestination, finalUrl, adText, false, confidenceScore, redirectionPath);
               
               const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
               console.log(`Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? 'Success' : 'Failed'}`);
@@ -317,7 +317,7 @@ export class HunterService {
           
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
           if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
-            await this.sendAdScamAlert(adDestination, finalUrl, adText, true, confidenceScore);
+            await this.sendAdScamAlert(adDestination, finalUrl, adText, true, confidenceScore, redirectionPath);
             
             const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
             console.log(`Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? 'Success' : 'Failed'}`);
@@ -346,7 +346,8 @@ export class HunterService {
     finalUrl: string, 
     adText: string, 
     isNew: boolean = true,
-    confidenceScore: number
+    confidenceScore: number,
+    redirectionPath: string[] | null = null
   ) {
     try {
       const { channelId } = await readConfig();
@@ -356,9 +357,32 @@ export class HunterService {
         // Format confidence as percentage with 2 decimal places
         const confidencePercent = (confidenceScore * 100).toFixed(2);
         
-        const messageText = isNew
-          ? `🚨 NEW SCAM AD DETECTED 🚨 (Confidence: ${confidencePercent}%)\nText: ${adText.substring(0, 100)}${adText.length > 100 ? '...' : ''}\nInitial URL: ${adDestination}\nFinal URL: ${finalUrl}`
-          : `⚠️ EXISTING AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)\nText: ${adText.substring(0, 100)}${adText.length > 100 ? '...' : ''}\nInitial URL: ${adDestination}\nFinal URL: ${finalUrl}`;
+        // Format ad text: clean up extra whitespace and limit length
+        const formattedAdText = adText
+          .replace(/\s+/g, ' ')
+          .trim()
+          .substring(0, 150);
+        
+        // Build message components
+        const header = isNew
+          ? `🚨 NEW SCAM AD DETECTED 🚨 (Confidence: ${confidencePercent}%)`
+          : `⚠️ EXISTING AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)`;
+        
+        const adTextSection = `**Ad Text:**\n${formattedAdText}${formattedAdText.length >= 150 ? '...' : ''}`;
+        
+        // Build redirect path section
+        let pathSection = '';
+        if (redirectionPath && redirectionPath.length > 0) {
+          pathSection = '**Redirect Path:**\n';
+          redirectionPath.forEach((url, index) => {
+            pathSection += `${index+1}. ${url}\n`;
+          });
+        } else {
+          pathSection = `**Initial URL:** ${adDestination}\n**Final URL:** ${finalUrl}`;
+        }
+        
+        // Combine all sections
+        const messageText = `${header}\n\n${adTextSection}\n\n${pathSection}`;
         
         await channel.send(messageText);
         console.log('Discord alert sent');

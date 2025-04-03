@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS url_training_dataset (
     confidence_score FLOAT,
     model_type VARCHAR(50), -- 'IMAGE', 'HTML', etc.
     model_version VARCHAR(50), -- Version string
-    created_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Main ads table - generic for all ad types

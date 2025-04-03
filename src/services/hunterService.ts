@@ -14,6 +14,11 @@ import { readConfig } from "../config.js";
 import { handleRedirect } from "../services/redirectHandlerService.js";
 import { RedirectType } from "../redirectType.js";
 
+// given a detected scam, confidence level above this will be treated as one
+// this is because the image model has false positive issues otherwise
+// eventually will use both image and html model with hopefully fewer false positives
+const CONFIDENCE_THRESHOLD = 0.98;
+
 export class HunterService {
   private browser: Browser | null = null;
 
@@ -258,13 +263,11 @@ export class HunterService {
             );
             
             console.log(`Ad status changed from ${existingAd.is_scam} to ${isScam}`);
-            if (isScam) {
-              // TODO: fix ai model to tell apart non-scams better so I can re-enable and verify
-              //await this.sendAdScamAlert(adDestination, finalUrl, adText, false, confidenceScore);
+            if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
+              await this.sendAdScamAlert(adDestination, finalUrl, adText, false, confidenceScore);
               
-              // Uncomment to add to redirect checker automatically  
-              // const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
-              // console.log(`Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? 'Success' : 'Failed'}`);
+              const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
+              console.log(`Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? 'Success' : 'Failed'}`);
             }
           }
           
@@ -288,13 +291,11 @@ export class HunterService {
           );
           
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
-          if (isScam) {
-            // TODO: fix ai model to tell apart non-scams better so I can re-enable and verify
-            // await this.sendAdScamAlert(adDestination, finalUrl, adText, true, confidenceScore);
+          if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
+            await this.sendAdScamAlert(adDestination, finalUrl, adText, true, confidenceScore);
             
-            // Uncomment to add to redirect checker automatically
-            // const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
-            // console.log(`Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? 'Success' : 'Failed'}`);
+            const addedToRedirectChecker = await this.tryAddToRedirectChecker(adDestination);
+            console.log(`Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? 'Success' : 'Failed'}`);
           }
         }
         

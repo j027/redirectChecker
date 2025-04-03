@@ -201,7 +201,7 @@ export class HunterService {
     let redirectionPath : string[] | null = null;
 
     try {
-      const redirectTracker = this.trackRedirectionPath(page);
+      const redirectTracker = this.trackRedirectionPath(page, adDestination);
       await page.goto(adDestination, {
         referer: "https://syndicatedsearch.goog/",
       });
@@ -476,7 +476,7 @@ export class HunterService {
     return `${randomSearchWebsite}${encodedSearchTerm}`;
   }
 
-  private trackRedirectionPath(page: Page) {
+  private trackRedirectionPath(page: Page, startUrl: string) {
     const redirectionPath: Set<string> = new Set();
 
     const navigationListener = async (frame: Frame) => {
@@ -485,6 +485,8 @@ export class HunterService {
       }
     };
 
+    // ensure the initial url is a part of the redirection path
+    redirectionPath.add(startUrl);
     page.on("framenavigated", navigationListener);
 
     return {

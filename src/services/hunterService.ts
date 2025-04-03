@@ -86,25 +86,50 @@ export class HunterService {
 
       console.log(`Found ${adContainers.length} search ads`);
 
-      const adProcessRequests: Promise<void>[] = [];
+      // Batch processing configuration
+      const BATCH_SIZE = 5;
+      let successCount = 0;
+      let failCount = 0;
 
-      for (const adContainer of adContainers) {
-        const adLink = await adContainer
-          .getByRole("link")
-          .first()
-          .getAttribute("href");
-        const adText = await adContainer.innerText();
+      // Process ads in batches instead of all at once
+      for (let i = 0; i < adContainers.length; i += BATCH_SIZE) {
+        console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(adContainers.length / BATCH_SIZE)}`);
 
-        if (adLink == null) {
-          console.log("Failed to get search ad link, trying the next ad");
-          continue;
+        const currentBatch = adContainers.slice(i, i + BATCH_SIZE);
+        const batchRequests: Promise<void>[] = [];
+
+        for (const adContainer of currentBatch) {
+          const adLink = await adContainer
+            .getByRole("link")
+            .first()
+            .getAttribute("href");
+          const adText = await adContainer.innerText();
+
+          if (adLink == null) {
+            console.log("Failed to get search ad link, trying the next ad");
+            continue;
+          }
+
+          batchRequests.push(this.handleSearchAd(adLink, adText, searchUrl));
         }
 
-        adProcessRequests.push(this.handleSearchAd(adLink, adText, searchUrl));
+        // Process current batch and wait for all to complete
+        const batchResults = await Promise.allSettled(batchRequests);
+
+        // Log batch results
+        batchResults.forEach(result => {
+          if (result.status === 'fulfilled') {
+            successCount++;
+          } else {
+            failCount++;
+            console.log(`Failed ad processing: ${result.reason}`);
+          }
+        });
+
+        console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1} complete: ${batchResults.length} ads processed`);
       }
 
-      await Promise.allSettled(adProcessRequests);
-
+      console.log(`Ad processing complete. Success: ${successCount}, Failed: ${failCount}`);
       return true;
     } catch (error) {
       console.log(`Error while hunting for scams in search ads: ${error}`);

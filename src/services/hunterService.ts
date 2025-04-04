@@ -191,7 +191,6 @@ export class HunterService {
     });
 
     const page = await context.newPage();
-    spoofWindowsChrome(context, page);
     blockGoogleAnalytics(page);
 
     // will be used later to classify if it is a scam
@@ -201,6 +200,7 @@ export class HunterService {
     let redirectionPath : string[] | null = null;
 
     try {
+      spoofWindowsChrome(context, page);
       const redirectTracker = this.trackRedirectionPath(page, adDestination);
       await page.goto(adDestination, {
         referer: "https://syndicatedsearch.goog/",

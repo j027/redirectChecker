@@ -77,20 +77,18 @@ export class AiClassifierService {
       viewport: null,
     });
     const page = await context.newPage();
-    await spoofWindowsChrome(context, page);
     await blockGoogleAnalytics(page);
 
     try {
-      // Navigate to URL and capture data
+      await spoofWindowsChrome(context, page);
       await page.goto(url);
 
-      // Click on the top left to activate potential popups
       await page.mouse.click(0, 0);
 
       // Capture screenshot and HTML
       const screenshot = await page.screenshot();
       const html = await page.content();
-      const currentUrl = page.url(); // Get the final URL after any redirects
+      const currentUrl = page.url();
 
       // Process the image for the model
       const prediction = await this.runInference(screenshot);

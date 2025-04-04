@@ -27,9 +27,9 @@ export class BrowserReportService {
 
     const context = await this.browser.newContext();
     const page = await context.newPage();
-    await spoofWindowsChrome(context, page);
 
     try {
+      await spoofWindowsChrome(context, page);
       await page.goto(
         "https://www.microsoft.com/en-us/wdsi/support/report-unsafe-site",
       );

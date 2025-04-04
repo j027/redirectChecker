@@ -43,7 +43,7 @@ export class BrowserReportService {
       await loginField.fill(microsoftUsername);
       await loginField.press('Enter');
 
-      const passwordField = page.getByPlaceholder("Password");
+      const passwordField = page.getByLabel("Password");
       await passwordField.fill(microsoftPassword);
       await passwordField.press('Enter');
 

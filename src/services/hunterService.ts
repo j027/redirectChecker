@@ -19,6 +19,12 @@ import { RedirectType } from "../redirectType.js";
 // eventually will use both image and html model with hopefully fewer false positives
 const CONFIDENCE_THRESHOLD = 0.98;
 
+interface ProcessAdResult {
+  screenshot: Buffer;
+  html: string;
+  redirectionPath: string[];
+}
+
 export class HunterService {
   private browser: Browser | null = null;
 
@@ -39,7 +45,7 @@ export class HunterService {
   async huntSearchAds() {
     if (this.browser == null) {
       console.error(
-        "Browser has not been initialized - search ad hunter failed"
+        "Browser has not been initialized - search ad hunter failed",
       );
       return null;
     }
@@ -62,10 +68,10 @@ export class HunterService {
         () => {
           return Array.from(document.querySelectorAll("iframe")).some(
             (iframe) =>
-              iframe.src && iframe.src.includes("syndicatedsearch.goog")
+              iframe.src && iframe.src.includes("syndicatedsearch.goog"),
           );
         },
-        { timeout: 30000 }
+        { timeout: 30000 },
       );
 
       // HACK: ensure the page has a few seconds to load
@@ -94,7 +100,7 @@ export class HunterService {
       // Process ads in batches instead of all at once
       for (let i = 0; i < adContainers.length; i += BATCH_SIZE) {
         console.log(
-          `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(adContainers.length / BATCH_SIZE)}`
+          `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(adContainers.length / BATCH_SIZE)}`,
         );
 
         const currentBatch = adContainers.slice(i, i + BATCH_SIZE);
@@ -129,12 +135,12 @@ export class HunterService {
         });
 
         console.log(
-          `Batch ${Math.floor(i / BATCH_SIZE) + 1} complete: ${batchResults.length} ads processed`
+          `Batch ${Math.floor(i / BATCH_SIZE) + 1} complete: ${batchResults.length} ads processed`,
         );
       }
 
       console.log(
-        `Ad processing complete. Success: ${successCount}, Failed: ${failCount}`
+        `Ad processing complete. Success: ${successCount}, Failed: ${failCount}`,
       );
       return true;
     } catch (error) {
@@ -149,7 +155,7 @@ export class HunterService {
   private async handleSearchAd(
     adLink: string,
     adText: string,
-    searchUrl: string
+    searchUrl: string,
   ) {
     // grab where the ad is going to, without opening the ad
     // this is because we want to avoid damaging ip quality
@@ -159,81 +165,18 @@ export class HunterService {
       return;
     }
 
-    const client = await pool.connect();
-    try {
-      // Check if this URL is already known to be a scam
-      const existingAdQuery = await client.query(
-        `SELECT id, is_scam FROM ads 
-         WHERE initial_url = $1 AND ad_type = 'search'`,
-        [adDestination]
-      );
-
-      const existingAd = existingAdQuery.rows[0];
-
-      // If ad exists and is already marked as a scam, just update last_seen and return
-      if (existingAd && existingAd.is_scam) {
-        await client.query(
-          `UPDATE ads SET last_seen = CURRENT_TIMESTAMP 
-           WHERE id = $1`,
-          [existingAd.id]
-        );
-
-        console.log(`Skipping already known scam ad: ${adDestination}`);
-        return;
-      }
-    } finally {
-      client.release();
-    }
-
-    if (this.browser == null) {
-      console.error(
-        "Browser has not been initialized - search ad hunter failed"
-      );
+    // we already saw this, and it's a scam so then skip it
+    const isKnownScam = await this.checkIfSearchAdIsKnownScam(adDestination);
+    if (isKnownScam) {
       return;
     }
 
-    const context = await this.browser.newContext({
-      proxy: await parseProxy(true),
-      viewport: null,
-    });
-
-    const page = await context.newPage();
-    blockGoogleAnalytics(page);
-
-    // will be used later to classify if it is a scam
-    // and for storage in the database
-    let screenshot: Buffer | null = null;
-    let html: string | null = null;
-    let redirectionPath: string[] | null = null;
-
-    try {
-      spoofWindowsChrome(context, page);
-      const redirectTracker = this.trackRedirectionPath(page, adDestination);
-      await page.goto(adDestination, {
-        referer: "https://syndicatedsearch.goog/",
-      });
-
-      // randomly move mouse a bit (some redirects check for this)
-      // then wait to ensure the new page loads
-      await simulateRandomMouseMovements(page);
-      await page.waitForTimeout(5000);
-
-      // finally click, to ensure popup is fully activated
-      await page.mouse.click(0, 0);
-
-      screenshot = await page.screenshot();
-      html = await page.content();
-      redirectionPath = redirectTracker.getPath();
-    } catch (error) {
-      console.log(
-        `There was an error when processing search ad destination ${error}`
-      );
+    const processResult = await this.processAd(adDestination, "https://syndicatedsearch.goog/");
+    if (processResult == null) {
       return;
-    } finally {
-      await page.close();
-      await context.close();
     }
 
+    const { screenshot, html, redirectionPath } = processResult;
     const classifierResult = await aiClassifierService.runInference(screenshot);
 
     try {
@@ -246,7 +189,7 @@ export class HunterService {
         screenshot,
         html,
         classifierResult.isScam,
-        classifierResult.confidenceScore
+        classifierResult.confidenceScore,
       );
 
       // Get a client from the pool for transaction support
@@ -260,7 +203,7 @@ export class HunterService {
         const existingAdQuery = await client.query(
           `SELECT id, is_scam FROM ads 
            WHERE initial_url = $1 AND ad_type = 'search'`,
-          [adDestination]
+          [adDestination],
         );
 
         const existingAd = existingAdQuery.rows[0];
@@ -280,7 +223,7 @@ export class HunterService {
               this.pgArray(redirectionPath),
               confidenceScore,
               existingAd.id,
-            ]
+            ],
           );
 
           // Check if status changed
@@ -299,11 +242,11 @@ export class HunterService {
               `INSERT INTO ad_status_history 
                (ad_id, previous_status, new_status, reason)
                VALUES ($1, $2, $3, $4)`,
-              [existingAd.id, existingAd.is_scam, isScam, reason]
+              [existingAd.id, existingAd.is_scam, isScam, reason],
             );
 
             console.log(
-              `Ad status changed from ${existingAd.is_scam} to ${isScam}`
+              `Ad status changed from ${existingAd.is_scam} to ${isScam}`,
             );
             if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
               await this.sendAdScamAlert(
@@ -312,13 +255,13 @@ export class HunterService {
                 adText,
                 false,
                 confidenceScore,
-                redirectionPath
+                redirectionPath,
               );
 
               const addedToRedirectChecker =
                 await this.tryAddToRedirectChecker(adDestination);
               console.log(
-                `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed"}`
+                `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed"}`,
               );
             }
           }
@@ -340,14 +283,14 @@ export class HunterService {
               this.pgArray(redirectionPath),
               isScam,
               confidenceScore,
-            ]
+            ],
           );
 
           await client.query(
             `INSERT INTO search_ads
              (ad_id, ad_url, ad_text, search_url)
              VALUES ($1, $2, $3, $4)`,
-            [adId, adLink, adText, searchUrl]
+            [adId, adLink, adText, searchUrl],
           );
 
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
@@ -358,13 +301,13 @@ export class HunterService {
               adText,
               true,
               confidenceScore,
-              redirectionPath
+              redirectionPath,
             );
 
             const addedToRedirectChecker =
               await this.tryAddToRedirectChecker(adDestination);
             console.log(
-              `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`
+              `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`,
             );
           }
         }
@@ -384,18 +327,90 @@ export class HunterService {
     }
   }
 
+  private async checkIfSearchAdIsKnownScam(adDestination: string): Promise<boolean> {
+    const client = await pool.connect();
+    try {
+      // Check if this URL is already known to be a scam
+      const existingAdQuery = await client.query(
+        `SELECT id, is_scam FROM ads 
+       WHERE initial_url = $1 AND ad_type = 'search'`,
+        [adDestination],
+      );
+
+      const existingAd = existingAdQuery.rows[0];
+
+      // If ad exists and is already marked as a scam, just update last_seen and return
+      if (existingAd && existingAd.is_scam) {
+        await client.query(
+          `UPDATE ads SET last_seen = CURRENT_TIMESTAMP 
+         WHERE id = $1`,
+          [existingAd.id],
+        );
+
+        console.log(`Skipping already known scam ad: ${adDestination}`);
+        return true;
+      }
+    } finally {
+      client.release();
+    }
+    return false;
+  }
+
+  private async processAd(adDestination: string, referer: string) : Promise<ProcessAdResult | null> {
+    if (this.browser == null) {
+      console.error(
+          "Browser has not been initialized - ad hunter processor failed",
+      );
+      return null;
+    }
+
+    const context = await this.browser.newContext({
+      proxy: await parseProxy(true),
+      viewport: null,
+    });
+
+    const page = await context.newPage();
+    blockGoogleAnalytics(page);
+
+    let screenshot: Buffer | null = null;
+    let html: string | null = null;
+    let redirectionPath: string[] | null = null;
+
+    try {
+      spoofWindowsChrome(context, page);
+      const redirectTracker = this.trackRedirectionPath(page, adDestination);
+      await page.goto(adDestination, { referer });
+
+      await simulateRandomMouseMovements(page);
+      await page.waitForTimeout(5000);
+      await page.mouse.click(0, 0);
+
+      screenshot = await page.screenshot();
+      html = await page.content();
+      redirectionPath = redirectTracker.getPath();
+    } catch (error) {
+      console.log(`There was an error when processing ad destination ${error}`);
+      return null;
+    } finally {
+      await page.close();
+      await context.close();
+    }
+
+    return { screenshot, html, redirectionPath };
+  }
+
   private async sendAdScamAlert(
     adDestination: string,
     finalUrl: string,
     adText: string,
     isNew: boolean = true,
     confidenceScore: number,
-    redirectionPath: string[] | null = null
+    redirectionPath: string[] | null = null,
   ) {
     try {
       const { channelId } = await readConfig();
       const channel = discordClient.channels.cache.get(
-        channelId
+        channelId,
       ) as TextChannel;
 
       if (channel) {
@@ -478,7 +493,7 @@ export class HunterService {
       // Handle DoubleClick redirect URLs
       if (
         adDestination.includes(
-          "https://ad.doubleclick.net/searchads/link/click"
+          "https://ad.doubleclick.net/searchads/link/click",
         )
       ) {
         const destUrl = new URL(adDestination).searchParams.get("ds_dest_url");
@@ -603,7 +618,7 @@ export class HunterService {
 
             if (!isScam) {
               console.log(
-                `Destination ${redirectDestination} not classified as scam, trying next redirect type`
+                `Destination ${redirectDestination} not classified as scam, trying next redirect type`,
               );
               continue; // Try next redirect type
             }
@@ -615,7 +630,7 @@ export class HunterService {
                 "INSERT INTO redirects (source_url, type) VALUES ($1, $2)";
               await client.query(insertQuery, [url, redirectType]);
               console.log(
-                `Successfully added ${url} to redirect checker as ${redirectType}`
+                `Successfully added ${url} to redirect checker as ${redirectType}`,
               );
               return true;
             } finally {
@@ -633,7 +648,7 @@ export class HunterService {
     }
 
     console.log(
-      `All redirect strategies failed or destinations were not classified as scams for ${url}`
+      `All redirect strategies failed or destinations were not classified as scams for ${url}`,
     );
     return false;
   }

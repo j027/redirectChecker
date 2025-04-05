@@ -377,7 +377,7 @@ export class HunterService {
     let redirectionPath: string[] | null = null;
 
     try {
-      spoofWindowsChrome(context, page);
+      await spoofWindowsChrome(context, page);
       const redirectTracker = this.trackRedirectionPath(page, adDestination);
       await page.goto(adDestination, { referer });
 

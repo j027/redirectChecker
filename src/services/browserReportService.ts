@@ -41,11 +41,21 @@ export class BrowserReportService {
 
       const loginField = page.getByPlaceholder("Email, phone, or Skype");
       await loginField.fill(microsoftUsername);
-      await loginField.press('Enter');
+      await loginField.press("Enter");
 
-      const passwordField = page.getByLabel("Password");
-      await passwordField.fill(microsoftPassword);
-      await passwordField.press('Enter');
+      const activePasswordField = await Promise.any([
+        page
+          .getByLabel("Password")
+          .waitFor({ state: "visible", timeout: 5000 })
+          .then(() => page.getByLabel("Password")),
+        page
+          .getByPlaceholder("Password")
+          .waitFor({ state: "visible", timeout: 5000 })
+          .then(() => page.getByPlaceholder("Password")),
+      ]);
+
+      await activePasswordField.fill(microsoftPassword);
+      await activePasswordField.press("Enter");
 
       await page.getByRole("button", { name: "Yes" }).click();
 

@@ -46,11 +46,11 @@ export class BrowserReportService {
       const activePasswordField = await Promise.any([
         page
           .getByLabel("Password")
-          .waitFor({ state: "visible", timeout: 5000 })
+          .waitFor({ state: "attached", timeout: 5000 })
           .then(() => page.getByLabel("Password")),
         page
           .getByPlaceholder("Password")
-          .waitFor({ state: "visible", timeout: 5000 })
+          .waitFor({ state: "attached", timeout: 5000 })
           .then(() => page.getByPlaceholder("Password")),
       ]);
 

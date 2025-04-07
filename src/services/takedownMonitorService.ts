@@ -6,6 +6,7 @@ import { readConfig } from "../config.js";
 import { setTimeout } from 'timers/promises';
 import { userAgentService } from "./userAgentService.js";
 import { fetch, ProxyAgent } from "undici";
+import { PoolClient } from "pg";
 
 // Configuration
 const SAFEBROWSING_BATCH_SIZE = 500; // Maximum URLs to check in one SafeBrowsing batch
@@ -78,22 +79,23 @@ interface SafeBrowsingMatch {
   };
 }
 
-export async function initTakedownStatusForDestination(destinationId: number, isPopup: boolean): Promise<void> {
+export async function initTakedownStatusForDestination(
+  destinationId: number,
+  isPopup: boolean,
+  client: PoolClient
+): Promise<void> {
   // HACK: we aren't tracking takedown status for non scams at all, so no need to save it to the database
   if (isPopup == false) {
     return;
   }
 
-  const client = await pool.connect();
   try {
     await client.query(
       "INSERT INTO takedown_status (redirect_destination_id, check_active) VALUES ($1, $2) ON CONFLICT (redirect_destination_id) DO NOTHING",
-      [destinationId, isPopup] // Only actively monitor popups by default
+      [destinationId, isPopup]
     );
   } catch (error) {
     console.error("Error initializing takedown status:", error);
-  } finally {
-    client.release();
   }
 }
 

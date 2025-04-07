@@ -79,7 +79,7 @@ async function processRedirectEntry(
 
       // Initialize security status for this new destination
       const destinationId = insertResult.rows[0].id;
-      await initTakedownStatusForDestination(destinationId, classificationResult.isScam);
+      await initTakedownStatusForDestination(destinationId, classificationResult.isScam, client);
 
       // If it's a scam site, report it with the screenshot and HTML
       if (classificationResult.isScam) {

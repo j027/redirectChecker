@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS redirect_destinations
 (
     id              SERIAL PRIMARY KEY,
     redirect_id     INTEGER NOT NULL REFERENCES redirects (id) ON DELETE CASCADE,
-    destination_url TEXT    NOT NULL,                      -- The target URL where the redirect sends the user
+    destination_url TEXT    UNIQUE NOT NULL,                      -- The target URL where the redirect sends the user
     first_seen      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this destination was first recorded
     last_seen       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this destination was most recently observed
     is_popup        BOOLEAN     DEFAULT FALSE              -- Indicates if the destination is a popup

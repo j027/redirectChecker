@@ -79,6 +79,11 @@ interface SafeBrowsingMatch {
 }
 
 export async function initTakedownStatusForDestination(destinationId: number, isPopup: boolean): Promise<void> {
+  // HACK: we aren't tracking takedown status for non scams at all, so no need to save it to the database
+  if (isPopup == false) {
+    return;
+  }
+
   const client = await pool.connect();
   try {
     await client.query(

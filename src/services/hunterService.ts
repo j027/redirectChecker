@@ -49,7 +49,7 @@ export class HunterService {
           
           // Create new browser
           this.browser = await BrowserManagerService.createBrowser(this.isHeadless);
-          console.log("Browser report service initialized new browser");
+          console.log("Hunter service initialized new browser");
         } finally {
           this.browserInitializing = false;
         }
@@ -59,7 +59,7 @@ export class HunterService {
 
   async huntSearchAds() {
     await this.ensureBrowserIsHealthy();
-    
+
     if (this.browser == null) {
       console.error(
         "Browser has not been initialized - search ad hunter failed",

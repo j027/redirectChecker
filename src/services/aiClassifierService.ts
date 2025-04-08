@@ -75,7 +75,7 @@ export class AiClassifierService {
           
           // Create new browser
           this.browser = await BrowserManagerService.createBrowser(false);
-          console.log("Browser report service initialized new browser");
+          console.log("AI classifier service initialized new browser");
         } finally {
           this.browserInitializing = false;
         }

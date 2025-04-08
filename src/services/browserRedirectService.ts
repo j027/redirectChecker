@@ -1,4 +1,4 @@
-import { chromium, Browser } from "patchright";
+import { Browser } from "patchright";
 import {
   blockGoogleAnalytics,
   blockPageResources,
@@ -6,25 +6,47 @@ import {
   parseProxy,
   simulateRandomMouseMovements,
 } from "../utils/playwrightUtilities.js";
+import { BrowserManagerService } from './browserManagerService.js';
 export class BrowserRedirectService {
   private browser: Browser | null;
+  private browserInitializing: boolean;
 
   constructor() {
     this.browser = null;
+    this.browserInitializing = false;
   }
 
   async init() {
-    this.browser = await chromium.launch({
-      headless: false,
-      executablePath: "/snap/bin/chromium",
-      chromiumSandbox: true,
-    });
+    await this.ensureBrowserIsHealthy();
+  }
+
+  private async ensureBrowserIsHealthy(): Promise<void> {
+    await BrowserManagerService.ensureBrowserHealth(
+      this.browser,
+      this.browserInitializing,
+      async () => {
+        try {
+          this.browserInitializing = true;
+          
+          // Close existing browser if any
+          await BrowserManagerService.closeBrowser(this.browser);
+          
+          // Create new browser
+          this.browser = await BrowserManagerService.createBrowser(true);
+          console.log("Browser report service initialized new browser");
+        } finally {
+          this.browserInitializing = false;
+        }
+      }
+    );
   }
 
   async handleRedirect(
     redirectUrl: string,
     referrer?: string
   ): Promise<string | null> {
+    await this.ensureBrowserIsHealthy();
+
     if (this.browser == null) {
       console.error(
         "Browser has not been initialized - redirect handling failed"

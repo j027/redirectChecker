@@ -1,4 +1,4 @@
-import { chromium, Browser, Page, Frame } from "patchright";
+import { Browser, Page, Frame } from "patchright";
 import {
   blockGoogleAnalytics,
   parseProxy,
@@ -13,6 +13,7 @@ import { TextChannel } from "discord.js";
 import { readConfig } from "../config.js";
 import { handleRedirect } from "../services/redirectHandlerService.js";
 import { RedirectType } from "../redirectType.js";
+import { BrowserManagerService } from './browserManagerService.js';
 
 // given a detected scam, confidence level above this will be treated as one
 // this is because the image model has false positive issues otherwise
@@ -27,22 +28,38 @@ interface ProcessAdResult {
 
 export class HunterService {
   private browser: Browser | null = null;
+  private isHeadless: boolean = false;
+  private browserInitializing: boolean = false;
 
   async init(headless = false) {
-    try {
-      // Launch our own browser instance
-      this.browser = await chromium.launch({
-        headless: headless,
-        executablePath: "/snap/bin/chromium",
-        chromiumSandbox: true,
-      });
-    } catch (error) {
-      console.error("Error initializing scam hunter:", error);
-      throw error;
-    }
+    this.isHeadless = headless;
+    await this.ensureBrowserIsHealthy();
+  }
+
+  private async ensureBrowserIsHealthy(): Promise<void> {
+    await BrowserManagerService.ensureBrowserHealth(
+      this.browser,
+      this.browserInitializing,
+      async () => {
+        try {
+          this.browserInitializing = true;
+          
+          // Close existing browser if any
+          await BrowserManagerService.closeBrowser(this.browser);
+          
+          // Create new browser
+          this.browser = await BrowserManagerService.createBrowser(this.isHeadless);
+          console.log("Browser report service initialized new browser");
+        } finally {
+          this.browserInitializing = false;
+        }
+      }
+    );
   }
 
   async huntSearchAds() {
+    await this.ensureBrowserIsHealthy();
+    
     if (this.browser == null) {
       console.error(
         "Browser has not been initialized - search ad hunter failed",

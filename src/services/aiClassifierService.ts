@@ -1,6 +1,6 @@
 import * as onnx from "onnxruntime-node";
 import { promises as fs } from "fs";
-import { Browser, chromium } from "patchright";
+import { Browser } from "patchright";
 import path from "path";
 import pool from "../dbPool.js";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../utils/playwrightUtilities.js";
 import crypto from "crypto";
 import sharp from "sharp";
+import { BrowserManagerService } from './browserManagerService.js';
 
 // Constants for the model
 const INPUT_WIDTH = 1280;
@@ -32,15 +33,11 @@ interface ClassificationResult {
 export class AiClassifierService {
   private model: onnx.InferenceSession | null = null;
   private browser: Browser | null = null;
+  private browserInitializing: boolean = false;
 
   async init() {
     try {
-      // Launch our own browser instance
-      this.browser = await chromium.launch({
-        headless: false,
-        executablePath: "/snap/bin/chromium",
-        chromiumSandbox: true,
-      });
+      await this.ensureBrowserIsHealthy();
 
       // Load the ONNX model
       const modelPath = path.join(
@@ -65,7 +62,30 @@ export class AiClassifierService {
     }
   }
 
+  private async ensureBrowserIsHealthy(): Promise<void> {
+    await BrowserManagerService.ensureBrowserHealth(
+      this.browser,
+      this.browserInitializing,
+      async () => {
+        try {
+          this.browserInitializing = true;
+          
+          // Close existing browser if any
+          await BrowserManagerService.closeBrowser(this.browser);
+          
+          // Create new browser
+          this.browser = await BrowserManagerService.createBrowser(false);
+          console.log("Browser report service initialized new browser");
+        } finally {
+          this.browserInitializing = false;
+        }
+      }
+    );
+  }
+
   async classifyUrl(url: string): Promise<ClassificationResult | null> {
+    await this.ensureBrowserIsHealthy();
+
     if (!this.browser || !this.model) {
       console.error("Browser or model not initialized");
       return null;

@@ -1,23 +1,45 @@
-import { chromium, Browser } from "patchright";
+import { Browser } from "patchright";
 import { readConfig } from "../config.js";
 import { spoofWindowsChrome } from "../utils/playwrightUtilities.js";
+import { BrowserManagerService } from './browserManagerService.js';
 
 export class BrowserReportService {
   private browser: Browser | null;
+  private browserInitializing: boolean;
 
   constructor() {
     this.browser = null;
+    this.browserInitializing = false;
   }
 
   async init() {
-    this.browser = await chromium.launch({
-      headless: true,
-      executablePath: "/snap/bin/chromium",
-      chromiumSandbox: true,
-    });
+    await this.ensureBrowserIsHealthy();
+  }
+
+  private async ensureBrowserIsHealthy(): Promise<void> {
+    await BrowserManagerService.ensureBrowserHealth(
+      this.browser,
+      this.browserInitializing,
+      async () => {
+        try {
+          this.browserInitializing = true;
+          
+          // Close existing browser if any
+          await BrowserManagerService.closeBrowser(this.browser);
+          
+          // Create new browser
+          this.browser = await BrowserManagerService.createBrowser(true);
+          console.log("Browser report service initialized new browser");
+        } finally {
+          this.browserInitializing = false;
+        }
+      }
+    );
   }
 
   async reportToSmartScreen(url: string): Promise<boolean> {
+    await this.ensureBrowserIsHealthy();
+
     if (this.browser == null) {
       console.error(
         "Browser has not been initialized - reporting to smartscreen failed",

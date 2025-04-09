@@ -13,12 +13,6 @@ export async function blockGoogleAnalytics(page: Page) {
 
 export async function blockPageResources(page: Page) {
   // block all images, fonts, stylesheets, scripts, and media
-  await page.route('**/*.{png,jpg,jpeg,gif,webp,svg,ico,bmp,tiff}', route => route.abort());
-  await page.route('**/*.{woff,woff2,ttf,otf,eot}', route => route.abort());
-  await page.route('**/*.{css,scss,less}', route => route.abort());
-  await page.route('**/*.{js,mjs,jsx,ts,tsx}', route => route.abort());
-  await page.route('**/*.{mp4,webm,ogg,mp3,wav,flac,aac}', route => route.abort());
-  
   await page.route("**/*", (route) => {
     switch(route.request().resourceType()) {
       case "image":

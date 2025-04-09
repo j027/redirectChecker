@@ -60,11 +60,11 @@ export class BrowserRedirectService {
     });
 
     const page = await context.newPage();
+    await spoofWindowsChrome(context, page);
     await blockGoogleAnalytics(page);
     await blockPageResources(page);
 
     try {
-      await spoofWindowsChrome(context, page);
       await page.goto(redirectUrl, { waitUntil: "commit", referer: referrer });
 
       // wait for the url to change

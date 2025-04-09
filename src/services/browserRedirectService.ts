@@ -32,7 +32,7 @@ export class BrowserRedirectService {
           await BrowserManagerService.closeBrowser(this.browser);
           
           // Create new browser
-          this.browser = await BrowserManagerService.createBrowser(true);
+          this.browser = await BrowserManagerService.createBrowser(false);
           console.log("Browser redirect service initialized new browser");
         } finally {
           this.browserInitializing = false;

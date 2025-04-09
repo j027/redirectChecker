@@ -74,10 +74,10 @@ export class HunterService {
 
     // not spoofing chrome on windows because that breaks ad load
     const page = await context.newPage();
-    blockGoogleAnalytics(page);
     const searchUrl = this.generateSearchUrl();
 
     try {
+      await blockGoogleAnalytics(page);
       await page.goto(searchUrl);
 
       // Wait for at least one ad frame to appear - max 30 seconds
@@ -387,14 +387,13 @@ export class HunterService {
     });
 
     const page = await context.newPage();
-    blockGoogleAnalytics(page);
-
     let screenshot: Buffer | null = null;
     let html: string | null = null;
     let redirectionPath: string[] | null = null;
 
     try {
       await spoofWindowsChrome(context, page);
+      await blockGoogleAnalytics(page);
       const redirectTracker = this.trackRedirectionPath(page, adDestination);
       await page.goto(adDestination, { referer });
 

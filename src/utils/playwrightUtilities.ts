@@ -11,21 +11,32 @@ export async function blockGoogleAnalytics(page: Page) {
   });
 }
 
-export async function blockPageResources(page: Page) {
-  // block all images, fonts, stylesheets, scripts, and media
-  await page.route("**/*", (route) => {
-    switch(route.request().resourceType()) {
-      case "image":
-      case "font":
-      case "stylesheet":
-      case "script":
-      case "media":
-        route.abort();
-        break;
-      default:
-        route.continue();
-    }
-  });
+export async function blockPageResources(page: Page) {  
+  try {
+    // Get CDP session for the page
+    const client = await page.context().newCDPSession(page);
+    
+    // Enable network domain
+    await client.send('Network.enable');
+    
+    // Use setBlockedURLs instead of setBlockedURLPatterns
+    await client.send('Network.setBlockedURLs', {
+      urls: [
+        // Images
+        '*.jpg', '*.jpeg', '*.png', '*.gif', '*.webp', '*.svg', '*.ico', '*.bmp',
+        // Fonts
+        '*.woff', '*.woff2', '*.ttf', '*.otf', '*.eot',
+        // Stylesheets
+        '*.css',
+        // Media
+        '*.mp3', '*.mp4', '*.webm', '*.ogg', '*.wav', '*.avi', '*.mov',
+        // Common CDNs for static assets
+        'cdn*.', '*.cloudfront.net', '*.jsdelivr.net', '*.unpkg.com'
+      ]
+    });
+  } catch (error) {
+    console.error(`Failed to set up CDP resource blocking: ${error}`);
+  }
 }
 
 export async function parseProxy(isHunterProxy = false): Promise<{server: string, username?: string, password?: string}> {

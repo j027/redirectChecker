@@ -3,7 +3,7 @@ import {
   blockGoogleAnalytics,
   parseProxy,
   spoofWindowsChrome,
-  simulateRandomMouseMovements
+  simulateRandomMouseMovements,
 } from "../utils/playwrightUtilities.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import crypto from "crypto";
@@ -13,7 +13,7 @@ import { TextChannel } from "discord.js";
 import { readConfig } from "../config.js";
 import { handleRedirect } from "../services/redirectHandlerService.js";
 import { RedirectType } from "../redirectType.js";
-import { BrowserManagerService } from './browserManagerService.js';
+import { BrowserManagerService } from "./browserManagerService.js";
 
 // given a detected scam, confidence level above this will be treated as one
 // this is because the image model has false positive issues otherwise
@@ -43,12 +43,14 @@ export class HunterService {
       async () => {
         try {
           this.browserInitializing = true;
-          
+
           // Close existing browser if any
           await BrowserManagerService.closeBrowser(this.browser);
-          
+
           // Create new browser
-          this.browser = await BrowserManagerService.createBrowser(this.isHeadless);
+          this.browser = await BrowserManagerService.createBrowser(
+            this.isHeadless
+          );
           console.log("Hunter service initialized new browser");
         } finally {
           this.browserInitializing = false;
@@ -62,7 +64,7 @@ export class HunterService {
 
     if (this.browser == null) {
       console.error(
-        "Browser has not been initialized - search ad hunter failed",
+        "Browser has not been initialized - search ad hunter failed"
       );
       return null;
     }
@@ -85,10 +87,10 @@ export class HunterService {
         () => {
           return Array.from(document.querySelectorAll("iframe")).some(
             (iframe) =>
-              iframe.src && iframe.src.includes("syndicatedsearch.goog"),
+              iframe.src && iframe.src.includes("syndicatedsearch.goog")
           );
         },
-        { timeout: 30000 },
+        { timeout: 30000 }
       );
 
       // HACK: ensure the page has a few seconds to load
@@ -117,7 +119,7 @@ export class HunterService {
       // Process ads in batches instead of all at once
       for (let i = 0; i < adContainers.length; i += BATCH_SIZE) {
         console.log(
-          `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(adContainers.length / BATCH_SIZE)}`,
+          `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(adContainers.length / BATCH_SIZE)}`
         );
 
         const currentBatch = adContainers.slice(i, i + BATCH_SIZE);
@@ -152,12 +154,12 @@ export class HunterService {
         });
 
         console.log(
-          `Batch ${Math.floor(i / BATCH_SIZE) + 1} complete: ${batchResults.length} ads processed`,
+          `Batch ${Math.floor(i / BATCH_SIZE) + 1} complete: ${batchResults.length} ads processed`
         );
       }
 
       console.log(
-        `Ad processing complete. Success: ${successCount}, Failed: ${failCount}`,
+        `Ad processing complete. Success: ${successCount}, Failed: ${failCount}`
       );
       return true;
     } catch (error) {
@@ -172,7 +174,7 @@ export class HunterService {
   private async handleSearchAd(
     adLink: string,
     adText: string,
-    searchUrl: string,
+    searchUrl: string
   ) {
     // grab where the ad is going to, without opening the ad
     // this is because we want to avoid damaging ip quality
@@ -188,7 +190,10 @@ export class HunterService {
       return;
     }
 
-    const processResult = await this.processAd(adDestination, "https://syndicatedsearch.goog/");
+    const processResult = await this.processAd(
+      adDestination,
+      "https://syndicatedsearch.goog/"
+    );
     if (processResult == null) {
       return;
     }
@@ -206,7 +211,7 @@ export class HunterService {
         screenshot,
         html,
         classifierResult.isScam,
-        classifierResult.confidenceScore,
+        classifierResult.confidenceScore
       );
 
       // Get a client from the pool for transaction support
@@ -220,7 +225,7 @@ export class HunterService {
         const existingAdQuery = await client.query(
           `SELECT id, is_scam FROM ads 
            WHERE initial_url = $1 AND ad_type = 'search'`,
-          [adDestination],
+          [adDestination]
         );
 
         const existingAd = existingAdQuery.rows[0];
@@ -240,7 +245,7 @@ export class HunterService {
               this.pgArray(redirectionPath),
               confidenceScore,
               existingAd.id,
-            ],
+            ]
           );
 
           // Check if status changed
@@ -259,11 +264,11 @@ export class HunterService {
               `INSERT INTO ad_status_history 
                (ad_id, previous_status, new_status, reason)
                VALUES ($1, $2, $3, $4)`,
-              [existingAd.id, existingAd.is_scam, isScam, reason],
+              [existingAd.id, existingAd.is_scam, isScam, reason]
             );
 
             console.log(
-              `Ad status changed from ${existingAd.is_scam} to ${isScam}`,
+              `Ad status changed from ${existingAd.is_scam} to ${isScam}`
             );
             if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
               await this.sendAdScamAlert(
@@ -272,13 +277,13 @@ export class HunterService {
                 adText,
                 false,
                 confidenceScore,
-                redirectionPath,
+                redirectionPath
               );
 
               const addedToRedirectChecker =
                 await this.tryAddToRedirectChecker(adDestination);
               console.log(
-                `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed"}`,
+                `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed"}`
               );
             }
           }
@@ -300,14 +305,14 @@ export class HunterService {
               this.pgArray(redirectionPath),
               isScam,
               confidenceScore,
-            ],
+            ]
           );
 
           await client.query(
             `INSERT INTO search_ads
              (ad_id, ad_url, ad_text, search_url)
              VALUES ($1, $2, $3, $4)`,
-            [adId, adLink, adText, searchUrl],
+            [adId, adLink, adText, searchUrl]
           );
 
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
@@ -318,13 +323,13 @@ export class HunterService {
               adText,
               true,
               confidenceScore,
-              redirectionPath,
+              redirectionPath
             );
 
             const addedToRedirectChecker =
               await this.tryAddToRedirectChecker(adDestination);
             console.log(
-              `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`,
+              `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`
             );
           }
         }
@@ -344,14 +349,16 @@ export class HunterService {
     }
   }
 
-  private async checkIfSearchAdIsKnownScam(adDestination: string): Promise<boolean> {
+  private async checkIfSearchAdIsKnownScam(
+    adDestination: string
+  ): Promise<boolean> {
     const client = await pool.connect();
     try {
       // Check if this URL is already known to be a scam
       const existingAdQuery = await client.query(
         `SELECT id, is_scam FROM ads 
        WHERE initial_url = $1 AND ad_type = 'search'`,
-        [adDestination],
+        [adDestination]
       );
 
       const existingAd = existingAdQuery.rows[0];
@@ -361,7 +368,7 @@ export class HunterService {
         await client.query(
           `UPDATE ads SET last_seen = CURRENT_TIMESTAMP 
          WHERE id = $1`,
-          [existingAd.id],
+          [existingAd.id]
         );
 
         console.log(`Skipping already known scam ad: ${adDestination}`);
@@ -373,10 +380,15 @@ export class HunterService {
     return false;
   }
 
-  private async processAd(adDestination: string, referer: string) : Promise<ProcessAdResult | null> {
+  private async processAd(
+    adDestination: string,
+    referer?: string
+  ): Promise<ProcessAdResult | null> {
+    await this.ensureBrowserIsHealthy();
+
     if (this.browser == null) {
       console.error(
-          "Browser has not been initialized - ad hunter processor failed",
+        "Browser has not been initialized - ad hunter processor failed"
       );
       return null;
     }
@@ -421,12 +433,12 @@ export class HunterService {
     adText: string,
     isNew: boolean = true,
     confidenceScore: number,
-    redirectionPath: string[] | null = null,
+    redirectionPath: string[] | null = null
   ) {
     try {
       const { channelId } = await readConfig();
       const channel = discordClient.channels.cache.get(
-        channelId,
+        channelId
       ) as TextChannel;
 
       if (channel) {
@@ -509,7 +521,7 @@ export class HunterService {
       // Handle DoubleClick redirect URLs
       if (
         adDestination.includes(
-          "https://ad.doubleclick.net/searchads/link/click",
+          "https://ad.doubleclick.net/searchads/link/click"
         )
       ) {
         const destUrl = new URL(adDestination).searchParams.get("ds_dest_url");
@@ -634,7 +646,7 @@ export class HunterService {
 
             if (!isScam) {
               console.log(
-                `Destination ${redirectDestination} not classified as scam, trying next redirect type`,
+                `Destination ${redirectDestination} not classified as scam, trying next redirect type`
               );
               continue; // Try next redirect type
             }
@@ -646,7 +658,7 @@ export class HunterService {
                 "INSERT INTO redirects (source_url, type) VALUES ($1, $2)";
               await client.query(insertQuery, [url, redirectType]);
               console.log(
-                `Successfully added ${url} to redirect checker as ${redirectType}`,
+                `Successfully added ${url} to redirect checker as ${redirectType}`
               );
               return true;
             } finally {
@@ -664,7 +676,7 @@ export class HunterService {
     }
 
     console.log(
-      `All redirect strategies failed or destinations were not classified as scams for ${url}`,
+      `All redirect strategies failed or destinations were not classified as scams for ${url}`
     );
     return false;
   }
@@ -674,6 +686,274 @@ export class HunterService {
     return (
       "{" + values.map((v) => `"${v.replace(/"/g, '""')}"`).join(",") + "}"
     );
+  }
+
+  private getRandomTyposquatUrl(): string {
+    const typosquatDomains = [
+      // Facebook typosquats
+      "facebaak.com",
+      "facebiik.com",
+      "fac3book.com",
+      "faceb00k.com",
+      "afcebook.com",
+      "faicebook.com",
+      "fucebook.com",
+      "facbeook.com",
+      "faceboko.com",
+      "faceblok.com",
+      "fzcebook.com",
+      "facebppk.com",
+      "ftacebook.com",
+
+      // Gmail typosquats
+      "gmaip.com",
+      "gmai.com",
+      "gmaol.com",
+      "ggmail.com",
+      "gmaii.com",
+      "gmsail.com",
+      "ygmail.com",
+      "gmalil.com",
+      "gmaiol.com",
+      "gmaili.com",
+      "gjmail.com",
+      "gmailk.com",
+      "gmaijl.com",
+      "gmkail.com",
+      "gmaqil.com",
+      "gmqail.com",
+      "gmajil.com",
+
+      // Google typosquats
+      "googlo.com",
+      "goorle.com",
+      "googls.com",
+      "ygoogle.com",
+      "gopogle.com",
+      "googpe.com",
+      "gdoogle.com",
+      "voovle.com",
+      "goodgle.com",
+      "googloe.com",
+      "googlpe.com",
+      "googlre.com",
+      "goovgle.com",
+      "geogle.com",
+      "goigle.com",
+      "googae.com",
+      "googee.com",
+      "googfe.com",
+      "goohe.com",
+      "googln.com",
+      "googme.com",
+      "googre.com",
+      "googte.com",
+      "googwe.com",
+      "gookle.com",
+      "goolle.com",
+      "goonle.com",
+      "gooqle.com",
+      "gooxle.com",
+      "gooyle.com",
+      "gopgle.com",
+      "guogle.com",
+
+      // YouTube typosquats
+      "yotube.com",
+      "youutbe.com",
+      "outube.com",
+      "yautube.com",
+      "youtubo.com",
+      "yohtube.com",
+      "youthbe.com",
+      "yojutube.com",
+      "youtubd.com",
+      "youtubs.com",
+      "youtubu.com",
+
+      // Twitter typosquats
+      "twittre.com",
+      "twltter.com",
+      "twutter.com",
+      "fwitter.com",
+      "tsitter.com",
+      "twiyter.com",
+      "twittee.com",
+      "tywitter.com",
+      "twuitter.com",
+      "twiutter.com",
+      "twitfer.com",
+      "twittet.com",
+      "twiktter.com",
+    ];
+
+    const randomDomain =
+      typosquatDomains[crypto.randomInt(typosquatDomains.length)];
+    if (!randomDomain.startsWith("http")) {
+      return `http://${randomDomain}`;
+    }
+
+    return randomDomain;
+  }
+
+  async huntTyposquat() {
+    await this.ensureBrowserIsHealthy();
+
+    if (this.browser == null) {
+      console.error(
+        "Browser has not been initialized - typosquat hunter failed"
+      );
+      return null;
+    }
+
+    const typosquat = this.getRandomTyposquatUrl();
+    console.log(`Checking typosquat domain: ${typosquat}`);
+    
+    const result = await this.processAd(typosquat);
+
+    if (result == null) {
+      console.log(`Failed to process typosquat: ${typosquat}`);
+      return null;
+    }
+
+    const { screenshot, html, redirectionPath } = result;
+    const finalUrl = redirectionPath[redirectionPath.length - 1] || typosquat;
+    
+    console.log(`Typosquat ${typosquat} redirected to ${finalUrl}`);
+    
+    // Skip processing if no meaningful redirects
+    if (redirectionPath.length <= 1) {
+      console.log(`Typosquat ${typosquat} has no meaningful redirects, skipping`);
+      return null;
+    }
+
+    const classifierResult = await aiClassifierService.runInference(screenshot);
+    const { isScam, confidenceScore } = classifierResult;
+
+    try {
+      // Save the classified data to AI service
+      await aiClassifierService.saveData(
+        finalUrl,
+        screenshot,
+        html,
+        isScam,
+        confidenceScore
+      );
+
+      const client = await pool.connect();
+      
+      try {
+        await client.query("BEGIN");
+
+        // First check if we've seen this DESTINATION before from ANY typosquat
+        // This is the key to destination-based deduplication
+        const existingDestQuery = await client.query(
+          `SELECT id FROM ads 
+           WHERE final_url = $1 AND ad_type = 'typosquat'
+           LIMIT 1`,
+          [finalUrl]
+        );
+
+        const isNewDestination = existingDestQuery.rowCount === 0;
+        
+        if (isNewDestination) {
+          // New destination we haven't seen before
+          const adId = crypto.randomUUID();
+          
+          await client.query(
+            `INSERT INTO ads
+             (id, ad_type, initial_url, final_url, redirect_path, is_scam, confidence_score)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              adId,
+              "typosquat",
+              typosquat,
+              finalUrl,
+              this.pgArray(redirectionPath),
+              isScam,
+              confidenceScore,
+            ]
+          );
+          
+          console.log(`New typosquat record: ${typosquat} -> ${finalUrl}`);
+        } else {
+          // We've seen this destination before, just update last_seen timestamp
+          await client.query(
+            `UPDATE ads SET last_seen = CURRENT_TIMESTAMP 
+             WHERE id = $1`,
+            [existingDestQuery.rows[0].id]
+          );
+          
+          console.log(`Updated last_seen for existing destination: ${finalUrl}`);
+        }
+        
+        // Only send an alert if:
+        // 1. It's classified as a scam with high confidence
+        // 2. We haven't seen this destination before from any typosquat
+        if (isScam && confidenceScore > CONFIDENCE_THRESHOLD && isNewDestination) {
+          await this.sendTyposquatAlert(
+            typosquat,
+            finalUrl,
+            confidenceScore,
+            redirectionPath
+          );
+          console.log(`Sent alert for new scam destination: ${finalUrl}`);
+        }
+
+        await client.query("COMMIT");
+        return true;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        console.error(`Database error: ${error}`);
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error(`Error in typosquat hunter: ${error}`);
+      return null;
+    }
+  }
+
+  private async sendTyposquatAlert(
+    typosquatDomain: string,
+    finalUrl: string,
+    confidenceScore: number,
+    redirectionPath: string[] | null = null
+  ) {
+    try {
+      const { channelId } = await readConfig();
+      const channel = discordClient.channels.cache.get(
+        channelId
+      ) as TextChannel;
+
+      if (channel) {
+        // Format confidence as percentage with 2 decimal places
+        const confidencePercent = (confidenceScore * 100).toFixed(2);
+
+        // Build message components
+        const header = `🚨 NEW TYPOSQUAT SCAM DESTINATION 🚨 (Confidence: ${confidencePercent}%)`;
+        
+        let pathSection = `**Typosquat Domain:** ${typosquatDomain}\n**Final URL:** ${finalUrl}\n\n`;
+        
+        if (redirectionPath && redirectionPath.length > 0) {
+          pathSection += "**Redirect Path:**\n";
+          redirectionPath.forEach((url, index) => {
+            pathSection += `${index + 1}. ${url}\n`;
+          });
+        }
+
+        // Combine all sections
+        const messageText = `${header}\n\n${pathSection}`;
+
+        await channel.send(messageText);
+        console.log("Discord typosquat alert sent");
+      } else {
+        console.error("Discord channel not found");
+      }
+    } catch (error) {
+      console.error(`Error sending Discord notification: ${error}`);
+    }
   }
 
   async close() {

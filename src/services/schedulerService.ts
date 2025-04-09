@@ -119,12 +119,16 @@ export function startAdHunter(): void {
     }
     
     try {
-      console.log("Starting search ad hunting cycle...");
+      console.log("Starting hunting cycle...");
       
       // Run all hunt operations in parallel
       const huntPromises = [
         hunterService.huntSearchAds().catch(error => {
           console.error("Error during search ad hunting:", error);
+          return null;
+        }),
+        hunterService.huntTyposquat().catch(error => {
+          console.error("Error during typosquat hunting:", error);
           return null;
         })
         // Future hunt types can be added here

@@ -126,18 +126,24 @@ export class HunterService {
         const batchRequests: Promise<void>[] = [];
 
         for (const adContainer of currentBatch) {
-          const adLink = await adContainer
-            .getByRole("link")
-            .first()
-            .getAttribute("href");
-          const adText = await adContainer.innerText();
-
-          if (adLink == null) {
-            console.log("Failed to get search ad link, trying the next ad");
+          try {
+            const linkLocator = adContainer.getByRole("link").first();
+            
+            // Add explicit timeout and make it shorter for individual operations
+            const adLink = await linkLocator.getAttribute("href", { timeout: 5000 });
+            const adText = await adContainer.innerText();
+        
+            if (adLink == null) {
+              console.log("Failed to get search ad link, trying the next ad");
+              continue;
+            }
+        
+            batchRequests.push(this.handleSearchAd(adLink, adText, searchUrl));
+          } catch (error) {
+            console.log(`Error processing ad container: ${error}`);
+            // Continue to next ad container
             continue;
           }
-
-          batchRequests.push(this.handleSearchAd(adLink, adText, searchUrl));
         }
 
         // Process current batch and wait for all to complete

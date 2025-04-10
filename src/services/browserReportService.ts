@@ -67,9 +67,9 @@ export class BrowserReportService {
 
       const activePasswordField = await Promise.any([
         page
-          .getByLabel("Password")
+          .getByRole('textbox', { name: 'Password' })
           .waitFor({ state: "attached", timeout: 5000 })
-          .then(() => page.getByLabel("Password")),
+          .then(() => page.getByRole('textbox', { name: 'Password' })),
         page
           .getByPlaceholder("Password")
           .waitFor({ state: "attached", timeout: 5000 })

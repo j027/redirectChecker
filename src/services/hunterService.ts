@@ -929,16 +929,9 @@ export class HunterService {
       try {
         await client.query("BEGIN");
 
-        // First check if we've seen this DESTINATION before from ANY typosquat
-        // This is the key to destination-based deduplication
-        const existingDestQuery = await client.query(
-          `SELECT id FROM ads 
-           WHERE final_url = $1 AND ad_type = 'typosquat'
-           LIMIT 1`,
-          [finalUrl]
-        );
-
-        const isNewDestination = existingDestQuery.rowCount === 0;
+        // Replace the existing destination query with fuzzy matching
+        const existingDestId = await this.findExistingDestination(finalUrl, 'typosquat', client);
+        const isNewDestination = existingDestId === null;
         
         if (isNewDestination) {
           // New destination we haven't seen before
@@ -965,7 +958,7 @@ export class HunterService {
           await client.query(
             `UPDATE ads SET last_seen = CURRENT_TIMESTAMP 
              WHERE id = $1`,
-            [existingDestQuery.rows[0].id]
+            [existingDestId]
           );
           
           console.log(`Updated last_seen for existing destination: ${finalUrl}`);
@@ -1037,6 +1030,55 @@ export class HunterService {
       }
     } catch (error) {
       console.error(`Error sending Discord notification: ${error}`);
+    }
+  }
+
+  /**
+   * Strips query parameters from a URL for fuzzy matching
+   * @param url The URL to strip query parameters from
+   * @returns The base URL without query parameters
+   */
+  private stripQueryParameters(url: string): string {
+    try {
+      const parsedUrl = new URL(url);
+      return `${parsedUrl.protocol}//${parsedUrl.host}${parsedUrl.pathname}`;
+    } catch (e) {
+      console.log(`Error stripping query parameters from URL: ${e}`);
+      return url; // Return original if parsing fails
+    }
+  }
+
+  /**
+   * Finds existing destination record using fuzzy URL matching
+   * @param url The URL to find a match for
+   * @param adType The type of ad ("typosquat" or "search")
+   * @returns The matching record ID or null if not found
+   */
+  private async findExistingDestination(url: string, adType: string, client: any): Promise<string | null> {
+    // Strip query parameters for matching
+    const strippedUrl = this.stripQueryParameters(url);
+    
+    try {
+      // base URL matching without query parameters
+      const query = `
+        SELECT id, final_url FROM ads 
+        WHERE ad_type = $1
+        AND regexp_replace(final_url, '\\?.*$', '') = $2
+        ORDER BY last_seen DESC
+        LIMIT 1
+      `;
+      
+      const result = await client.query(query, [adType, strippedUrl]);
+      
+      if (result.rowCount && result.rowCount > 0) {
+        console.log(`Found fuzzy match for ${url}: ${result.rows[0].final_url}`);
+        return result.rows[0].id;
+      }
+      
+      return null;
+    } catch (e) {
+      console.error(`Error during fuzzy URL matching: ${e}`);
+      return null;
     }
   }
 

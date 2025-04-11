@@ -94,7 +94,7 @@ export class HunterService {
       );
 
       // HACK: ensure the page has a few seconds to load
-      await page.waitForTimeout(10000);
+      await page.waitForTimeout(20000);
 
       // ads are in iframes, so need to grab all of them to be able to see the ads inside
       const adFrames = page
@@ -157,19 +157,30 @@ export class HunterService {
         }
       }
 
-      console.log(`Found ${adContainers.length} usable search ads`);
+      console.log(`Found ${adContainers.length} total search ads before deduplication`);
 
-      // Process ads using the directly extracted data
+      // Deduplicate by mainLink using a Set
+      const uniqueAdContainers = Array.from(
+        new Map(
+          adContainers
+            .filter(ad => ad.mainLink) // Remove ads without links first
+            .map(ad => [ad.mainLink, ad]) // Use mainLink as key
+        ).values()
+      );
+
+      console.log(`Found ${uniqueAdContainers.length} unique search ads after deduplication`);
+
+      // Process ads using the deduplicated list
       const BATCH_SIZE = 5;
       let successCount = 0;
       let failCount = 0;
 
-      for (let i = 0; i < adContainers.length; i += BATCH_SIZE) {
+      for (let i = 0; i < uniqueAdContainers.length; i += BATCH_SIZE) {
         console.log(
-          `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(adContainers.length / BATCH_SIZE)}`
+          `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(uniqueAdContainers.length / BATCH_SIZE)}`
         );
 
-        const currentBatch = adContainers.slice(i, i + BATCH_SIZE);
+        const currentBatch = uniqueAdContainers.slice(i, i + BATCH_SIZE);
         const batchRequests: Promise<void>[] = [];
 
         for (const adData of currentBatch) {

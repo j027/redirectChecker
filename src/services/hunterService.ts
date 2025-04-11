@@ -1,4 +1,4 @@
-import { Browser, Page, Frame } from "patchright";
+import { Browser, Page, Frame, Response } from "patchright";
 import {
   blockGoogleAnalytics,
   parseProxy,
@@ -636,21 +636,44 @@ export class HunterService {
 
   private trackRedirectionPath(page: Page, startUrl: string) {
     const redirectionPath: Set<string> = new Set();
-
-    const navigationListener = async (frame: Frame) => {
+    
+    // Track main frame navigations
+    const navigationListener = (frame: Frame) => {
       if (frame === page.mainFrame()) {
         redirectionPath.add(frame.url());
       }
     };
 
-    // ensure the initial url is a part of the redirection path
+    // Track HTTP redirects specifically (catches 301, 302, 303, 307, 308)
+    const responseListener = (response: Response) => {
+      const status = response.status();
+      if (status >= 300 && status < 400) {
+        const location = response.headers()["location"];
+        if (location) {
+          try {
+            // Handle both absolute and relative URLs
+            const baseUrl = response.url();
+            const redirectUrl = new URL(location, baseUrl).toString();
+            console.log(`HTTP ${status} redirect: ${baseUrl} → ${redirectUrl}`);
+            redirectionPath.add(redirectUrl);
+          } catch (e) {
+            console.log(`Failed to parse redirect URL: ${location}`);
+          }
+        }
+      }
+    };
+
+    // Ensure initial URL is tracked
     redirectionPath.add(startUrl);
+    
+    // Add event listeners
     page.on("framenavigated", navigationListener);
+    page.on("response", responseListener);
 
     return {
       getPath: () => {
         return Array.from(redirectionPath);
-      },
+      }
     };
   }
 

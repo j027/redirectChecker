@@ -94,7 +94,7 @@ export class HunterService {
       );
 
       // HACK: ensure the page has a few seconds to load
-      await page.waitForTimeout(20000);
+      await page.waitForTimeout(10000);
 
       // ads are in iframes, so need to grab all of them to be able to see the ads inside
       const adFrames = page
@@ -102,21 +102,68 @@ export class HunterService {
         .filter((frame) => frame.url().includes("syndicatedsearch.goog"));
 
       const adContainers = [];
+
+      // Process each frame directly with JavaScript evaluation
       for (const frame of adFrames) {
-        const ads = await frame
-          .locator(`//span[text()="Sponsored"]/parent::*/parent::*`)
-          .all();
-        adContainers.push(...ads);
+        try {
+          // Extract all relevant ad information directly using JavaScript
+          const frameAds = await frame.evaluate(() => {
+            // Find all ad containers using standard JavaScript
+            const adElements = [];
+            
+            // Find all spans
+            const spans = document.querySelectorAll('span');
+            for (const span of spans) {
+              // Check if the span contains "Sponsored" text
+              if (span.textContent && span.textContent.includes('Sponsored')) {
+                // Get the container (parent's parent or other suitable ancestor)
+                let container = span.parentElement;
+                if (container) container = container.parentElement;
+                
+                if (container) {
+                  adElements.push(container);
+                }
+              }
+            }
+            
+            return adElements.map(adElement => {
+              // Find all links within the ad element
+              const links = Array.from(adElement.querySelectorAll('a')).map(a => ({
+                href: a.href,
+                text: a.innerText || ''
+              }));
+              
+              // Get the main ad link (usually the one with most text or a specific pattern)
+              let mainLink = links.length > 0 ? links[links.length - 1] : null;
+              
+              // Get all text content for the ad
+              const adText = adElement.textContent || "Ad text unavailable";
+              
+              return {
+                mainLink: mainLink ? mainLink.href : null,
+                allLinks: links,
+                text: adText
+              };
+            });
+          }).catch(e => {
+            console.log(`Failed to evaluate frame: ${e.message}`);
+            return [];
+          });
+          
+          console.log(`Found ${frameAds.length} ads in frame`);
+          adContainers.push(...frameAds.filter(ad => ad.mainLink));
+        } catch (frameError) {
+          console.log(`Error processing ad frame: ${frameError}`);
+        }
       }
 
-      console.log(`Found ${adContainers.length} search ads`);
+      console.log(`Found ${adContainers.length} usable search ads`);
 
-      // Batch processing configuration
+      // Process ads using the directly extracted data
       const BATCH_SIZE = 5;
       let successCount = 0;
       let failCount = 0;
 
-      // Process ads in batches instead of all at once
       for (let i = 0; i < adContainers.length; i += BATCH_SIZE) {
         console.log(
           `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(adContainers.length / BATCH_SIZE)}`
@@ -125,23 +172,20 @@ export class HunterService {
         const currentBatch = adContainers.slice(i, i + BATCH_SIZE);
         const batchRequests: Promise<void>[] = [];
 
-        for (const adContainer of currentBatch) {
+        for (const adData of currentBatch) {
           try {
-            const linkLocator = adContainer.getByRole("link").first();
+            // We already have the data we need, no more locator operations required
+            const adLink = adData.mainLink;
+            const adText = adData.text;
             
-            // Add explicit timeout and make it shorter for individual operations
-            const adLink = await linkLocator.getAttribute("href", { timeout: 5000 });
-            const adText = await adContainer.innerText();
-        
-            if (adLink == null) {
-              console.log("Failed to get search ad link, trying the next ad");
+            if (!adLink) {
+              console.log("No main link found for ad, skipping");
               continue;
             }
-        
+            
             batchRequests.push(this.handleSearchAd(adLink, adText, searchUrl));
           } catch (error) {
-            console.log(`Error processing ad container: ${error}`);
-            // Continue to next ad container
+            console.log(`Error processing ad: ${error}`);
             continue;
           }
         }

@@ -15,6 +15,17 @@ let isRunning = {
   adHunter: false
 };
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Operation ${operationName} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    })
+  ]);
+}
+
 export function startRedirectChecker() {
   isRunning.redirectChecker = true;
   
@@ -121,14 +132,24 @@ export function startAdHunter(): void {
     try {
       console.log("Starting hunting cycle...");
       
-      // Run all hunt operations in parallel
+      const TIMEOUT_MS = 120000; // 2 minutes
+      
+      // Run all hunt operations in parallel with timeouts
       const huntPromises = [
-        hunterService.huntSearchAds().catch(error => {
-          console.error("Error during search ad hunting:", error);
+        withTimeout(
+          hunterService.huntSearchAds(), 
+          TIMEOUT_MS, 
+          'Search ad hunting'
+        ).catch(error => {
+          console.error(`Error during search ad hunting: ${error.message}`);
           return null;
         }),
-        hunterService.huntTyposquat().catch(error => {
-          console.error("Error during typosquat hunting:", error);
+        withTimeout(
+          hunterService.huntTyposquat(), 
+          TIMEOUT_MS, 
+          'Typosquat hunting'
+        ).catch(error => {
+          console.error(`Error during typosquat hunting: ${error.message}`);
           return null;
         })
         // Future hunt types can be added here

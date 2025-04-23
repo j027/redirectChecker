@@ -684,14 +684,25 @@ export class HunterService {
   private async tryAddToRedirectChecker(url: string): Promise<boolean> {
     console.log(`Attempting to add ${url} to redirect checker automatically`);
 
-    // Check if URL already exists in the database
+    // Extract domain from the incoming URL
+    const domain = new URL(url).hostname.toLowerCase();
+
+    // Check if domain already exists in the database
     const checkClient = await pool.connect();
     try {
-      const query = "SELECT 1 FROM redirects WHERE source_url = $1 LIMIT 1";
-      const result = await checkClient.query(query, [url]);
+      // Compare only hostnames (ignoring http/https)
+      const query = `
+        SELECT 1 
+        FROM redirects 
+        WHERE lower(
+          regexp_replace(source_url, '^https?://([^/]+)/?.*$', '\\1')
+        ) = $1
+        LIMIT 1
+      `;
+      const result = await checkClient.query(query, [domain]);
 
       if (result.rowCount && result.rowCount > 0) {
-        console.log(`URL ${url} already exists in redirect checker`);
+        console.log(`Domain ${domain} already exists in redirect checker`);
         return true; // Already being monitored, consider this a success
       }
     } finally {

@@ -5,6 +5,7 @@ import {
   spoofWindowsChrome,
   parseProxy,
   simulateRandomMouseMovements,
+  trackRedirectionPath
 } from "../utils/playwrightUtilities.js";
 import { BrowserManagerService } from './browserManagerService.js';
 export class BrowserRedirectService {
@@ -65,6 +66,7 @@ export class BrowserRedirectService {
     await blockPageResources(page);
 
     try {
+      const redirectTracker = trackRedirectionPath(page, redirectUrl);
       await page.goto(redirectUrl, { waitUntil: "commit", referer: referrer });
 
       // wait for the url to change
@@ -75,8 +77,32 @@ export class BrowserRedirectService {
       await simulateRandomMouseMovements(page);
       await page.waitForTimeout(2000);
 
-      const destinationUrl = page.url();
+      let destinationUrl = page.url();
 
+      // get last url with the same hostname as final destination
+      // on error parsing the url, fall back to the final destination
+      try {
+        const redirectionPath = redirectTracker.getPath();
+        const finalHostname = new URL(destinationUrl).hostname;
+        let matchedUrl: string | null = null;
+      
+        for (let i = redirectionPath.length - 1; i >= 0; i--) {
+          try {
+            if (new URL(redirectionPath[i]).hostname === finalHostname) {
+              matchedUrl = redirectionPath[i];
+              break;
+            }
+          } catch {}
+        }
+      
+        if (matchedUrl) {
+          destinationUrl = matchedUrl;
+        }
+      } catch {
+        // Fallback to page.url() if hostname can't be grabbed
+        destinationUrl = page.url();
+      }
+      
       return destinationUrl != redirectUrl ? destinationUrl : null;
     } catch (error) {
       console.log(`Error when handling redirect: ${error}`);

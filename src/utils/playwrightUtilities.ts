@@ -1,4 +1,4 @@
-import { Page, Browser, BrowserContext } from "patchright";
+import { Page, Browser, BrowserContext, Frame, Request } from "patchright";
 import { readConfig } from "../config.js";
 import crypto from 'crypto';
 
@@ -309,4 +309,45 @@ export async function simulateRandomMouseMovements(
     await page.mouse.up();
     await page.waitForTimeout(crypto.randomInt(200, 501));
   }
+}
+
+export function trackRedirectionPath(page: Page, startUrl: string) {
+  const redirectionPath: Set<string> = new Set();
+
+  // Track main frame navigations
+  const navigationListener = (frame: Frame) => {
+    if (frame === page.mainFrame()) {
+      redirectionPath.add(frame.url());
+    }
+  };
+
+  // Track HTTP redirects specifically (catches 301, 302, 303, 307, 308)
+  const requestListener = (request: Request) => {
+    // Only track main-frame navigation requests
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+      // Build redirect chain backward
+      const chain: string[] = [];
+      let current: Request | null = request;
+
+      while (current) {
+        chain.push(current.url());
+        current = current.redirectedFrom();
+      }
+
+      chain.reverse().forEach((url) => redirectionPath.add(url));
+    }
+  };
+
+  // Ensure initial URL is tracked
+  redirectionPath.add(startUrl);
+
+  // Add event listeners
+  page.on("framenavigated", navigationListener);
+  page.on("request", requestListener);
+
+  return {
+    getPath: () => {
+      return Array.from(redirectionPath);
+    },
+  };
 }

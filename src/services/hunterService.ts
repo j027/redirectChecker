@@ -1,9 +1,10 @@
-import { Browser, Page, Frame, Request } from "patchright";
+import { Browser } from "patchright";
 import {
   blockGoogleAnalytics,
   parseProxy,
   spoofWindowsChrome,
   simulateRandomMouseMovements,
+  trackRedirectionPath
 } from "../utils/playwrightUtilities.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import crypto from "crypto";
@@ -467,7 +468,7 @@ export class HunterService {
     try {
       await spoofWindowsChrome(context, page);
       await blockGoogleAnalytics(page);
-      const redirectTracker = this.trackRedirectionPath(page, adDestination);
+      const redirectTracker = trackRedirectionPath(page, adDestination);
       await page.goto(adDestination, { referer });
 
       await simulateRandomMouseMovements(page);
@@ -632,46 +633,6 @@ export class HunterService {
 
     // Combine the search website and encoded search term
     return `${randomSearchWebsite}${encodedSearchTerm}`;
-  }
-
-  private trackRedirectionPath(page: Page, startUrl: string) {
-    const redirectionPath: Set<string> = new Set();
-    
-    // Track main frame navigations
-    const navigationListener = (frame: Frame) => {
-      if (frame === page.mainFrame()) {
-        redirectionPath.add(frame.url());
-      }
-    };
-
-    // Track HTTP redirects specifically (catches 301, 302, 303, 307, 308)
-    const requestListener = (request: Request) => {
-      // Only track main-frame navigation requests
-      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
-        // Build redirect chain backward
-        const chain: string[] = [];
-        let current: Request | null = request;
-        while (current) {
-          chain.push(current.url());
-          current = current.redirectedFrom();
-        }
-        
-        chain.reverse().forEach((url) => redirectionPath.add(url));
-      }
-    };
-
-    // Ensure initial URL is tracked
-    redirectionPath.add(startUrl);
-    
-    // Add event listeners
-    page.on("framenavigated", navigationListener);
-    page.on("request", requestListener);
-
-    return {
-      getPath: () => {
-        return Array.from(redirectionPath);
-      }
-    };
   }
 
   /**

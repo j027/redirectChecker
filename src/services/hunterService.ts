@@ -646,12 +646,17 @@ export class HunterService {
 
     // Track HTTP redirects specifically (catches 301, 302, 303, 307, 308)
     const requestListener = (request: Request) => {
-      const redirectedFrom = request.redirectedFrom();
-      if (redirectedFrom) {
-        console.log(
-          `Intermediate redirect: ${redirectedFrom.url()} → ${request.url()}`
-        );
-        redirectionPath.add(request.url());
+      // Only track main-frame navigation requests
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+        // Build redirect chain backward
+        const chain: string[] = [];
+        let current: Request | null = request;
+        while (current) {
+          chain.push(current.url());
+          current = current.redirectedFrom();
+        }
+        
+        chain.reverse().forEach((url) => redirectionPath.add(url));
       }
     };
 

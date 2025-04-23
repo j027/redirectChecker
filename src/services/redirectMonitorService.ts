@@ -47,11 +47,23 @@ async function processRedirectEntry(
     // Start a transaction
     await client.query('BEGIN');
 
-    // Check if a record already exists for the given redirect destination
-    // WITH A LOCK to prevent race conditions
+    let canonicalDestination: string;
+    try {
+      const urlObj = new URL(redirectDestination);
+      // Ignore querystring and hash for duplicate checks
+      urlObj.search = '';
+      urlObj.hash = '';
+      canonicalDestination = urlObj.toString();
+    } catch (e) {
+      console.log("Failed to parse URL, falling back to full URL:", e);
+      canonicalDestination = redirectDestination;
+    }
+
+    // Check if a record already exists for the given canonical url using fuzzy matching
+    const fuzzySearchParam = `%${canonicalDestination}%`;
     const result = await client.query(
-      "SELECT id FROM redirect_destinations WHERE destination_url = $1 FOR UPDATE",
-      [redirectDestination]
+      "SELECT id FROM redirect_destinations WHERE destination_url ILIKE $1 FOR UPDATE",
+      [fuzzySearchParam]
     );
 
     if (result.rows.length > 0) {

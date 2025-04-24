@@ -51,18 +51,22 @@ async function processRedirectEntry(
     try {
       const urlObj = new URL(redirectDestination);
       // Extract just the hostname and path for canonical comparison
-      // This way query parameters won't affect matching
-      canonicalDestination = urlObj.hostname + urlObj.pathname;
+      // Strip trailing slash from pathname for consistent matching
+      const pathname = urlObj.pathname.endsWith('/') && urlObj.pathname.length > 1 
+        ? urlObj.pathname.slice(0, -1) 
+        : urlObj.pathname;
+      canonicalDestination = urlObj.hostname + pathname;
     } catch (e) {
       console.log("Failed to parse URL, falling back to full URL:", e);
       canonicalDestination = redirectDestination;
     }
 
-    // Query for URLs with the same hostname and path
+    // Use a simpler and more reliable approach for URL matching
     const result = await client.query(
       "SELECT id FROM redirect_destinations WHERE " +
-      "regexp_replace(destination_url, 'https?://([^/?#]+)([^?#]*)(\\?.*)?$', '\\1\\2') = $1 FOR UPDATE",
-      [canonicalDestination]
+      "host(regexp_replace(destination_url, 'https?://', '')) = host(regexp_replace($1, 'https?://', '')) " +
+      "FOR UPDATE",
+      [redirectDestination]
     );
 
     if (result.rows.length > 0) {

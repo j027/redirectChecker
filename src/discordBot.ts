@@ -45,7 +45,14 @@ async function shutdownServices() {
   await closePool();
 }
 
+const isTestMode = process.env.NODE_ENV === 'test';
+
 async function main() {
+  // do not start up the bot in test mode
+  if (isTestMode) {
+    return;
+  }
+
   console.log("Starting up...");
   const { token } = await readConfig();
   await initializeServices();
@@ -83,6 +90,10 @@ async function main() {
 }
 
 async function gracefulShutdown() {
+  if (isTestMode) {
+    return;
+  }
+  
   console.log("Shutting down gracefully...");
   await shutdownServices();
   await discordClient.destroy();

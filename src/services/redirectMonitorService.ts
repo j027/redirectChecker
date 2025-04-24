@@ -51,20 +51,17 @@ async function processRedirectEntry(
     try {
       const urlObj = new URL(redirectDestination);
       // Extract just the hostname and path for canonical comparison
-      // Strip trailing slash from pathname for consistent matching
-      const pathname = urlObj.pathname.endsWith('/') && urlObj.pathname.length > 1 
-        ? urlObj.pathname.slice(0, -1) 
-        : urlObj.pathname;
-      canonicalDestination = urlObj.hostname + pathname;
+      canonicalDestination = urlObj.hostname + urlObj.pathname;
     } catch (e) {
       console.log("Failed to parse URL, falling back to full URL:", e);
       canonicalDestination = redirectDestination;
     }
 
-    // Use a simpler and more reliable approach for URL matching
+    // Use standard PostgreSQL string functions instead of host()
     const result = await client.query(
-      "SELECT id FROM redirect_destinations WHERE " +
-      "host(regexp_replace(destination_url, 'https?://', '')) = host(regexp_replace($1, 'https?://', '')) " +
+      "SELECT id FROM redirect_destinations WHERE " + 
+      "split_part(regexp_replace(destination_url, 'https?://', ''), '/', 1) = " +
+      "split_part(regexp_replace($1, 'https?://', ''), '/', 1) " +
       "FOR UPDATE",
       [redirectDestination]
     );

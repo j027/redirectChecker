@@ -1,4 +1,4 @@
-import { Page, Browser, BrowserContext, Frame, Request } from "patchright";
+import { Page, Browser, BrowserContext, Frame, Request, Response } from "patchright";
 import { readConfig } from "../config.js";
 import crypto from 'crypto';
 
@@ -313,15 +313,36 @@ export async function simulateRandomMouseMovements(
 
 export function trackRedirectionPath(page: Page, startUrl: string) {
   const redirectionPath: Set<string> = new Set();
+  
+  // Ensure initial URL is tracked
+  redirectionPath.add(startUrl);
+  
+  // Track responses to catch explicit HTTP redirects
+  const responseListener = async (response: Response) => {
+    const status = response.status();
+    // Capture HTTP redirect status codes (301, 302, 303, 307, 308)
+    if (status >= 300 && status < 400) {
+      const location = response.headers()['location'];
+      if (location) {
+        // Handle both absolute and relative URLs
+        try {
+          const fullUrl = new URL(location, response.url()).toString();
+          redirectionPath.add(fullUrl);
+        } catch (e) {
+          console.log(`Failed to parse redirect location: ${location}`);
+        }
+      }
+    }
+  };
 
-  // Track main frame navigations
+  // Track main frame navigations (for client-side redirects)
   const navigationListener = (frame: Frame) => {
     if (frame === page.mainFrame()) {
       redirectionPath.add(frame.url());
     }
   };
 
-  // Track HTTP redirects specifically (catches 301, 302, 303, 307, 308)
+  // Track HTTP redirects specifically
   const requestListener = (request: Request) => {
     // Only track main-frame navigation requests
     if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
@@ -338,10 +359,8 @@ export function trackRedirectionPath(page: Page, startUrl: string) {
     }
   };
 
-  // Ensure initial URL is tracked
-  redirectionPath.add(startUrl);
-
   // Add event listeners
+  page.on("response", responseListener);
   page.on("framenavigated", navigationListener);
   page.on("request", requestListener);
 

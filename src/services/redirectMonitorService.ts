@@ -50,20 +50,19 @@ async function processRedirectEntry(
     let canonicalDestination: string;
     try {
       const urlObj = new URL(redirectDestination);
-      // Ignore querystring and hash for duplicate checks
-      urlObj.search = '';
-      urlObj.hash = '';
-      canonicalDestination = urlObj.toString();
+      // Extract just the hostname and path for canonical comparison
+      // This way query parameters won't affect matching
+      canonicalDestination = urlObj.hostname + urlObj.pathname;
     } catch (e) {
       console.log("Failed to parse URL, falling back to full URL:", e);
       canonicalDestination = redirectDestination;
     }
 
-    // Check if a record already exists for the given canonical url using fuzzy matching
-    const fuzzySearchParam = `%${canonicalDestination}%`;
+    // Query for URLs with the same hostname and path
     const result = await client.query(
-      "SELECT id FROM redirect_destinations WHERE destination_url ILIKE $1 FOR UPDATE",
-      [fuzzySearchParam]
+      "SELECT id FROM redirect_destinations WHERE " +
+      "regexp_replace(destination_url, 'https?://([^/?#]+)([^?#]*)(\\?.*)?$', '\\1\\2') = $1 FOR UPDATE",
+      [canonicalDestination]
     );
 
     if (result.rows.length > 0) {

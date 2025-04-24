@@ -48,22 +48,20 @@ async function processRedirectEntry(
     await client.query('BEGIN');
 
     let canonicalDestination: string;
+    // Extract hostname during insertion
     try {
       const urlObj = new URL(redirectDestination);
-      // Extract just the hostname and path for canonical comparison
-      canonicalDestination = urlObj.hostname + urlObj.pathname;
+      // Store just the hostname
+      canonicalDestination = urlObj.hostname;
     } catch (e) {
       console.log("Failed to parse URL, falling back to full URL:", e);
       canonicalDestination = redirectDestination;
     }
 
-    // Use standard PostgreSQL string functions instead of host()
+    // Query using the hostname column
     const result = await client.query(
-      "SELECT id FROM redirect_destinations WHERE " + 
-      "split_part(regexp_replace(destination_url, 'https?://', ''), '/', 1) = " +
-      "split_part(regexp_replace($1, 'https?://', ''), '/', 1) " +
-      "FOR UPDATE",
-      [redirectDestination]
+      "SELECT id FROM redirect_destinations WHERE hostname = $1 FOR UPDATE",
+      [canonicalDestination]
     );
 
     if (result.rows.length > 0) {
@@ -85,8 +83,8 @@ async function processRedirectEntry(
 
       // Now we insert, still within the same transaction
       const insertResult = await client.query(
-        "INSERT INTO redirect_destinations (redirect_id, destination_url, is_popup) VALUES ($1, $2, $3) RETURNING id",
-        [redirectId, redirectDestination, classificationResult.isScam]
+        "INSERT INTO redirect_destinations (redirect_id, destination_url, hostname, is_popup) VALUES ($1, $2, $3, $4) RETURNING id",
+        [redirectId, redirectDestination, canonicalDestination, classificationResult.isScam]
       );
 
       // Initialize security status for this new destination

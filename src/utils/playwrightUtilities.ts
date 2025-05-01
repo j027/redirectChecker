@@ -33,36 +33,25 @@ export async function blockPageResources(page: Page) {
     const client = await page.context().newCDPSession(page);
 
     await client.send("Network.enable");
-    await client.send("Network.setBlockedURLs", {
-      urls: [
-        // Images
-        "*.jpg",
-        "*.jpeg",
-        "*.png",
-        "*.gif",
-        "*.webp",
-        "*.svg",
-        "*.ico",
-        "*.bmp",
-        // Fonts
-        "*.woff",
-        "*.woff2",
-        "*.ttf",
-        "*.otf",
-        "*.eot",
-        // Stylesheets
-        "*.css",
-        // Media
-        "*.mp3",
-        "*.mp4",
-        "*.webm",
-        "*.ogg",
-        "*.wav",
-        "*.avi",
-        "*.mov",
-        // Common CDNs for static assets
-        "*.js",
+    await client.send("Fetch.enable", {
+      patterns: [
+        { urlPattern: "*", resourceType: "Image", requestStage: "Request" },
+        { urlPattern: "*", resourceType: "Font", requestStage: "Request" },
+        {
+          urlPattern: "*",
+          resourceType: "Stylesheet",
+          requestStage: "Request",
+        },
+        { urlPattern: "*", resourceType: "Script", requestStage: "Request" },
+        { urlPattern: "*", resourceType: "Media", requestStage: "Request" },
       ],
+    });
+
+    client.on("Fetch.requestPaused", async (event) => {
+      await client.send("Fetch.failRequest", {
+        requestId: event.requestId,
+        errorReason: "BlockedByClient",
+      });
     });
   } catch (error) {
     console.error(`Failed to set up CDP resource blocking: ${error}`);

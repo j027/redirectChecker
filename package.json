@@ -15,22 +15,22 @@
     "test": "vitest"
   },
   "dependencies": {
-    "discord.js": "^14.18.0",
-    "dotenv": "^16.4.7",
-    "onnxruntime-node": "^1.21.0",
-    "patchright": "^1.51.3",
-    "pg": "^8.14.1",
+    "discord.js": "^14.19.2",
+    "dotenv": "^16.5.0",
+    "onnxruntime-node": "^1.21.1",
+    "patchright": "^1.52.0",
+    "pg": "^8.15.6",
     "sharp": "^0.34.1",
-    "undici": "^7.7.0",
+    "undici": "^7.8.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@types/pg": "^8.11.11",
+    "@types/node": "^22.15.3",
+    "@types/pg": "^8.11.14",
     "prettier": "^3.5.3",
-    "tsx": "^4.19.3",
+    "tsx": "^4.19.4",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.1"
+    "vitest": "^3.1.2"
   },
   "packageManager": "yarn@4.7.0"
 }

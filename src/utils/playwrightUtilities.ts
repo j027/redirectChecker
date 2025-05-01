@@ -29,32 +29,35 @@ export async function blockPageResources(page: Page) {
       }
     });
 
+    // TODO: remove this if the playwright resource blocking continues to be stable
+    // There was a time when playwright resource blocking stopped working, and I had to use cdp
+    // it turns out that's not an issue anymore, but if it comes back just uncomment code below
     // HACK: use cdp too because playwright route handlers don't work properly and idk why
-    const client = await page.context().newCDPSession(page);
+    //const client = await page.context().newCDPSession(page);
 
-    await client.send("Network.enable");
-    await client.send("Fetch.enable", {
-      patterns: [
-        { urlPattern: "*", resourceType: "Image", requestStage: "Request" },
-        { urlPattern: "*", resourceType: "Font", requestStage: "Request" },
-        {
-          urlPattern: "*",
-          resourceType: "Stylesheet",
-          requestStage: "Request",
-        },
-        { urlPattern: "*", resourceType: "Script", requestStage: "Request" },
-        { urlPattern: "*", resourceType: "Media", requestStage: "Request" },
-      ],
-    });
+    // await client.send("Network.enable");
+    // await client.send("Fetch.enable", {
+    //   patterns: [
+    //     { urlPattern: "*", resourceType: "Image", requestStage: "Request" },
+    //     { urlPattern: "*", resourceType: "Font", requestStage: "Request" },
+    //     {
+    //       urlPattern: "*",
+    //       resourceType: "Stylesheet",
+    //       requestStage: "Request",
+    //     },
+    //     { urlPattern: "*", resourceType: "Script", requestStage: "Request" },
+    //     { urlPattern: "*", resourceType: "Media", requestStage: "Request" },
+    //   ],
+    // });
 
-    client.on("Fetch.requestPaused", async (event) => {
-      await client.send("Fetch.failRequest", {
-        requestId: event.requestId,
-        errorReason: "BlockedByClient",
-      });
-    });
+    // client.on("Fetch.requestPaused", async (event) => {
+    //   await client.send("Fetch.failRequest", {
+    //     requestId: event.requestId,
+    //     errorReason: "BlockedByClient",
+    //   });
+    // });
   } catch (error) {
-    console.error(`Failed to set up CDP resource blocking: ${error}`);
+    console.error(`Failed to set up resource blocking: ${error}`);
   }
 }
 

@@ -305,60 +305,139 @@ export async function simulateRandomMouseMovements(
 
 export function trackRedirectionPath(page: Page, startUrl: string) {
   const redirectionPath: Set<string> = new Set();
-  
-  // Ensure initial URL is tracked
   redirectionPath.add(startUrl);
-  
-  // Track responses to catch explicit HTTP redirects
+
+  // This optional helper decides if we should record a URL
+  function shouldRecord(url: string, resourceType?: string) {
+    // Filter out known junk patterns and non-navigation resource types
+    if (
+      resourceType &&
+      ["image", "font", "media", "stylesheet", "script"].includes(resourceType)
+    ) {
+      return false;
+    }
+    if (url.includes(".gif") || url.includes(".js")) {
+      return false;
+    }
+    return true;
+  }
+
+  // ------------------------------
+  // 1) CDP Setup for lower-level event tracking
+  // ------------------------------
+  (async () => {
+    try {
+      const cdpClient = await page.context().newCDPSession(page);
+      await cdpClient.send("Network.enable");
+      console.log("[CDP] Network enabled; starting to track requests.");
+
+      // Fires when a request is about to be sent
+      cdpClient.on("Network.requestWillBeSent", (event) => {
+        const url = event.request.url;
+        console.log(`[CDP] requestWillBeSent -> ${url}`);
+
+        // If this request was triggered by a redirect
+        if (event.redirectResponse && event.redirectResponse.headers) {
+          const headers = event.redirectResponse.headers;
+          // Try to find 'Location' header
+          const locationKey = Object.keys(headers).find((k) => k.toLowerCase() === "location");
+          if (locationKey) {
+            const locValue = headers[locationKey];
+            try {
+              const redirectUrl = new URL(locValue, event.redirectResponse.url).toString();
+              console.log(`[CDP] Found redirect in requestWillBeSent -> ${redirectUrl}`);
+              if (shouldRecord(redirectUrl)) {
+                redirectionPath.add(redirectUrl);
+              }
+            } catch (err) {
+              console.error("[CDP] Failed to parse redirect URL in requestWillBeSent", err);
+            }
+          }
+        }
+      });
+
+      // Fires when a response is received (headers available)
+      cdpClient.on("Network.responseReceived", (event) => {
+        const { url, status, headers } = event.response;
+        console.log(`[CDP] responseReceived -> ${url} (status: ${status})`);
+
+        if (status >= 300 && status < 400 && headers.location) {
+          try {
+            const fullUrl = new URL(headers.location, url).toString();
+            console.log(`[CDP] Found redirect response -> ${fullUrl}`);
+            if (shouldRecord(fullUrl)) {
+              redirectionPath.add(fullUrl);
+            }
+          } catch (err) {
+            console.error("[CDP] Failed to parse location in responseReceived", err);
+          }
+        }
+      });
+    } catch (err) {
+      console.error("[CDP] Failed to enable network tracking:", err);
+    }
+  })();
+
+  // ------------------------------
+  // 2) Existing Playwright Listeners
+  // ------------------------------
+
   const responseListener = async (response: Response) => {
     const status = response.status();
-    // Capture HTTP redirect status codes (301, 302, 303, 307, 308)
+    const respUrl = response.url();
+    console.log(`[DEBUG] Playwright.response -> ${respUrl} (status: ${status})`);
+
     if (status >= 300 && status < 400) {
-      const location = response.headers()['location'];
+      const location = response.headers()["location"];
       if (location) {
-        // Handle both absolute and relative URLs
         try {
-          const fullUrl = new URL(location, response.url()).toString();
-          redirectionPath.add(fullUrl);
-        } catch (e) {
-          console.log(`Failed to parse redirect location: ${location}`);
+          const fullUrl = new URL(location, respUrl).toString();
+          console.log(`[DEBUG] Found redirect (responseListener) -> ${fullUrl}`);
+          if (shouldRecord(fullUrl)) {
+            redirectionPath.add(fullUrl);
+          }
+        } catch (err) {
+          console.error(`[DEBUG] Failed to parse location in responseListener`, err);
         }
       }
     }
   };
 
-  // Track main frame navigations (for client-side redirects)
   const navigationListener = (frame: Frame) => {
     if (frame === page.mainFrame()) {
-      redirectionPath.add(frame.url());
+      const url = frame.url();
+      console.log(`[DEBUG] Main frame navigated -> ${url}`);
+      if (shouldRecord(url)) {
+        redirectionPath.add(url);
+      }
     }
   };
 
-  // Track HTTP redirects specifically
   const requestListener = (request: Request) => {
-    // Only track main-frame navigation requests
-    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+    if (request.frame() === page.mainFrame() && request.isNavigationRequest()) {
+      console.log(`[DEBUG] Playwright.request -> ${request.url()}`);
+
       // Build redirect chain backward
       const chain: string[] = [];
       let current: Request | null = request;
-
       while (current) {
         chain.push(current.url());
         current = current.redirectedFrom();
       }
-
-      chain.reverse().forEach((url) => redirectionPath.add(url));
+      chain.reverse().forEach((url) => {
+        console.log(`[DEBUG] Redirect chain item -> ${url}`);
+        if (shouldRecord(url)) {
+          redirectionPath.add(url);
+        }
+      });
     }
   };
 
-  // Add event listeners
   page.on("response", responseListener);
   page.on("framenavigated", navigationListener);
   page.on("request", requestListener);
 
   return {
-    getPath: () => {
-      return Array.from(redirectionPath);
-    },
+    getPath: () => Array.from(redirectionPath),
   };
 }

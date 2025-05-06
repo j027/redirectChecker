@@ -339,8 +339,8 @@ export async function isNetcraftFlagged(url: string): Promise<boolean> {
           return;
         }
 
-        const { proxy } = await readConfig();
-        const proxyAgent = new ProxyAgent(proxy);
+        const { hunterProxy } = await readConfig();
+        const proxyAgent = new ProxyAgent(hunterProxy);
 
         const urlObj = new URL(url);
         const baseUrl = `${urlObj.protocol}//${urlObj.host}`;

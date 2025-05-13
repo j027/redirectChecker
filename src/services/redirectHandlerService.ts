@@ -74,7 +74,7 @@ async function weeblyDigitalOceanJs(
   }).then((r) => r.text());
 
   const digitalOceanRedirectRegex: RegExp =
-    /(?<=redirectUrl = ")https:\/\/.*(?=";)/;
+    /(?<=(const|let|var) redirect.*url = \")https:\/\/.*(?=\";)/i;
   const nextRedirect = weeblyPage.match(digitalOceanRedirectRegex);
 
   // if we can't find the next digitalocean redirect

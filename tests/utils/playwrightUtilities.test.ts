@@ -43,7 +43,7 @@ describe('Redirect Path Tracker', () => {
   it('should track HTTP 301/302 redirect chains', async () => {
     // httpbin.org provides redirect services for testing
     const startUrl = 'https://httpbin.org/redirect/3';
-    const redirectTracker = trackRedirectionPath(page, startUrl);
+    const redirectTracker = await trackRedirectionPath(page, startUrl);
     
     await page.goto(startUrl, { waitUntil: 'networkidle' });
     
@@ -76,7 +76,7 @@ describe('Redirect Path Tracker', () => {
       </html>
     `);
     
-    const redirectTracker = trackRedirectionPath(page, page.url());
+    const redirectTracker = await trackRedirectionPath(page, page.url());
     
     // Wait for navigation to complete
     await page.waitForURL('https://example.com/**');

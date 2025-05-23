@@ -66,7 +66,7 @@ export class BrowserRedirectService {
     await blockPageResources(page);
 
     try {
-      const redirectTracker = trackRedirectionPath(page, redirectUrl);
+      const redirectTracker = await trackRedirectionPath(page, redirectUrl);
       await page.goto(redirectUrl, { waitUntil: "commit", referer: referrer });
 
       // wait for the url to change

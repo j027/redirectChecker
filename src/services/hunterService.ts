@@ -468,7 +468,7 @@ export class HunterService {
     try {
       await spoofWindowsChrome(context, page);
       await blockGoogleAnalytics(page);
-      const redirectTracker = trackRedirectionPath(page, adDestination);
+      const redirectTracker = await trackRedirectionPath(page, adDestination);
       await page.goto(adDestination, { referer });
 
       await simulateRandomMouseMovements(page);

@@ -303,7 +303,7 @@ export async function simulateRandomMouseMovements(
   }
 }
 
-export function trackRedirectionPath(page: Page, startUrl: string) {
+export async function trackRedirectionPath(page: Page, startUrl: string) {
   const redirectionPath: Set<string> = new Set();
   redirectionPath.add(startUrl);
 
@@ -325,58 +325,56 @@ export function trackRedirectionPath(page: Page, startUrl: string) {
   // ------------------------------
   // 1) CDP Setup for lower-level event tracking
   // ------------------------------
-  (async () => {
-    try {
-      const cdpClient = await page.context().newCDPSession(page);
-      await cdpClient.send("Network.enable");
-      console.log("[CDP] Network enabled; starting to track requests.");
+  try {
+    const cdpClient = await page.context().newCDPSession(page);
+    await cdpClient.send("Network.enable");
+    console.log("[CDP] Network enabled; starting to track requests.");
 
-      // Fires when a request is about to be sent
-      cdpClient.on("Network.requestWillBeSent", (event) => {
-        const url = event.request.url;
-        console.log(`[CDP] requestWillBeSent -> ${url}`);
+    // Fires when a request is about to be sent
+    cdpClient.on("Network.requestWillBeSent", (event) => {
+      const url = event.request.url;
+      console.log(`[CDP] requestWillBeSent -> ${url}`);
 
-        // If this request was triggered by a redirect
-        if (event.redirectResponse && event.redirectResponse.headers) {
-          const headers = event.redirectResponse.headers;
-          // Try to find 'Location' header
-          const locationKey = Object.keys(headers).find((k) => k.toLowerCase() === "location");
-          if (locationKey) {
-            const locValue = headers[locationKey];
-            try {
-              const redirectUrl = new URL(locValue, event.redirectResponse.url).toString();
-              console.log(`[CDP] Found redirect in requestWillBeSent -> ${redirectUrl}`);
-              if (shouldRecord(redirectUrl)) {
-                redirectionPath.add(redirectUrl);
-              }
-            } catch (err) {
-              console.error("[CDP] Failed to parse redirect URL in requestWillBeSent", err);
-            }
-          }
-        }
-      });
-
-      // Fires when a response is received (headers available)
-      cdpClient.on("Network.responseReceived", (event) => {
-        const { url, status, headers } = event.response;
-        console.log(`[CDP] responseReceived -> ${url} (status: ${status})`);
-
-        if (status >= 300 && status < 400 && headers.location) {
+      // If this request was triggered by a redirect
+      if (event.redirectResponse && event.redirectResponse.headers) {
+        const headers = event.redirectResponse.headers;
+        // Try to find 'Location' header
+        const locationKey = Object.keys(headers).find((k) => k.toLowerCase() === "location");
+        if (locationKey) {
+          const locValue = headers[locationKey];
           try {
-            const fullUrl = new URL(headers.location, url).toString();
-            console.log(`[CDP] Found redirect response -> ${fullUrl}`);
-            if (shouldRecord(fullUrl)) {
-              redirectionPath.add(fullUrl);
+            const redirectUrl = new URL(locValue, event.redirectResponse.url).toString();
+            console.log(`[CDP] Found redirect in requestWillBeSent -> ${redirectUrl}`);
+            if (shouldRecord(redirectUrl)) {
+              redirectionPath.add(redirectUrl);
             }
           } catch (err) {
-            console.error("[CDP] Failed to parse location in responseReceived", err);
+            console.error("[CDP] Failed to parse redirect URL in requestWillBeSent", err);
           }
         }
-      });
-    } catch (err) {
-      console.error("[CDP] Failed to enable network tracking:", err);
-    }
-  })();
+      }
+    });
+
+    // Fires when a response is received (headers available)
+    cdpClient.on("Network.responseReceived", (event) => {
+      const { url, status, headers } = event.response;
+      console.log(`[CDP] responseReceived -> ${url} (status: ${status})`);
+
+      if (status >= 300 && status < 400 && headers.location) {
+        try {
+          const fullUrl = new URL(headers.location, url).toString();
+          console.log(`[CDP] Found redirect response -> ${fullUrl}`);
+          if (shouldRecord(fullUrl)) {
+            redirectionPath.add(fullUrl);
+          }
+        } catch (err) {
+          console.error("[CDP] Failed to parse location in responseReceived", err);
+        }
+      }
+    });
+  } catch (err) {
+    console.error("[CDP] Failed to enable network tracking:", err);
+  }
 
   // ------------------------------
   // 2) Existing Playwright Listeners

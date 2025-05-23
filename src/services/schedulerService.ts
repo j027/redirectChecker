@@ -2,17 +2,20 @@ import { checkRedirects } from './redirectMonitorService.js';
 import { flushQueues } from './batchReportService.js';
 import { monitorTakedownStatus } from './takedownMonitorService.js';
 import { hunterService } from './hunterService.js';
+import { pruneOldRedirects } from './redirectPruningService.js';
 
 let checkInterval: NodeJS.Timeout | null = null;
 let batchInterval: NodeJS.Timeout | null = null;
 let takedownInterval: NodeJS.Timeout | null = null;
 let adHunterInterval: NodeJS.Timeout | null = null;
+let pruningInterval: NodeJS.Timeout | null = null;
 
 let isRunning = {
   redirectChecker: false,
   batchProcessor: false,
   takedownMonitor: false,
-  adHunter: false
+  adHunter: false,
+  redirectPruner: false
 };
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> {
@@ -188,4 +191,32 @@ export function stopAdHunter(): Promise<void> {
     console.log("Ad hunter service stopped");
     resolve();
   });
+}
+
+export function startRedirectPruner(): void {
+  isRunning.redirectPruner = true;
+  
+  async function runRedirectPruning() {
+    if (!isRunning.redirectPruner) return;
+    
+    try {
+      await pruneOldRedirects();
+    } catch (error) {
+      console.error("Error during redirect pruning:", error);
+    }
+    
+    // Run pruning once per day (86400000 ms)
+    pruningInterval = setTimeout(runRedirectPruning, 24 * 60 * 60 * 1000);
+  }
+  
+  // Start the first pruning cycle immediately
+  runRedirectPruning();
+}
+
+export function stopRedirectPruner(): void {
+  isRunning.redirectPruner = false;
+  if (pruningInterval) {
+    clearTimeout(pruningInterval);
+    pruningInterval = null;
+  }
 }

@@ -5,7 +5,7 @@ const { Pool } = pg;
 
 const pool = new Pool();
 
-export function closePool() {
+export async function closePool() {
     return pool.end();
 }
 

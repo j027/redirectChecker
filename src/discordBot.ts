@@ -12,6 +12,8 @@ import {
   stopTakedownMonitor,
   startAdHunter,
   stopAdHunter,
+  startRedirectPruner,
+  stopRedirectPruner
 } from "./services/schedulerService.js";
 import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
@@ -32,6 +34,7 @@ async function initializeServices() {
   startBatchReportProcessor();
   startTakedownMonitor();
   startAdHunter();
+  startRedirectPruner();
 }
 
 async function shutdownServices() {
@@ -39,6 +42,7 @@ async function shutdownServices() {
   await stopAdHunter();
   stopRedirectChecker();
   stopTakedownMonitor();
+  stopRedirectPruner();
   await aiClassifierService.close();
   await browserReportService.close();
   await browserRedirectService.close();

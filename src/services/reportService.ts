@@ -5,6 +5,10 @@ import { TextChannel } from "discord.js";
 import { userAgentService } from "./userAgentService.js";
 import { enqueueReport } from "./batchReportService.js";
 import { browserReportService } from "./browserReportService.js";
+import pool from "../dbPool.js";
+import { WebRiskServiceClient } from '@google-cloud/web-risk';
+
+let webRiskClient: WebRiskServiceClient|null = null; 
 
 async function reportToGoogleSafeBrowsing(site: string, screenshot: Buffer | null, html: string | null) {
   // fail hard if the user agent is not available - this ensures this is properly fixed
@@ -312,6 +316,104 @@ async function reportToCloudflareUrlScanner(site: string) {
   }
 }
 
+export async function initializeGoogleWebRiskClient() {
+  try {
+    webRiskClient = new WebRiskServiceClient();
+    await webRiskClient.initialize();
+  }
+  catch (error) {
+    console.error(`There was an error trying to initialize google web risk client ${error}`);
+    webRiskClient = null;
+  }
+}
+
+// this is just the enterprise version of the google safe browsing api
+// they have a fully documented reporting api, that automatically classifies and flags much faster
+// than the undocumented api
+// the api is limited to 100 free reports per month though
+async function reportToGoogleWebRisk(site: string) {
+  if (webRiskClient == null) {
+    console.log("Google web risk api is not authenticated, skipping this report");
+    return;
+  }
+  
+  const { googleWebRiskApiProjectName } = await readConfig();
+  
+  // Begin transaction to handle report count tracking
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Get current month in standardized format (first day of month)
+    const currentMonth = (await client.query(
+      `SELECT date_trunc('month', CURRENT_DATE) as month`
+    )).rows[0].month;
+    
+    // Use upsert pattern to handle potential new month and get updated count
+    const countResult = await client.query(
+      `INSERT INTO webrisk_monthly_reports (month, report_count)
+       VALUES ($1, 1)
+       ON CONFLICT (month) DO UPDATE
+       SET report_count = webrisk_monthly_reports.report_count + 1
+       RETURNING report_count`,
+      [currentMonth]
+    );
+    
+    const reportCount = countResult.rows[0].report_count;
+    
+    // Check if we're at or over limit
+    if (reportCount > 100) {
+      // We've exceeded our monthly limit, revert the increment
+      await client.query(
+        `UPDATE webrisk_monthly_reports SET report_count = report_count - 1 WHERE month = $1`,
+        [currentMonth]
+      );
+      await client.query('COMMIT');
+      console.warn(`Monthly Google Web Risk report limit reached (${reportCount-1}/100). Skipping report for: ${site}`);
+      return;
+    }
+    
+    // We're under the limit, proceed with report
+    try {
+      // Create submission request
+      const createSubmissionRequest = {
+        parent: googleWebRiskApiProjectName,
+        submission: {
+          uri: site
+        }
+      };
+      
+      // Submit to Web Risk API
+      const [operation] = await webRiskClient.submitUri(createSubmissionRequest);
+      
+      console.info(`Reported to Google Web Risk API: ${site} (${reportCount}/100 monthly reports)`);
+      console.log("Web Risk operation tracking details:", {
+        name: operation.name,
+        done: operation.done,
+        metadata: operation.metadata,
+      });
+      
+      // Commit transaction to finalize count update
+      await client.query('COMMIT');
+    } catch (apiError) {
+      // API call failed, rollback the counter increment
+      await client.query(
+        `UPDATE webrisk_monthly_reports SET report_count = report_count - 1 WHERE month = $1`,
+        [currentMonth]
+      );
+      await client.query('COMMIT');
+      console.error(`Error submitting to Google Web Risk API: ${apiError}`);
+    }
+  } catch (dbError) {
+    // Handle database transaction errors
+    await client.query('ROLLBACK');
+    console.error(`Database error in Web Risk reporting: ${dbError}`);
+  } finally {
+    // Always release the client
+    client.release();
+  }
+}
+
 export async function reportSite(
   site: string, 
   redirect: string, 
@@ -331,6 +433,9 @@ export async function reportSite(
   reports.push(reportToHybridAnalysis(site));
   reports.push(reportToUrlscan(site));
   reports.push(reportToCloudflareUrlScanner(site));
+
+  // google web risk api (needs special permission to get access)
+  reports.push(reportToGoogleWebRisk(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect));

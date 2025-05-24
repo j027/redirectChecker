@@ -2,11 +2,10 @@ config.json
 node_modules
 vcs.xml
 prettier.xml
-redirects.db
 .env
 .idea
 dist/
 install-state.gz
-safebrowsing_report_screenshot_failure.png
 smartscreen_report_failure.png
 data/
+google_webrisk_service_account.json

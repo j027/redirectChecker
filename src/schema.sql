@@ -99,9 +99,16 @@ CREATE TABLE IF NOT EXISTS ad_status_history
     reason          TEXT -- Reason for status change
 );
 
+CREATE TABLE IF NOT EXISTS webrisk_monthly_reports
+(
+    month        DATE PRIMARY KEY,
+    report_count INT NOT NULL DEFAULT 0
+        CHECK (report_count >= 0)
+);
+
 -- Indexes
 CREATE INDEX idx_ads_type ON ads (ad_type);
 CREATE INDEX idx_ads_scam ON ads (is_scam);
 CREATE INDEX idx_ads_last_seen ON ads (last_seen);
 CREATE INDEX idx_search_ads_search_url ON search_ads (search_url);
-CREATE INDEX idx_redirect_destinations_hostname ON redirect_destinations(hostname);
+CREATE INDEX idx_redirect_destinations_hostname ON redirect_destinations (hostname);

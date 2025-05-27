@@ -328,12 +328,10 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
   try {
     const cdpClient = await page.context().newCDPSession(page);
     await cdpClient.send("Network.enable");
-    console.log("[CDP] Network enabled; starting to track requests.");
 
     // Fires when a request is about to be sent
     cdpClient.on("Network.requestWillBeSent", (event) => {
       const url = event.request.url;
-      console.log(`[CDP] requestWillBeSent -> ${url}`);
 
       // If this request was triggered by a redirect
       if (event.redirectResponse && event.redirectResponse.headers) {
@@ -344,7 +342,6 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
           const locValue = headers[locationKey];
           try {
             const redirectUrl = new URL(locValue, event.redirectResponse.url).toString();
-            console.log(`[CDP] Found redirect in requestWillBeSent -> ${redirectUrl}`);
             if (shouldRecord(redirectUrl)) {
               redirectionPath.add(redirectUrl);
             }
@@ -358,12 +355,10 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
     // Fires when a response is received (headers available)
     cdpClient.on("Network.responseReceived", (event) => {
       const { url, status, headers } = event.response;
-      console.log(`[CDP] responseReceived -> ${url} (status: ${status})`);
 
       if (status >= 300 && status < 400 && headers.location) {
         try {
           const fullUrl = new URL(headers.location, url).toString();
-          console.log(`[CDP] Found redirect response -> ${fullUrl}`);
           if (shouldRecord(fullUrl)) {
             redirectionPath.add(fullUrl);
           }
@@ -383,14 +378,12 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
   const responseListener = async (response: Response) => {
     const status = response.status();
     const respUrl = response.url();
-    console.log(`[DEBUG] Playwright.response -> ${respUrl} (status: ${status})`);
 
     if (status >= 300 && status < 400) {
       const location = response.headers()["location"];
       if (location) {
         try {
           const fullUrl = new URL(location, respUrl).toString();
-          console.log(`[DEBUG] Found redirect (responseListener) -> ${fullUrl}`);
           if (shouldRecord(fullUrl)) {
             redirectionPath.add(fullUrl);
           }
@@ -404,7 +397,6 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
   const navigationListener = (frame: Frame) => {
     if (frame === page.mainFrame()) {
       const url = frame.url();
-      console.log(`[DEBUG] Main frame navigated -> ${url}`);
       if (shouldRecord(url)) {
         redirectionPath.add(url);
       }
@@ -413,7 +405,6 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
 
   const requestListener = (request: Request) => {
     if (request.frame() === page.mainFrame() && request.isNavigationRequest()) {
-      console.log(`[DEBUG] Playwright.request -> ${request.url()}`);
 
       // Build redirect chain backward
       const chain: string[] = [];
@@ -423,7 +414,6 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
         current = current.redirectedFrom();
       }
       chain.reverse().forEach((url) => {
-        console.log(`[DEBUG] Redirect chain item -> ${url}`);
         if (shouldRecord(url)) {
           redirectionPath.add(url);
         }

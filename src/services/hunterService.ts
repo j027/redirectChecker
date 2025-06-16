@@ -1002,6 +1002,66 @@ export class HunterService {
     }
   }
 
+  async huntPornhubAds() {
+    // TODO: parse ad destination url and extract destination
+    // TODO: use existing code to visit the parsed destination and classify
+    // TODO: track the results in the database, sending a discord message
+    // TODO: add commented out code that will be ready to automatically add cloakers discovered
+    await this.ensureBrowserIsHealthy();
+
+    if (this.browser == null) {
+      console.error(
+        "Browser has not been initialized - pornhub ad hunter failed"
+      );
+      return null;
+    }
+
+    const context = await this.browser.newContext({
+      proxy: await parseProxy(true),
+      viewport: null,
+    });
+
+    const page = await context.newPage();
+    
+    try {
+      // Make direct request to the ad API endpoint
+      const response = await page.evaluate(() => {
+        return fetch("https://www.pornhub.com/_xa/ads_batch?data=%5B%7B%22spots%22%3A%5B%7B%22zone%22%3A30781%7D%5D%7D%5D")
+          .then(response => response.json());
+      });
+      
+      if (!response || !response[0] || !response[0].full_html) {
+        console.log("Failed to get ad data or invalid response format");
+        return null;
+      }
+      
+      const adHtml = response[0].full_html;
+      console.log("Retrieved ad HTML");
+      
+      // Extract URL using regex
+      const url = await page.evaluate((html) => {
+        const regex = new RegExp('(?<=<a href=").+(?=" target)');
+        const match = html.match(regex);
+        return match ? match[0] : null;
+      }, adHtml);
+      
+      if (!url) {
+        console.log("Couldn't extract ad URL from HTML");
+        return null;
+      }
+      
+      console.log(`Found pornhub ad URL: ${url}`);
+      return url;
+      
+    } catch (error) {
+      console.error(`Error while fetching pornhub ads: ${error}`);
+      return null;
+    } finally {
+      await page.close();
+      await context.close();
+    }
+  }
+
   /**
    * Strips query parameters from a URL for fuzzy matching
    * @param url The URL to strip query parameters from

@@ -18,4 +18,10 @@ describe("Test the hunter service can operate successfully", () => {
 
     expect(result).toBe(true);
   });
+
+  it("work with pornhub ads", async () => {
+    const result = await service.huntPornhubAds();
+
+    expect(result).toBe(true);
+  })
 });

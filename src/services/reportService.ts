@@ -349,17 +349,34 @@ async function reportToGoogleWebRisk(site: string) {
       `SELECT date_trunc('month', CURRENT_DATE) as month`
     )).rows[0].month;
     
-    // Use upsert pattern to handle potential new month and get updated count
-    const countResult = await client.query(
-      `INSERT INTO webrisk_monthly_reports (month, report_count)
-       VALUES ($1, 1)
-       ON CONFLICT (month) DO UPDATE
-       SET report_count = webrisk_monthly_reports.report_count + 1
-       RETURNING report_count`,
+    // First, try to select the current row with FOR UPDATE to lock it
+    const currentRow = await client.query(
+      `SELECT report_count FROM webrisk_monthly_reports 
+       WHERE month = $1 FOR UPDATE`,
       [currentMonth]
     );
     
-    const reportCount = countResult.rows[0].report_count;
+    let reportCount;
+    if (currentRow.rowCount === 0) {
+      // No row exists, insert a new one
+      const insertResult = await client.query(
+        `INSERT INTO webrisk_monthly_reports (month, report_count)
+         VALUES ($1, 1)
+         RETURNING report_count`,
+        [currentMonth]
+      );
+      reportCount = insertResult.rows[0].report_count;
+    } else {
+      // Row exists, update it
+      const updateResult = await client.query(
+        `UPDATE webrisk_monthly_reports
+         SET report_count = report_count + 1
+         WHERE month = $1
+         RETURNING report_count`,
+        [currentMonth]
+      );
+      reportCount = updateResult.rows[0].report_count;
+    }
     
     // Check if we're at or over limit
     if (reportCount > 100) {

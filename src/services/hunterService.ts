@@ -1044,9 +1044,10 @@ export class HunterService {
     
     try {
       // Make direct request to the ad API endpoint
-      const response = await page.evaluate(() => {
-        return fetch("https://www.pornhub.com/_xa/ads_batch?data=%5B%7B%22spots%22%3A%5B%7B%22zone%22%3A30781%7D%5D%7D%5D")
-          .then(response => response.json());
+      await spoofWindowsChrome(context, page);
+      const response = await page.evaluate(async () => {
+        const response = await fetch("https://www.pornhub.com/_xa/ads_batch?data=%5B%7B%22spots%22%3A%5B%7B%22zone%22%3A30781%7D%5D%7D%5D");
+        return await response.json();
       });
       
       if (!response || !response[0] || !response[0].full_html) {

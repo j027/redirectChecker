@@ -67,7 +67,7 @@ export class HunterService {
       console.error(
         "Browser has not been initialized - search ad hunter failed"
       );
-      return null;
+      return false;
     }
 
     const context = await this.browser.newContext({
@@ -226,7 +226,7 @@ export class HunterService {
       return true;
     } catch (error) {
       console.log(`Error while hunting for scams in search ads: ${error}`);
-      return null;
+      return false;
     } finally {
       await page.close();
       await context.close();
@@ -1002,11 +1002,30 @@ export class HunterService {
     }
   }
 
-  async huntPornhubAds() {
-    // TODO: parse ad destination url and extract destination
+  async huntPornhubAds(): Promise<boolean> {
     // TODO: use existing code to visit the parsed destination and classify
     // TODO: track the results in the database, sending a discord message
     // TODO: add commented out code that will be ready to automatically add cloakers discovered
+
+    const adUrl = await this.getPornhubAdUrl();
+
+    if (adUrl == null) {
+      console.log("Failed to get pornhub ad url, giving up");
+      return false;
+    }
+
+    const adDestination = this.canonicalizePornhubAdUrl(adUrl);
+    if (adDestination == null) {
+      console.log("Failed to canonicalize pornhub ad")
+      return false;
+    }
+
+    console.log("Got a url", adDestination);
+
+    return true;
+  }
+
+  private async getPornhubAdUrl(): Promise<string|null> {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null) {
@@ -1036,7 +1055,6 @@ export class HunterService {
       }
       
       const adHtml = response[0].full_html;
-      console.log("Retrieved ad HTML");
       
       // Extract URL using regex
       const url = await page.evaluate((html) => {
@@ -1050,7 +1068,6 @@ export class HunterService {
         return null;
       }
       
-      console.log(`Found pornhub ad URL: ${url}`);
       return url;
       
     } catch (error) {
@@ -1059,6 +1076,30 @@ export class HunterService {
     } finally {
       await page.close();
       await context.close();
+    }
+  }
+
+  private canonicalizePornhubAdUrl(url: string): string|null {
+    try {
+      let adDestination = new URL(url).searchParams.get("url");
+      if (adDestination == null) {
+        return null;
+      }
+
+      // decode until the string stops changing
+      let prevValue = "";
+      let maxIterations = 5;
+
+      for (let i = 0; i < maxIterations && adDestination !== prevValue; i++) {
+        prevValue = adDestination;
+        adDestination = decodeURIComponent(adDestination);
+      }
+
+      return adDestination;
+    }
+    catch (error) {
+      console.log("Error while trying to canonicalize pornhub ad url", error);
+      return null;
     }
   }
 

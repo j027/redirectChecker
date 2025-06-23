@@ -3,6 +3,7 @@ import { CONFIDENCE_THRESHOLD, hunterService } from "./hunterService.js";
 import crypto from "crypto";
 import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
+import { sendTyposquatAlert } from "./alertService.js";
 
 export class TyposquatHunter {
   private browser: Browser | null = null;
@@ -217,7 +218,7 @@ export class TyposquatHunter {
           confidenceScore > CONFIDENCE_THRESHOLD &&
           isNewDestination
         ) {
-          await hunterService.sendTyposquatAlert(
+          await sendTyposquatAlert(
             typosquat,
             finalUrl,
             confidenceScore,

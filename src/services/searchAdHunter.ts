@@ -7,6 +7,7 @@ import {
 } from "../utils/playwrightUtilities.js";
 import pool from "../dbPool.js";
 import crypto from "crypto";
+import { sendAdScamAlert } from "./alertService.js";
 
 export class SearchAdHunter {
   private browser: Browser | null = null;
@@ -298,7 +299,7 @@ export class SearchAdHunter {
               `Ad status changed from ${existingAd.is_scam} to ${isScam}`
             );
             if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
-              await hunterService.sendAdScamAlert(
+              await sendAdScamAlert(
                 adDestination,
                 finalUrl,
                 adText,
@@ -344,7 +345,7 @@ export class SearchAdHunter {
 
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
           if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
-            await hunterService.sendAdScamAlert(
+            await sendAdScamAlert(
               adDestination,
               finalUrl,
               adText,

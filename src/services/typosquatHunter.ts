@@ -3,7 +3,7 @@ import { CONFIDENCE_THRESHOLD, hunterService } from "./hunterService.js";
 import crypto from "crypto";
 import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
-import { sendAlert } from "./alertService.js";
+import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 
 export class TyposquatHunter {
   private browser: Browser | null = null;
@@ -270,7 +270,14 @@ export class TyposquatHunter {
           console.log(`Sent alert for new scam destination: ${finalUrl}`);
 
           if (cloakerCandidate != null) {
-            hunterService.tryAddToRedirectChecker(cloakerCandidate);
+            const addedToChecker =
+              await hunterService.tryAddToRedirectChecker(cloakerCandidate);
+            if (addedToChecker) {
+              await sendCloakerAddedAlert(cloakerCandidate, "Typosquat");
+              console.log(
+                `Added cloaker to redirect checker: ${cloakerCandidate}`
+              );
+            }
           }
         }
 

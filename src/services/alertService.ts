@@ -117,3 +117,32 @@ function buildRedirectList(redirectionPath: string[]): string {
   });
   return result;
 }
+
+/**
+ * Sends a simple confirmation when a URL is added to the redirect checker
+ *
+ * @param cloakerUrl The URL that was added to redirect checker
+ * @param huntType The type of hunt that found it
+ */
+export async function sendCloakerAddedAlert(
+  cloakerUrl: string,
+  huntType: string
+): Promise<void> {
+  try {
+    const { channelId } = await readConfig();
+    const channel = discordClient.channels.cache.get(channelId) as TextChannel;
+
+    if (!channel) {
+      console.error("Discord channel not found");
+      return;
+    }
+
+    // Simple confirmation message
+    const messageText = `✅ Added to redirect checker: \`${cloakerUrl}\` (from ${huntType} hunter)`;
+
+    await channel.send(messageText);
+    console.log(`Redirect checker addition confirmation sent for: ${cloakerUrl}`);
+  } catch (error) {
+    console.error(`Error sending Discord notification: ${error}`);
+  }
+}

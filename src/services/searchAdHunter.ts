@@ -7,7 +7,7 @@ import {
 } from "../utils/playwrightUtilities.js";
 import pool from "../dbPool.js";
 import crypto from "crypto";
-import { sendAlert } from "./alertService.js";
+import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 
 export class SearchAdHunter {
   private browser: Browser | null = null;
@@ -307,11 +307,14 @@ export class SearchAdHunter {
                 isNew: false,
                 confidenceScore,
                 redirectionPath,
-                cloakerCandidate: adDestination
+                cloakerCandidate: adDestination,
               });
 
               const addedToRedirectChecker =
                 await hunterService.tryAddToRedirectChecker(adDestination);
+              if (addedToRedirectChecker) {
+                await sendCloakerAddedAlert(adDestination, "Search Ad");
+              }
               console.log(
                 `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed"}`
               );
@@ -355,11 +358,14 @@ export class SearchAdHunter {
               isNew: true,
               confidenceScore,
               redirectionPath,
-              cloakerCandidate: adDestination
+              cloakerCandidate: adDestination,
             });
 
             const addedToRedirectChecker =
               await hunterService.tryAddToRedirectChecker(adDestination);
+            if (addedToRedirectChecker) {
+              await sendCloakerAddedAlert(adDestination, "Search Ad");
+            }
             console.log(
               `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`
             );

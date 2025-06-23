@@ -1,5 +1,10 @@
 import { Browser } from "patchright";
+import { hunterService, CONFIDENCE_THRESHOLD } from "./hunterService.js";
+import { aiClassifierService } from "./aiClassifierService.js";
 import { parseProxy, spoofWindowsChrome } from "../utils/playwrightUtilities.js";
+import pool from "../dbPool.js";
+import crypto from "crypto";
+import { sendAlert } from "./alertService.js";
 
 export class PornhubAdHunter {
   private browser: Browser | null = null;
@@ -9,10 +14,7 @@ export class PornhubAdHunter {
   }
 
   async huntPornhubAds(): Promise<boolean> {
-    // TODO: use existing code to visit the parsed destination and classify
-    // TODO: track the results in the database, sending a discord message
-    // TODO: add commented out code that will be ready to automatically add cloakers discovered
-
+    // Get the pornhub ad URL
     const adUrl = await this.getPornhubAdUrl();
 
     if (adUrl == null) {
@@ -26,9 +28,225 @@ export class PornhubAdHunter {
       return false;
     }
 
-    console.log("Got a url", adDestination);
+    console.log("Got a pornhub ad URL:", adDestination);
+
+    // Process the ad (similar to handleSearchAd)
+    await this.handlePornhubAd(adDestination);
 
     return true;
+  }
+
+  private async handlePornhubAd(adDestination: string) {
+    // Check if this is already a known scam
+    const isKnownScam = await this.checkIfPornhubAdIsKnownScam(adDestination);
+    if (isKnownScam) {
+      return;
+    }
+
+    // Process the ad using the hunter service
+    const processResult = await hunterService.processAd(
+      adDestination,
+      "https://www.pornhub.com/"
+    );
+    if (processResult == null) {
+      console.log("Failed to process pornhub ad");
+      return;
+    }
+
+    const { screenshot, html, redirectionPath } = processResult;
+    const classifierResult = await aiClassifierService.runInference(screenshot);
+
+    try {
+      const { isScam, confidenceScore } = classifierResult;
+      const finalUrl =
+        redirectionPath[redirectionPath.length - 1] || adDestination;
+
+      // Save classifier data
+      await aiClassifierService.saveData(
+        finalUrl,
+        screenshot,
+        html,
+        classifierResult.isScam,
+        classifierResult.confidenceScore
+      );
+
+      // Get a client from the pool for transaction support
+      const client = await pool.connect();
+
+      try {
+        // Start transaction
+        await client.query("BEGIN");
+
+        // Check if ad exists
+        const existingAdQuery = await client.query(
+          `SELECT id, is_scam FROM ads 
+           WHERE initial_url = $1 AND ad_type = 'pornhub'`,
+          [adDestination]
+        );
+
+        const existingAd = existingAdQuery.rows[0];
+
+        if (existingAd) {
+          // Update existing ad
+          await client.query(
+            `UPDATE ads SET 
+               last_seen = CURRENT_TIMESTAMP,
+               last_updated = CURRENT_TIMESTAMP,
+               final_url = $1,
+               redirect_path = $2,
+               confidence_score = $3
+             WHERE id = $4`,
+            [
+              finalUrl,
+              hunterService.pgArray(redirectionPath),
+              confidenceScore,
+              existingAd.id,
+            ]
+          );
+
+          // Check if status changed
+          if (existingAd.is_scam !== isScam) {
+            await client.query(`UPDATE ads SET is_scam = $1 WHERE id = $2`, [
+              isScam,
+              existingAd.id,
+            ]);
+
+            // Add history record
+            const reason = isScam
+              ? `Changed to scam with confidence ${confidenceScore}`
+              : `No longer classified as scam`;
+
+            await client.query(
+              `INSERT INTO ad_status_history 
+               (ad_id, previous_status, new_status, reason)
+               VALUES ($1, $2, $3, $4)`,
+              [existingAd.id, existingAd.is_scam, isScam, reason]
+            );
+
+            console.log(
+              `Pornhub ad status changed from ${existingAd.is_scam} to ${isScam}`
+            );
+            
+            // Send alert if status changed to scam with high confidence
+            if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
+              await sendAlert({
+                type: "pornhubAd",
+                initialUrl: adDestination,
+                finalUrl,
+                isNew: false,
+                confidenceScore,
+                redirectionPath,
+                cloakerCandidate: adDestination
+              });
+
+              // Commented code for adding to redirect checker - ready for future enablement
+              /*
+              const urlToAdd = cloakerCandidate || adDestination;
+              const addedToRedirectChecker = 
+                await hunterService.tryAddToRedirectChecker(urlToAdd);
+              if (addedToRedirectChecker) {
+                await sendCloakerAddedAlert(urlToAdd, "Pornhub Ad");
+              }
+              console.log(
+                `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed"}`
+              );
+              */
+            }
+          }
+
+          console.log(`Updated existing pornhub ad: ${existingAd.id}`);
+        } else {
+          // Insert new ad
+          const adId = crypto.randomUUID();
+
+          await client.query(
+            `INSERT INTO ads
+             (id, ad_type, initial_url, final_url, redirect_path, is_scam, confidence_score)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              adId,
+              "pornhub",
+              adDestination,
+              finalUrl,
+              hunterService.pgArray(redirectionPath),
+              isScam,
+              confidenceScore,
+            ]
+          );
+
+          console.log(`Inserted new pornhub ad: ${adId}, is_scam: ${isScam}`);
+          
+          // Send alert if new scam with high confidence
+          if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
+            await sendAlert({
+              type: "pornhubAd",
+              initialUrl: adDestination,
+              finalUrl,
+              isNew: true,
+              confidenceScore,
+              redirectionPath,
+              cloakerCandidate: adDestination
+            });
+
+            // Commented code for adding to redirect checker - ready for future enablement
+            /*
+            const urlToAdd = cloakerCandidate || adDestination;
+            const addedToRedirectChecker = 
+              await hunterService.tryAddToRedirectChecker(urlToAdd);
+            if (addedToRedirectChecker) {
+              await sendCloakerAddedAlert(urlToAdd, "Pornhub Ad");
+            }
+            console.log(
+              `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`
+            );
+            */
+          }
+        }
+
+        // Commit transaction
+        await client.query("COMMIT");
+      } catch (error) {
+        // Rollback on error
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        // Always release the client back to the pool
+        client.release();
+      }
+    } catch (dbError) {
+      console.error(`Database error while processing pornhub ad: ${dbError}`);
+    }
+  }
+
+  private async checkIfPornhubAdIsKnownScam(
+    adDestination: string
+  ): Promise<boolean> {
+    const client = await pool.connect();
+    try {
+      // Check if this URL is already known to be a scam
+      const existingAdQuery = await client.query(
+        `SELECT id, is_scam FROM ads 
+       WHERE initial_url = $1 AND ad_type = 'pornhub'`,
+        [adDestination]
+      );
+
+      const existingAd = existingAdQuery.rows[0];
+
+      // If ad exists and is already marked as a scam, just update last_seen and return
+      if (existingAd && existingAd.is_scam) {
+        await client.query(
+          `UPDATE ads SET last_seen = CURRENT_TIMESTAMP 
+         WHERE id = $1`,
+          [existingAd.id]
+        );
+
+        console.log(`Skipping already known scam pornhub ad: ${adDestination}`);
+        return true;
+      }
+    } finally {
+      client.release();
+    }
+    return false;
   }
 
   private async getPornhubAdUrl(): Promise<string | null> {

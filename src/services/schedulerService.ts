@@ -154,6 +154,14 @@ export function startAdHunter(): void {
         ).catch(error => {
           console.error(`Error during typosquat hunting: ${error.message}`);
           return null;
+        }),
+        withTimeout(
+          hunterService.huntPornhubAds(),
+          TIMEOUT_MS,
+          'Pornhub ad hunting'
+        ).catch(error => {
+          console.error(`Error during pornhub ad hunting: ${error.message}`);
+          return null;
         })
         // Future hunt types can be added here
       ];

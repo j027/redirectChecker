@@ -2,7 +2,8 @@ import { TextChannel } from "discord.js";
 import { readConfig } from "../config.js";
 import { discordClient } from "../discordBot.js";
 
-export type AlertType = "adScam" | "typosquat";
+// Add pornhubAd as a new alert type
+export type AlertType = "adScam" | "typosquat" | "pornhubAd";
 
 export interface AlertPayload {
   type: AlertType;
@@ -75,6 +76,25 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
       if (payload.redirectionPath && payload.redirectionPath.length > 0) {
         pathSection += buildRedirectList(payload.redirectionPath);
       }
+
+      // Include cloaker info if available
+      const cloakerSection = payload.cloakerCandidate
+        ? `\n**Potential Cloaker:**\n${payload.cloakerCandidate}`
+        : "";
+
+      messageText = `${header}\n\n${pathSection}${cloakerSection}`;
+    } else if (payload.type === "pornhubAd") {
+      // Pornhub Ad alert formatting
+      const header = payload.isNew
+        ? `🚨 NEW PORNHUB AD SCAM DETECTED 🚨 (Confidence: ${confidencePercent}%)`
+        : `⚠️ EXISTING PORNHUB AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)`;
+
+      // Build path section
+      const pathSection = buildRedirectPathSection(
+        payload.initialUrl,
+        payload.finalUrl,
+        payload.redirectionPath
+      );
 
       // Include cloaker info if available
       const cloakerSection = payload.cloakerCandidate

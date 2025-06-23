@@ -2,95 +2,118 @@ import { TextChannel } from "discord.js";
 import { readConfig } from "../config.js";
 import { discordClient } from "../discordBot.js";
 
-export async function sendTyposquatAlert(
-  typosquatDomain: string,
-  finalUrl: string,
-  confidenceScore: number,
-  redirectionPath: string[] | null = null
-) {
+export type AlertType = "adScam" | "typosquat";
+
+export interface AlertPayload {
+  type: AlertType;
+  initialUrl: string;
+  finalUrl: string;
+  adText?: string;
+  isNew?: boolean;
+  confidenceScore: number;
+  redirectionPath: string[] | null;
+  cloakerCandidate?: string | null;
+}
+
+/**
+ * Unified alert function that handles different alert types
+ */
+export async function sendAlert(payload: AlertPayload): Promise<void> {
   try {
     const { channelId } = await readConfig();
     const channel = discordClient.channels.cache.get(channelId) as TextChannel;
 
-    if (channel) {
-      // Format confidence as percentage with 2 decimal places
-      const confidencePercent = (confidenceScore * 100).toFixed(2);
+    if (!channel) {
+      console.error("Discord channel not found");
+      return;
+    }
 
-      // Build message components
-      const header = `🚨 NEW TYPOSQUAT SCAM DESTINATION 🚨 (Confidence: ${confidencePercent}%)`;
+    // Format confidence as percentage with 2 decimal places
+    const confidencePercent = (payload.confidenceScore * 100).toFixed(2);
 
-      let pathSection = `**Typosquat Domain:** ${typosquatDomain}\n**Final URL:** ${finalUrl}\n\n`;
+    // Build message based on alert type
+    let messageText = "";
 
-      if (redirectionPath && redirectionPath.length > 0) {
-        pathSection += "**Redirect Path:**\n";
-        redirectionPath.forEach((url, index) => {
-          pathSection += `${index + 1}. ${url}\n`;
-        });
+    if (payload.type === "adScam") {
+      // Ad Scam alert formatting
+      const header = payload.isNew
+        ? `🚨 NEW SEARCH AD SCAM DETECTED 🚨 (Confidence: ${confidencePercent}%)`
+        : `⚠️ EXISTING SEARCH AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)`;
+
+      // Format ad text if available
+      let adTextSection = "";
+      if (payload.adText) {
+        const formattedAdText = payload.adText
+          .replace(/\s+/g, " ")
+          .trim()
+          .substring(0, 150);
+
+        adTextSection = `**Ad Text:**\n${formattedAdText}${formattedAdText.length >= 150 ? "..." : ""}\n\n`;
       }
 
-      // Combine all sections
-      const messageText = `${header}\n\n${pathSection}`;
+      // Build path section
+      const pathSection = buildRedirectPathSection(
+        payload.initialUrl,
+        payload.finalUrl,
+        payload.redirectionPath
+      );
 
-      await channel.send(messageText);
-      console.log("Discord typosquat alert sent");
-    } else {
-      console.error("Discord channel not found");
+      // Include cloaker info if available
+      const cloakerSection = payload.cloakerCandidate
+        ? `\n**Potential Cloaker:**\n${payload.cloakerCandidate}`
+        : "";
+
+      messageText = `${header}\n\n${adTextSection}${pathSection}${cloakerSection}`;
+    } else if (payload.type === "typosquat") {
+      // Typosquat alert formatting
+      const header = `🚨 NEW TYPOSQUAT SCAM DESTINATION 🚨 (Confidence: ${confidencePercent}%)`;
+
+      // Include domain info
+      let pathSection = `**Typosquat Domain:** ${payload.initialUrl}\n**Final URL:** ${payload.finalUrl}\n\n`;
+
+      // Add redirect path if available
+      if (payload.redirectionPath && payload.redirectionPath.length > 0) {
+        pathSection += buildRedirectList(payload.redirectionPath);
+      }
+
+      // Include cloaker info if available
+      const cloakerSection = payload.cloakerCandidate
+        ? `\n**Potential Cloaker:**\n${payload.cloakerCandidate}`
+        : "";
+
+      messageText = `${header}\n\n${pathSection}${cloakerSection}`;
     }
+
+    await channel.send(messageText);
+    console.log(`Discord ${payload.type} alert sent`);
   } catch (error) {
     console.error(`Error sending Discord notification: ${error}`);
+    // Non-critical functionality, don't throw
   }
 }
 
-export async function sendAdScamAlert(
-  adDestination: string,
+/**
+ * Helper to build the redirect path section
+ */
+function buildRedirectPathSection(
+  initialUrl: string,
   finalUrl: string,
-  adText: string,
-  isNew: boolean = true,
-  confidenceScore: number,
-  redirectionPath: string[] | null = null
-) {
-  try {
-    const { channelId } = await readConfig();
-    const channel = discordClient.channels.cache.get(channelId) as TextChannel;
-
-    if (channel) {
-      // Format confidence as percentage with 2 decimal places
-      const confidencePercent = (confidenceScore * 100).toFixed(2);
-
-      // Format ad text: clean up extra whitespace and limit length
-      const formattedAdText = adText
-        .replace(/\s+/g, " ")
-        .trim()
-        .substring(0, 150);
-
-      // Build message components
-      const header = isNew
-        ? `🚨 NEW SCAM AD DETECTED 🚨 (Confidence: ${confidencePercent}%)`
-        : `⚠️ EXISTING AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)`;
-
-      const adTextSection = `**Ad Text:**\n${formattedAdText}${formattedAdText.length >= 150 ? "..." : ""}`;
-
-      // Build redirect path section
-      let pathSection = "";
-      if (redirectionPath && redirectionPath.length > 0) {
-        pathSection = "**Redirect Path:**\n";
-        redirectionPath.forEach((url, index) => {
-          pathSection += `${index + 1}. ${url}\n`;
-        });
-      } else {
-        pathSection = `**Initial URL:** ${adDestination}\n**Final URL:** ${finalUrl}`;
-      }
-
-      // Combine all sections
-      const messageText = `${header}\n\n${adTextSection}\n\n${pathSection}`;
-
-      await channel.send(messageText);
-      console.log("Discord alert sent");
-    } else {
-      console.error("Ad hunter Discord channel not found");
-    }
-  } catch (error) {
-    console.error(`Error sending Discord notification: ${error}`);
-    // Don't throw - this is non-critical functionality
+  redirectionPath: string[] | null
+): string {
+  if (redirectionPath && redirectionPath.length > 0) {
+    return buildRedirectList(redirectionPath);
+  } else {
+    return `**Initial URL:** ${initialUrl}\n**Final URL:** ${finalUrl}`;
   }
+}
+
+/**
+ * Helper to format redirection list
+ */
+function buildRedirectList(redirectionPath: string[]): string {
+  let result = "**Redirect Path:**\n";
+  redirectionPath.forEach((url, index) => {
+    result += `${index + 1}. ${url}\n`;
+  });
+  return result;
 }

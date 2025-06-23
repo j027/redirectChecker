@@ -3,7 +3,7 @@ import { CONFIDENCE_THRESHOLD, hunterService } from "./hunterService.js";
 import crypto from "crypto";
 import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
-import { sendTyposquatAlert } from "./alertService.js";
+import { sendAlert } from "./alertService.js";
 
 export class TyposquatHunter {
   private browser: Browser | null = null;
@@ -120,6 +120,42 @@ export class TyposquatHunter {
     return randomDomain;
   }
 
+  /**
+   * Identifies a potential cloaker by finding the last URL in the redirect chain
+   * that has a different hostname than the final URL
+   */
+  private findCloakerCandidate(
+    redirectionPath: string[],
+    finalUrl: string
+  ): string | null {
+    if (!redirectionPath || redirectionPath.length < 2) {
+      return null;
+    }
+
+    try {
+      const finalHostname = new URL(finalUrl).hostname;
+
+      // Search from the end of the path (excluding final URL) to find last different hostname
+      for (let i = redirectionPath.length - 2; i >= 0; i--) {
+        try {
+          const redirectUrl = redirectionPath[i];
+          const redirectHostname = new URL(redirectUrl).hostname;
+
+          if (redirectHostname !== finalHostname) {
+            return redirectUrl;
+          }
+        } catch (e) {
+          console.error(`Invalid URL in redirect path: ${redirectionPath[i]}`);
+          continue;
+        }
+      }
+    } catch (e) {
+      console.error(`Error identifying cloaker candidate: ${e}`);
+    }
+
+    return null;
+  }
+
   async huntTyposquat() {
     if (this.browser == null) {
       console.error(
@@ -218,13 +254,24 @@ export class TyposquatHunter {
           confidenceScore > CONFIDENCE_THRESHOLD &&
           isNewDestination
         ) {
-          await sendTyposquatAlert(
-            typosquat,
+          const cloakerCandidate = this.findCloakerCandidate(
+            redirectionPath,
+            finalUrl
+          );
+
+          await sendAlert({
+            type: "typosquat",
+            initialUrl: typosquat,
             finalUrl,
             confidenceScore,
-            redirectionPath
-          );
+            redirectionPath,
+            cloakerCandidate,
+          });
           console.log(`Sent alert for new scam destination: ${finalUrl}`);
+
+          if (cloakerCandidate != null) {
+            hunterService.tryAddToRedirectChecker(cloakerCandidate);
+          }
         }
 
         await client.query("COMMIT");

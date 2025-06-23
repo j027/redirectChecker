@@ -7,7 +7,7 @@ import {
 } from "../utils/playwrightUtilities.js";
 import pool from "../dbPool.js";
 import crypto from "crypto";
-import { sendAdScamAlert } from "./alertService.js";
+import { sendAlert } from "./alertService.js";
 
 export class SearchAdHunter {
   private browser: Browser | null = null;
@@ -299,14 +299,16 @@ export class SearchAdHunter {
               `Ad status changed from ${existingAd.is_scam} to ${isScam}`
             );
             if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
-              await sendAdScamAlert(
-                adDestination,
+              await sendAlert({
+                type: "adScam",
+                initialUrl: adDestination,
                 finalUrl,
                 adText,
-                false,
+                isNew: false,
                 confidenceScore,
-                redirectionPath
-              );
+                redirectionPath,
+                cloakerCandidate: adDestination
+              });
 
               const addedToRedirectChecker =
                 await hunterService.tryAddToRedirectChecker(adDestination);
@@ -345,14 +347,16 @@ export class SearchAdHunter {
 
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
           if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
-            await sendAdScamAlert(
-              adDestination,
+            await sendAlert({
+              type: "adScam",
+              initialUrl: adDestination,
               finalUrl,
               adText,
-              true,
+              isNew: true,
               confidenceScore,
-              redirectionPath
-            );
+              redirectionPath,
+              cloakerCandidate: adDestination
+            });
 
             const addedToRedirectChecker =
               await hunterService.tryAddToRedirectChecker(adDestination);

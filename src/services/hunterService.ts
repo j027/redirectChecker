@@ -26,9 +26,6 @@ interface ProcessAdResult {
 }
 
 export class HunterService {
-  sendAdScamAlert(adDestination: string, finalUrl: string, adText: string, arg3: boolean, confidenceScore: number, redirectionPath: string[]) {
-      throw new Error("Method not implemented.");
-  }
   private browser: Browser | null = null;
   private isHeadless: boolean = false;
   private browserInitializing: boolean = false;

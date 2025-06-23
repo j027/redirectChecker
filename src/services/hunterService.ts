@@ -13,6 +13,7 @@ import { RedirectType } from "../redirectType.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { SearchAdHunter } from "./searchAdHunter.js";
 import { TyposquatHunter } from "./typosquatHunter.js";
+import { PornhubAdHunter } from "./pornhubAdHunter.js";
 
 // given a detected scam, confidence level above this will be treated as one
 // this is because the image model has false positive issues otherwise
@@ -83,6 +84,19 @@ export class HunterService {
 
     const typosquatHunter = new TyposquatHunter(this.browser);
     const result = await typosquatHunter.huntTyposquat();
+    return result;
+  }
+
+  public async huntPornhubAds() {
+    await this.ensureBrowserIsHealthy();
+
+    if (this.browser == null) {
+      console.error("Browser has not been initialized - pornhub ad hunter failed");
+      return false;
+    }
+
+    const pornhubAdHunter = new PornhubAdHunter(this.browser);
+    const result = await pornhubAdHunter.huntPornhubAds();
     return result;
   }
 

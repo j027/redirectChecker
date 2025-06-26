@@ -132,6 +132,20 @@ export const statusCommand: CommandDefinition = {
         for (const dest of info.destinations) {
           const destUrl = formatUrl(dest.url);
           
+          // Truncate long destination URLs to avoid exceeding Discord's 1024 character limit
+          let destinationDisplay = destUrl.display;
+          let destinationFull = destUrl.full;
+          
+          // If the full URL is too long, truncate it
+          if (destinationFull.length > 100) {
+            try {
+              const urlObj = new URL(destinationFull);
+              destinationFull = `${urlObj.origin}${urlObj.pathname.substring(0, 15)}... (truncated)`;
+            } catch (e) {
+              destinationFull = destinationFull.substring(0, 100) + "... (truncated)";
+            }
+          }
+          
           // Build takedown status lines
           let takedownStatusLines = [];
           
@@ -163,7 +177,7 @@ export const statusCommand: CommandDefinition = {
           embed.addFields(
             {
               name: "Destination",
-              value: `[${destUrl.display}](${destUrl.full})\n${takedownStatus}`,
+              value: `[${destinationDisplay}](${destinationFull})\n${takedownStatus}`,
               inline: true
             },
             {

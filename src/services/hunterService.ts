@@ -165,7 +165,7 @@ export class HunterService {
     try {
       // Compare only hostnames (ignoring http/https)
       const query = `
-        SELECT 1 
+        SELECT id, source_url 
         FROM redirects 
         WHERE lower(
           regexp_replace(source_url, '^https?://([^/]+)/?.*$', '\\1')
@@ -175,8 +175,14 @@ export class HunterService {
       const result = await checkClient.query(query, [domain]);
 
       if (result.rowCount && result.rowCount > 0) {
-        console.log(`Domain ${domain} already exists in redirect checker`);
-        return true; // Already being monitored, consider this a success
+        console.log(`Domain ${domain} already exists in redirect checker. Updating URL.`);
+        
+        // Update the existing record with the new URL
+        const updateQuery = `UPDATE redirects SET source_url = $1 WHERE id = $2`;
+        await checkClient.query(updateQuery, [url, result.rows[0].id]);
+        
+        console.log(`Updated redirect for ${domain} from ${result.rows[0].source_url} to ${url}`);
+        return true;
       }
     } finally {
       checkClient.release();

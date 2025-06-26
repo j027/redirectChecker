@@ -319,7 +319,11 @@ export class PornhubAdHunter {
         adDestination = decodeURIComponent(adDestination);
       }
 
-      return adDestination;
+      // remove unique url parameter that the actual redirect would strip anyways
+      const adUrl = new URL(adDestination);
+      adUrl.searchParams.delete("vf");
+
+      return adUrl.toString();
     } catch (error) {
       console.log("Error while trying to canonicalize pornhub ad url", error);
       return null;

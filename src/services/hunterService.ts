@@ -275,9 +275,9 @@ export class HunterService {
   }
 
   /**
-   * Finds existing destination record using fuzzy URL matching
+   * Finds existing record using fuzzy URL matching of destination
    * @param url The URL to find a match for
-   * @param adType The type of ad ("typosquat" or "search")
+   * @param adType The type of ad
    * @returns The matching record ID or null if not found
    */
   public async findExistingDestination(url: string, adType: string, client: any): Promise<string | null> {
@@ -298,6 +298,40 @@ export class HunterService {
       
       if (result.rowCount && result.rowCount > 0) {
         console.log(`Found fuzzy match for ${url}: ${result.rows[0].final_url}`);
+        return result.rows[0].id;
+      }
+      
+      return null;
+    } catch (e) {
+      console.error(`Error during fuzzy URL matching: ${e}`);
+      return null;
+    }
+  }
+
+  /**
+   * Finds existing record using fuzzy URL matching of source
+   * @param url The URL to find a match for
+   * @param adType The type of ad
+   * @returns The matching record ID or null if not found
+   */
+  public async findExistingSource(url: string, adType: string, client: any): Promise<string | null> {
+    // Strip query parameters for matching
+    const strippedUrl = this.stripQueryParameters(url);
+    
+    try {
+      // base URL matching without query parameters
+      const query = `
+        SELECT id, initial_url FROM ads 
+        WHERE ad_type = $1
+        AND regexp_replace(final_url, '\\?.*$', '') = $2
+        ORDER BY last_seen DESC
+        LIMIT 1
+      `;
+      
+      const result = await client.query(query, [adType, strippedUrl]);
+      
+      if (result.rowCount && result.rowCount > 0) {
+        console.log(`Found fuzzy match for ${url}: ${result.rows[0].initial_url}`);
         return result.rows[0].id;
       }
       

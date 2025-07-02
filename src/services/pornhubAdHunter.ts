@@ -78,15 +78,20 @@ export class PornhubAdHunter {
         await client.query("BEGIN");
 
         // Check if ad exists
-        const existingAdQuery = await client.query(
-          `SELECT id, is_scam FROM ads 
-           WHERE initial_url = $1 AND ad_type = 'pornhub'`,
-          [adDestination]
+        const existingAdId = await hunterService.findExistingSource(
+          adDestination,
+          "pornhub",
+          client
         );
 
-        const existingAd = existingAdQuery.rows[0];
+        if (existingAdId != null) {
+          const existingAdQuery = await client.query(
+            `SELECT id, is_scam FROM ads 
+            WHERE id = $1 AND ad_type = 'pornhub'`,
+            [existingAdId]
+          );
+          const existingAd = existingAdQuery.rows[0];
 
-        if (existingAd) {
           // Update existing ad
           await client.query(
             `UPDATE ads SET 
@@ -126,7 +131,7 @@ export class PornhubAdHunter {
             console.log(
               `Pornhub ad status changed from ${existingAd.is_scam} to ${isScam}`
             );
-            
+
             // Send alert if status changed to scam with high confidence
             if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
               await sendAlert({
@@ -136,7 +141,7 @@ export class PornhubAdHunter {
                 isNew: false,
                 confidenceScore,
                 redirectionPath,
-                cloakerCandidate: adDestination
+                cloakerCandidate: adDestination,
               });
 
               // Commented code for adding to redirect checker - ready for future enablement
@@ -175,7 +180,7 @@ export class PornhubAdHunter {
           );
 
           console.log(`Inserted new pornhub ad: ${adId}, is_scam: ${isScam}`);
-          
+
           // Send alert if new scam with high confidence
           if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
             await sendAlert({
@@ -185,7 +190,7 @@ export class PornhubAdHunter {
               isNew: true,
               confidenceScore,
               redirectionPath,
-              cloakerCandidate: adDestination
+              cloakerCandidate: adDestination,
             });
 
             // Commented code for adding to redirect checker - ready for future enablement
@@ -223,11 +228,17 @@ export class PornhubAdHunter {
   ): Promise<boolean> {
     const client = await pool.connect();
     try {
+      const id = hunterService.findExistingSource(adDestination, "pornhub", client);
+
+      if (id == null){
+        return false;
+      }
+
       // Check if this URL is already known to be a scam
       const existingAdQuery = await client.query(
         `SELECT id, is_scam FROM ads 
-       WHERE initial_url = $1 AND ad_type = 'pornhub'`,
-        [adDestination]
+       WHERE id = $1 AND ad_type = 'pornhub'`,
+        [id]
       );
 
       const existingAd = existingAdQuery.rows[0];

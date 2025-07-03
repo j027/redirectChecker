@@ -213,7 +213,7 @@ export class PornhubAdHunter {
       } catch (error) {
         // Rollback on error
         await client.query("ROLLBACK");
-        throw error;
+        console.log(`Error while trying to update ad in the database ${error}`)
       } finally {
         // Always release the client back to the pool
         client.release();
@@ -254,7 +254,11 @@ export class PornhubAdHunter {
         console.log(`Skipping already known scam pornhub ad: ${adDestination}`);
         return true;
       }
-    } finally {
+    } 
+    catch(error) {
+      console.log(`An error occured while checking for a known scam: ${error}`)
+    }
+    finally {
       client.release();
     }
     return false;

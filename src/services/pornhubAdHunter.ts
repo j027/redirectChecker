@@ -228,7 +228,7 @@ export class PornhubAdHunter {
   ): Promise<boolean> {
     const client = await pool.connect();
     try {
-      const id = hunterService.findExistingSource(adDestination, "pornhub", client);
+      const id = await hunterService.findExistingSource(adDestination, "pornhub", client);
 
       if (id == null){
         return false;

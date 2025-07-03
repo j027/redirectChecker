@@ -15,7 +15,15 @@ export class PornhubAdHunter {
 
   async huntPornhubAds(): Promise<boolean> {
     // Get the pornhub ad URL
-    const adUrl = await this.getPornhubAdUrl();
+    let adUrl: string | null = null;
+
+    // try to grab a url up to 10 times, giving up if no url found
+    for (let i = 0; i < 10; i++) {
+      adUrl = await this.getPornhubAdUrl();
+      if (adUrl != null) {
+        break;
+      }
+    }
 
     if (adUrl == null) {
       console.log("Failed to get pornhub ad url, giving up");

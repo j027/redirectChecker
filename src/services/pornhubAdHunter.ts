@@ -4,7 +4,7 @@ import { aiClassifierService } from "./aiClassifierService.js";
 import { parseProxy, spoofWindowsChrome } from "../utils/playwrightUtilities.js";
 import pool from "../dbPool.js";
 import crypto from "crypto";
-import { sendAlert } from "./alertService.js";
+import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 
 export class PornhubAdHunter {
   private browser: Browser | null = null;
@@ -152,18 +152,14 @@ export class PornhubAdHunter {
                 cloakerCandidate: adDestination,
               });
 
-              // Commented code for adding to redirect checker - ready for future enablement
-              /*
-              const urlToAdd = cloakerCandidate || adDestination;
               const addedToRedirectChecker = 
-                await hunterService.tryAddToRedirectChecker(urlToAdd);
+                await hunterService.tryAddToRedirectChecker(adDestination);
               if (addedToRedirectChecker) {
-                await sendCloakerAddedAlert(urlToAdd, "Pornhub Ad");
+                await sendCloakerAddedAlert(adDestination, "Pornhub Ad");
               }
               console.log(
                 `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed"}`
               );
-              */
             }
           }
 
@@ -201,18 +197,14 @@ export class PornhubAdHunter {
               cloakerCandidate: adDestination,
             });
 
-            // Commented code for adding to redirect checker - ready for future enablement
-            /*
-            const urlToAdd = cloakerCandidate || adDestination;
             const addedToRedirectChecker = 
-              await hunterService.tryAddToRedirectChecker(urlToAdd);
+              await hunterService.tryAddToRedirectChecker(adDestination);
             if (addedToRedirectChecker) {
-              await sendCloakerAddedAlert(urlToAdd, "Pornhub Ad");
+              await sendCloakerAddedAlert(adDestination, "Pornhub Ad");
             }
             console.log(
               `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`
             );
-            */
           }
         }
 

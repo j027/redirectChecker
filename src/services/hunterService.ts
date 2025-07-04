@@ -323,7 +323,7 @@ export class HunterService {
       const query = `
         SELECT id, initial_url FROM ads 
         WHERE ad_type = $1
-        AND regexp_replace(final_url, '\\?.*$', '') = $2
+        AND regexp_replace(initial_url, '\\?.*$', '') = $2
         ORDER BY last_seen DESC
         LIMIT 1
       `;

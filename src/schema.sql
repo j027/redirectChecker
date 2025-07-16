@@ -75,8 +75,7 @@ CREATE TABLE IF NOT EXISTS ads
     confidence_score FLOAT,                -- Optional confidence in classification
     first_seen       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     last_seen        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    last_updated     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CHECK (ad_type IN ('search', 'typosquat', 'pornsite', 'pornhub'))
+    last_updated     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Search ad specific attributes

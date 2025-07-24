@@ -194,6 +194,7 @@ export class HunterService {
       RedirectType.WeeblyDigitalOceanJs,
       RedirectType.BrowserRedirect,
       RedirectType.BrowserRedirectPornhub,
+      RedirectType.BrowserRedirectHunterProxy
     ];
 
     for (const redirectType of redirectTypesToTry) {

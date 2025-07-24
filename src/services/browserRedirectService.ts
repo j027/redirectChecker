@@ -44,7 +44,8 @@ export class BrowserRedirectService {
 
   async handleRedirect(
     redirectUrl: string,
-    referrer?: string
+    referrer?: string,
+    useHunterProxy? : boolean
   ): Promise<string | null> {
     await this.ensureBrowserIsHealthy();
 
@@ -56,7 +57,7 @@ export class BrowserRedirectService {
     }
 
     const context = await this.browser.newContext({
-      proxy: await parseProxy(),
+      proxy: await parseProxy(useHunterProxy),
       viewport: null,
     });
 

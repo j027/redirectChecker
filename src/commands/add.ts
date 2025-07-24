@@ -31,6 +31,10 @@ export const addCommand: CommandDefinition = {
             name: "Browser Redirect Pornhub",
             value: RedirectType.BrowserRedirectPornhub,
           },
+          {
+            name: "Browser Redirect Hunter Proxy",
+            value: RedirectType.BrowserRedirectHunterProxy
+          }
         ]),
     )
     .toJSON(),

@@ -26,6 +26,7 @@ export async function handleRedirect(
       break;
     case RedirectType.BrowserRedirectHunterProxy:
       location = await browserRedirectService.handleRedirect(redirectUrl, undefined, true);
+      break;
     default:
       console.warn(`Redirect type ${redirectType} is not supported yet`);
       throw new Error("Redirect type not supported");

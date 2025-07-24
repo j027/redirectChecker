@@ -28,7 +28,7 @@ export class AdSpyGlassHunter {
         viewport: null
     })
 
-    const page = await context.newPage();
+    let page = await context.newPage();
     const popupPromises: Promise<void>[] = [];
 
     try {
@@ -40,57 +40,58 @@ export class AdSpyGlassHunter {
             timeout: 60000
         });
 
-        // setup the popup listener before we do any clicking
-        context.on("page", (page: Page) => {popupPromises.push(this.handleAdClick(page))});
-
         // Navigate to video page without clicking to avoid popunder
         try {
             const videos = page.locator('a[href*="video/"]');
-            const videoCount = await videos.count();
+            await videos.first().waitFor({state: "visible", timeout: 10000});
             
-            if (videoCount > 0) {
-                // Get the href attribute from the first video link
-                const videoUrl = await videos.first().getAttribute('href');
+            // Get the href attribute from the first video link
+            const videoUrl = await videos.first().getAttribute('href');
+            
+            if (videoUrl) {
+                // Handle relative URLs
+                const fullVideoUrl = videoUrl.startsWith('http') 
+                    ? videoUrl 
+                    : new URL(videoUrl, site).toString();
                 
-                if (videoUrl) {
-                    // Handle relative URLs
-                    const fullVideoUrl = videoUrl.startsWith('http') 
-                        ? videoUrl 
-                        : new URL(videoUrl, site).toString();
-                    
-                    console.log(`Navigating to video page: ${fullVideoUrl}`);
-                    
-                    // Navigate instead of clicking to avoid popunder
-                    await page.goto(fullVideoUrl, {
-                        waitUntil: "load",
-                        timeout: 30000
-                    });
-                    
-                    // Now look for iframe in video-embedded div and click multiple times
-                    const videoEmbeddedDiv = page.locator('div.video-embedded');
-                    const iframe = videoEmbeddedDiv.locator('iframe');
-                    
-                    if (await iframe.count() > 0) {
+                console.log(`Navigating to video page: ${fullVideoUrl}`);
+                
+                // Navigate instead of clicking to avoid popunder
+                await page.goto(fullVideoUrl, {
+                    waitUntil: "load",
+                    timeout: 30000
+                });
+
+                // setup the popup listener before we do any clicking
+                context.on("page", (p: Page) => {
+                    if (p.url() !== fullVideoUrl) {
+                        popupPromises.push(this.handleAdClick(p));
+                        return;
+                    }
+
+                    popupPromises.push(this.handleAdClick(page));
+                    page = p;
+                });
+                
+                // Click multiple times with delays to trigger ads
+                for (let i = 0; i < 5; i++) {
+                    try {
+                        // Now look for iframe in video-embedded div and click multiple times
+                        const videoEmbeddedDiv = page.locator('div.video-embedded');
+                        const iframe = videoEmbeddedDiv.locator('iframe');
+                        await iframe.waitFor({ state: "attached", timeout: 10000 });
                         const frameLocator = page.frameLocator('div.video-embedded iframe');
-                        
-                        // Click multiple times with delays to trigger ads
-                        for (let i = 0; i < 5; i++) {
-                            try {
-                                await frameLocator.locator('body').click({ 
-                                    timeout: 5000,
-                                    force: true 
-                                });
-                                
-                                await page.waitForTimeout(2000 + Math.random() * 1000);
-                                
-                            } catch (clickError) {
-                                console.log(`Iframe click ${i + 1} failed:`, clickError);
-                            }
-                        }
+
+                        await frameLocator.locator('body').click({ 
+                            timeout: 10000,
+                            force: true 
+                        });
+
+                        await page.waitForTimeout(2000 + Math.random() * 1000);                        
+                    } catch (clickError) {
+                        console.log(`Iframe click ${i + 1} failed:`, clickError);
                     }
                 }
-            } else {
-                console.log("No video links found");
             }
         } catch (error) {
             console.log("Error navigating to video page:", error);

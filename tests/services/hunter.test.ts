@@ -24,4 +24,10 @@ describe("Test the hunter service can operate successfully", () => {
 
     expect(result).toBe(true);
   })
+
+  it("work with adspyglass ads", async () => {
+    const result = await service.huntAdSpyGlassAds();
+
+    expect(result).toBe(true);
+  });
 });

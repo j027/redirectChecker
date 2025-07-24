@@ -2,8 +2,8 @@ import { TextChannel } from "discord.js";
 import { readConfig } from "../config.js";
 import { discordClient } from "../discordBot.js";
 
-// Add pornhubAd as a new alert type
-export type AlertType = "adScam" | "typosquat" | "pornhubAd";
+// Add pornhubAd and adspyglass as new alert types
+export type AlertType = "adScam" | "typosquat" | "pornhubAd" | "adspyglass";
 
 export interface AlertPayload {
   type: AlertType;
@@ -88,6 +88,25 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
       const header = payload.isNew
         ? `🚨 NEW PORNHUB AD SCAM DETECTED 🚨 (Confidence: ${confidencePercent}%)`
         : `⚠️ EXISTING PORNHUB AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)`;
+
+      // Build path section
+      const pathSection = buildRedirectPathSection(
+        payload.initialUrl,
+        payload.finalUrl,
+        payload.redirectionPath
+      );
+
+      // Include cloaker info if available
+      const cloakerSection = payload.cloakerCandidate
+        ? `\n**Potential Cloaker:**\n${payload.cloakerCandidate}`
+        : "";
+
+      messageText = `${header}\n\n${pathSection}${cloakerSection}`;
+    } else if (payload.type === "adspyglass") {
+      // AdSpyGlass Ad alert formatting
+      const header = payload.isNew
+        ? `🚨 NEW ADSPYGLASS AD SCAM DETECTED 🚨 (Confidence: ${confidencePercent}%)`
+        : `⚠️ EXISTING ADSPYGLASS AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)`;
 
       // Build path section
       const pathSection = buildRedirectPathSection(

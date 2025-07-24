@@ -359,6 +359,42 @@ export class HunterService {
     }
   }
 
+  /**
+   * Identifies a potential cloaker by finding the last URL in the redirect chain
+   * that has a different hostname than the final URL
+   */
+  public findCloakerCandidate(
+    redirectionPath: string[],
+    finalUrl: string
+  ): string | null {
+    if (!redirectionPath || redirectionPath.length < 2) {
+      return null;
+    }
+
+    try {
+      const finalHostname = new URL(finalUrl).hostname;
+
+      // Search from the end of the path (excluding final URL) to find last different hostname
+      for (let i = redirectionPath.length - 2; i >= 0; i--) {
+        try {
+          const redirectUrl = redirectionPath[i];
+          const redirectHostname = new URL(redirectUrl).hostname;
+
+          if (redirectHostname !== finalHostname) {
+            return redirectUrl;
+          }
+        } catch (e) {
+          console.error(`Invalid URL in redirect path: ${redirectionPath[i]}`);
+          continue;
+        }
+      }
+    } catch (e) {
+      console.error(`Error identifying cloaker candidate: ${e}`);
+    }
+
+    return null;
+  }
+
   async close() {
     if (this.browser) {
       await this.browser.close();

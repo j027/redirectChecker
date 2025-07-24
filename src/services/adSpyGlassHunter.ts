@@ -1,6 +1,10 @@
 import { Browser, Page } from "patchright";
 import crypto from "crypto";
-import { blockGoogleAnalytics, parseProxy, spoofWindowsChrome } from "../utils/playwrightUtilities.js";
+import { blockGoogleAnalytics, parseProxy, spoofWindowsChrome, trackRedirectionPath, simulateRandomMouseMovements } from "../utils/playwrightUtilities.js";
+import { hunterService, CONFIDENCE_THRESHOLD } from "./hunterService.js";
+import { aiClassifierService } from "./aiClassifierService.js";
+import pool from "../dbPool.js";
+import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 
 export class AdSpyGlassHunter {
   private browser: Browser | null = null;
@@ -119,9 +123,165 @@ export class AdSpyGlassHunter {
     let screenshot: Buffer | null = null;
     let html: string | null = null;
     let redirectionPath: string[] | null = null;
+
+    try {
+      // Set up redirect tracking for this popup page
+      const redirectTracker = await trackRedirectionPath(page, page.url());
+      
+      // Wait for page to load and simulate some interaction
+      await page.waitForLoadState("load");
+      await simulateRandomMouseMovements(page);
+      await page.waitForTimeout(5000);
+      
+      // Take screenshot and get content
+      screenshot = await page.screenshot();
+      html = await page.content();
+      redirectionPath = redirectTracker.getPath();
+      
+      console.log(`AdSpyGlass popup captured: ${page.url()}`);
+      console.log(`Redirect path: ${redirectionPath}`);
+
+      // Process this ad popup
+      await this.handleAdSpyGlassAd(page.url(), screenshot, html, redirectionPath);
+      
+    } catch (error) {
+      console.log(`Error handling AdSpyGlass ad popup: ${error}`);
+    } finally {
+      // Close the popup page
+      try {
+        await page.close();
+      } catch (closeError) {
+        console.log(`Error closing popup page: ${closeError}`);
+      }
+    }
   }
 
-  private getRandomWebsite() {
+  private async handleAdSpyGlassAd(
+    adUrl: string,
+    screenshot: Buffer,
+    html: string,
+    redirectionPath: string[]
+  ) {
+    const finalUrl = redirectionPath[redirectionPath.length - 1] || adUrl;
+
+    console.log(`AdSpyGlass ad ${adUrl} redirected to ${finalUrl}`);
+
+    // Skip processing if no meaningful redirects
+    if (redirectionPath.length <= 1) {
+      console.log(
+        `AdSpyGlass ad ${adUrl} has no meaningful redirects, skipping`
+      );
+      return;
+    }
+
+    const classifierResult = await aiClassifierService.runInference(screenshot);
+    const { isScam, confidenceScore } = classifierResult;
+
+    try {
+      // Save the classified data to AI service
+      await aiClassifierService.saveData(
+        finalUrl,
+        screenshot,
+        html,
+        isScam,
+        confidenceScore
+      );
+
+      const client = await pool.connect();
+
+      try {
+        await client.query("BEGIN");
+
+        // Replace the existing destination query with fuzzy matching
+        const existingDestId = await hunterService.findExistingDestination(
+          finalUrl,
+          "adspyglass",
+          client
+        );
+        const isNewDestination = existingDestId === null;
+
+        if (isNewDestination) {
+          // New destination we haven't seen before
+          const adId = crypto.randomUUID();
+
+          await client.query(
+            `INSERT INTO ads
+             (id, ad_type, initial_url, final_url, redirect_path, is_scam, confidence_score)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              adId,
+              "adspyglass",
+              adUrl,
+              finalUrl,
+              hunterService.pgArray(redirectionPath),
+              isScam,
+              confidenceScore,
+            ]
+          );
+
+          console.log(`New AdSpyGlass record: ${adUrl} -> ${finalUrl}`);
+        } else {
+          // We've seen this destination before, just update last_seen timestamp
+          await client.query(
+            `UPDATE ads SET last_seen = CURRENT_TIMESTAMP 
+             WHERE id = $1`,
+            [existingDestId]
+          );
+
+          console.log(
+            `Updated last_seen for existing destination: ${finalUrl}`
+          );
+        }
+
+        // Only send an alert if:
+        // 1. It's classified as a scam with high confidence
+        // 2. We haven't seen this destination before from any AdSpyGlass ad
+        if (
+          isScam &&
+          confidenceScore > CONFIDENCE_THRESHOLD &&
+          isNewDestination
+        ) {
+          const cloakerCandidate = hunterService.findCloakerCandidate(
+            redirectionPath,
+            finalUrl
+          );
+
+          await sendAlert({
+            type: "adspyglass",
+            initialUrl: adUrl,
+            finalUrl,
+            confidenceScore,
+            redirectionPath,
+            cloakerCandidate,
+          });
+          console.log(`Sent alert for new scam destination: ${finalUrl}`);
+
+          if (cloakerCandidate != null) {
+            const addedToChecker =
+              await hunterService.tryAddToRedirectChecker(cloakerCandidate);
+            if (addedToChecker) {
+              await sendCloakerAddedAlert(cloakerCandidate, "AdSpyGlass");
+              console.log(
+                `Added cloaker to redirect checker: ${cloakerCandidate}`
+              );
+            }
+          }
+        }
+
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        console.error(`Database error: ${error}`);
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error(`Error in AdSpyGlass hunter: ${error}`);
+    }
+  }
+
+  private getRandomWebsite(): string {
     const adSpyGlassWebsites = [
       "https://reallifecam.to/",
       "https://camcaps.to/",

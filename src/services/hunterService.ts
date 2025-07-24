@@ -14,6 +14,7 @@ import { BrowserManagerService } from "./browserManagerService.js";
 import { SearchAdHunter } from "./searchAdHunter.js";
 import { TyposquatHunter } from "./typosquatHunter.js";
 import { PornhubAdHunter } from "./pornhubAdHunter.js";
+import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
 
 // given a detected scam, confidence level above this will be treated as one
 // this is because the image model has false positive issues otherwise
@@ -97,6 +98,21 @@ export class HunterService {
 
     const pornhubAdHunter = new PornhubAdHunter(this.browser);
     const result = await pornhubAdHunter.huntPornhubAds();
+    return result;
+  }
+
+  public async huntAdSpyGlassAds() {
+    await this.ensureBrowserIsHealthy();
+
+    if (this.browser == null) {
+      console.error(
+        "Browser has not been initialized - AdSpyGlass hunter failed"
+      );
+      return false;
+    }
+
+    const adSpyGlassHunter = new AdSpyGlassHunter(this.browser);
+    const result = await adSpyGlassHunter.huntAdSpyGlassAds();
     return result;
   }
 

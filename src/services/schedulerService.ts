@@ -162,7 +162,15 @@ export function startAdHunter(): void {
         ).catch(error => {
           console.error(`Error during pornhub ad hunting: ${error.message}`);
           return null;
-        })
+        }),
+        withTimeout(
+          hunterService.huntAdSpyGlassAds(),
+          TIMEOUT_MS,
+          'AdSpyGlass ad hunting'
+        ).catch(error => {
+          console.error(`Error during AdSpyGlass ad hunting: ${error.message}`);
+          return null;
+        }),
         // Future hunt types can be added here
       ];
       

@@ -106,7 +106,7 @@ export function processUserAgent(userAgent: string): string {
 }
 
 
-async function getChromeVersion(userAgent: string, browser: Browser): Promise<string> {
+function getChromeVersion(userAgent: string, browser: Browser): string {
   // Try to extract from user agent first
   const uaMatch = userAgent.match(/Chrome\/([\d|.]+)/);
   if (uaMatch && uaMatch[1]) {
@@ -233,9 +233,8 @@ export async function spoofWebGL(
   }, webGLConfig);
 }
 
-// Update the spoofWindowsChrome function to include WebGL spoofing
-export async function spoofWindowsChrome(context: BrowserContext, page: Page): Promise<void> {
-  const actualUserAgent = await page.evaluate(() => navigator.userAgent);
+export async function spoofWindowsChrome(context: BrowserContext, page: Page, providedUserAgent?: string): Promise<void> {
+  const actualUserAgent = providedUserAgent ?? await page.evaluate(() => navigator.userAgent);
   
   // Process the user agent to ensure it shows as Windows
   const userAgent = processUserAgent(actualUserAgent);
@@ -248,7 +247,7 @@ export async function spoofWindowsChrome(context: BrowserContext, page: Page): P
   }
 
   // Extract Chrome version from the user agent
-  const chromeVersion = await getChromeVersion(userAgent, browser);
+  const chromeVersion = getChromeVersion(userAgent, browser);
   const brands = generateBrandData(chromeVersion);
   const cdpSession = await context.newCDPSession(page);
   

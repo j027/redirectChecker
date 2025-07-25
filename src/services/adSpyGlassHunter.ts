@@ -1,5 +1,5 @@
 import { Browser, Page } from "patchright";
-import crypto from "crypto";
+import crypto, { randomBytes, randomInt } from "crypto";
 import { blockGoogleAnalytics, parseProxy, spoofWindowsChrome, trackRedirectionPath, simulateRandomMouseMovements } from "../utils/playwrightUtilities.js";
 import { hunterService, CONFIDENCE_THRESHOLD } from "./hunterService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
@@ -29,6 +29,7 @@ export class AdSpyGlassHunter {
     })
 
     let page = await context.newPage();
+    const userAgent = await page.evaluate(() => navigator.userAgent);
     const popupPromises: Promise<void>[] = [];
 
     try {
@@ -42,11 +43,11 @@ export class AdSpyGlassHunter {
 
         // Navigate to video page without clicking to avoid popunder
         try {
-            const videos = page.locator('a[href*="video/"]');
-            await videos.first().waitFor({state: "visible", timeout: 10000});
+            const video = page.locator('a[href*="video/"]').first();
+            await video.waitFor({state: "visible", timeout: 10000});
             
             // Get the href attribute from the first video link
-            const videoUrl = await videos.first().getAttribute('href');
+            const videoUrl = await video.getAttribute('href');
             
             if (videoUrl) {
                 // Handle relative URLs
@@ -65,11 +66,11 @@ export class AdSpyGlassHunter {
                 // setup the popup listener before we do any clicking
                 context.on("page", (p: Page) => {
                     if (p.url() !== fullVideoUrl) {
-                        popupPromises.push(this.handleAdClick(p));
+                        popupPromises.push(this.handleAdClick(p, userAgent));
                         return;
                     }
 
-                    popupPromises.push(this.handleAdClick(page));
+                    popupPromises.push(this.handleAdClick(page, userAgent));
                     page = p;
                 });
                 
@@ -87,7 +88,7 @@ export class AdSpyGlassHunter {
                             force: true 
                         });
 
-                        await page.waitForTimeout(2000 + Math.random() * 1000);                        
+                        await page.waitForTimeout(randomInt(5, 10) * 1000);                        
                     } catch (clickError) {
                         console.log(`Iframe click ${i + 1} failed:`, clickError);
                     }
@@ -117,8 +118,8 @@ export class AdSpyGlassHunter {
     return true;
   }
 
-  private async handleAdClick(page: Page): Promise<void> {
-    await spoofWindowsChrome(page.context(), page);
+  private async handleAdClick(page: Page, userAgent: string): Promise<void> {
+    await spoofWindowsChrome(page.context(), page, userAgent);
     await blockGoogleAnalytics(page);
 
     let screenshot: Buffer | null = null;

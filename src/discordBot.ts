@@ -1,5 +1,5 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
-
+import { setTimeout } from "timers/promises";
 import { readConfig } from "./config.js";
 import { commands } from "./commands/commands.js";
 import { closePool } from "./dbPool.js";
@@ -41,14 +41,22 @@ async function initializeServices() {
 
 async function shutdownServices() {
   await stopBatchReportProcessor();
-  await stopAdHunter();
+  stopAdHunter();
   stopRedirectChecker();
   stopTakedownMonitor();
   stopRedirectPruner();
-  await aiClassifierService.close();
-  await browserReportService.close();
-  await browserRedirectService.close();
-  await closePool();
+
+  console.log("Waiting for operations to cancel...");
+  await setTimeout(100);
+
+  const closes = [];
+  closes.push(aiClassifierService.close());
+  closes.push(browserReportService.close());
+  closes.push(browserRedirectService.close());
+  closes.push(hunterService.close());
+  closes.push(closePool());
+
+  await Promise.all(closes);
 }
 
 const isTestMode = process.env.NODE_ENV === 'test';

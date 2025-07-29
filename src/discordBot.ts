@@ -47,7 +47,8 @@ async function shutdownServices() {
   stopRedirectPruner();
 
   console.log("Waiting for operations to cancel...");
-  await setTimeout(100);
+  await setTimeout(5000); // wait for 5 seconds to allow operations to cancel
+  // if you don't wait long enough, the bot will take a super long time to shut down
 
   const closes = [];
   closes.push(aiClassifierService.close());

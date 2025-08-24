@@ -1,8 +1,8 @@
-# RedirectChecker - Tech Support Scam Hunter
+# Tech Support Scam Hunter
 
 A sophisticated automated system designed to hunt and track tech support scams by following malicious advertising redirects across the web. This project monitors scam campaigns, tracks their takedown status across major security platforms, and uses AI-powered classification to identify fraudulent websites.
 
-## ⚠️ Content Warning
+## Content Warning
 
 **This software will access and load NSFW (Not Safe for Work) content during operation.**
 
@@ -21,7 +21,7 @@ RedirectChecker monitors advertisements on adult entertainment platforms includi
 
 By using this software, you acknowledge that you understand and accept exposure to adult content as part of the scam detection process.
 
-## 🎯 Overview
+## Overview
 
 RedirectChecker combats tech support scams by:
 
@@ -32,7 +32,7 @@ RedirectChecker combats tech support scams by:
 - **Automated reporting** to security services
 - **Discord bot interface** for management and alerts
 
-## 🏗️ Architecture
+## Architecture
 
 ### Core Components
 
@@ -50,7 +50,7 @@ PostgreSQL database tracking:
 - AI classification results
 - Browser user agents
 
-## 🚀 Features
+## Features
 
 ### Ad Hunting
 - **Search Ad Hunter**: Monitors search engine advertisements
@@ -86,7 +86,7 @@ Monitors removal status across:
 - **Netcraft**
 - **DNS resolution status**
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 - **Runtime**: Node.js with TypeScript
 - **Database**: PostgreSQL
@@ -97,7 +97,8 @@ Monitors removal status across:
 - **HTTP Client**: Undici with proxy support
 - **Testing**: Vitest
 - **Operating System**: Linux (you will likely need to make adjustments on other platforms)
-## 📋 Prerequisites
+
+## Prerequisites
 
 - Node.js 22 with Yarn package manager
 - PostgreSQL database
@@ -108,7 +109,7 @@ Monitors removal status across:
 - Residential proxy that rotates ip on every request for the main proxy
 - Chromium installed through flatpak (unless you want to adjust code)
 
-## 🔧 Installation
+## Installation
 
 1. **Clone the repository**
    ```bash
@@ -135,13 +136,13 @@ Monitors removal status across:
    yarn deploy:dev
    ```
 
-## ⚙️ Configuration
+## Configuration
 
 Create a `config.json` file with the following structure that meets the structure expected by `src/config.ts` which is what reads the config.json.
 
 Environment variables are used in `.env` for Postgres credentials and credentials for the web risk API. If you do not have all the credentials, you may need to comment out those parts of  the code to prevent issues.
 
-## 🚀 Usage
+## Usage
 
 ### Development Mode
 ```bash
@@ -167,7 +168,7 @@ yarn test
 ```
 > Some of these tests require a valid display for the browser to open in as it's not always a headless browser.
 
-## 🔍 Hunter Services
+## Hunter Services
 
 ### Search Ad Hunter
 Monitors search engine advertisements for tech support scam keywords and follows redirect chains.
@@ -178,7 +179,7 @@ Tracks advertisements on adult entertainment platforms where scam ads are common
 ### Typosquat Hunter
 Identifies typosquatted domains that redirect to scam sites.
 
-## 🤖 AI Classification
+## AI Classification
 
 The system uses an ONNX-based image classification model to analyze screenshots and determine if a website is a scam. The model processes 1280x1280 pixel screenshots with a confidence threshold of 0.98. This is necessary because of a high false positive rate and will be fixed in the future.
 
@@ -187,7 +188,7 @@ The system uses an ONNX-based image classification model to analyze screenshots 
 - **False positive/negative rates**: Classifications may not always be accurate
 - **Training data quality**: Ongoing work to improve training dataset
 
-## 📊 Monitoring & Alerts
+## Monitoring & Alerts
 
 The system provides real-time monitoring through:
 - Discord notifications for new scam discoveries
@@ -195,7 +196,7 @@ The system provides real-time monitoring through:
 - Performance metrics and health checks
 - Automated reporting to security services
 
-## 🗺️ Roadmap
+## Roadmap
 
 ### Planned Improvements
 - **Enhanced AI model**: Fix current accuracy issues with the classification model
@@ -208,7 +209,7 @@ The system provides real-time monitoring through:
 - Email-based advertising campaigns
 - Additional adult content platforms
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -216,21 +217,21 @@ The system provides real-time monitoring through:
 4. Add tests for new functionality
 5. Submit a pull request
 
-## 📄 License
+## License
 
 This project is licensed under the terms specified in the LICENSE file.
 
-## ⚠️ Disclaimer
+## Disclaimer
 
-This tool is designed for research and cybersecurity purposes to help identify and combat online scams. Users should comply with all applicable laws and regulations when using this software. The authors are not responsible for any misuse of this tool.
+> **Warning:** This tool is designed for research and cybersecurity purposes to help identify and combat online scams. Users should comply with all applicable laws and regulations when using this software. The authors are not responsible for any misuse of this tool.
 
-**API Usage Notice**: This project utilizes undocumented APIs for some security service checks where no official public APIs are available for takedown status monitoring.
+> **Note:** This project utilizes undocumented APIs for some security service checks where no official public APIs are available for takedown status monitoring.
 
-## 🔒 Security
+## Security
 
 - All credentials should be stored securely in the config file
 - The code tries to enable sandboxing in the browser that playwright normally disables
 
-## 📞 Support
+## Support
 
 For questions, issues, or contributions, please open an issue on the GitHub repository.

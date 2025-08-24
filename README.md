@@ -224,7 +224,7 @@ This project is licensed under the terms specified in the LICENSE file.
 
 This tool is designed for research and cybersecurity purposes to help identify and combat online scams. Users should comply with all applicable laws and regulations when using this software. The authors are not responsible for any misuse of this tool.
 
-Some of the flagging checks use undocumented APIs as there were no documented APIs that were able to check these security services. 
+**API Usage Notice**: This project utilizes undocumented APIs for some security service checks where no official public APIs are available for takedown status monitoring.
 
 ## 🔒 Security
 

@@ -48,7 +48,7 @@ PostgreSQL database tracking:
 - Redirect sources and destinations
 - Takedown status across platforms
 - AI classification results
-- Browser user agents and proxies
+- Browser user agents
 
 ## 🚀 Features
 
@@ -63,7 +63,8 @@ PostgreSQL database tracking:
 Multiple redirect bypass strategies:
 - HTTP redirect following
 - JavaScript-based redirects (Weebly/DigitalOcean)
-- Browser-based redirect simulation
+> Some scammers use a simple javascript based redirect, so this can be more efficient than a full browser.
+- Browser-based redirect following
 - Specialized handlers for different platforms
 
 ### Stealth Technologies
@@ -95,7 +96,7 @@ Monitors removal status across:
 - **Image Processing**: Sharp
 - **HTTP Client**: Undici with proxy support
 - **Testing**: Vitest
-
+- **Operating System**: Linux (you will likely need to make adjustments on other platforms)
 ## 📋 Prerequisites
 
 - Node.js 22 with Yarn package manager
@@ -105,6 +106,7 @@ Monitors removal status across:
 - API keys for various security services
 - Mobile proxy with unlimited data for the hunter proxy
 - Residential proxy that rotates ip on every request for the main proxy
+- Chromium installed through flatpak (unless you want to adjust code)
 
 ## 🔧 Installation
 
@@ -227,9 +229,7 @@ Some of the flagging checks use undocumented APIs as there were no documented AP
 ## 🔒 Security
 
 - All credentials should be stored securely in the config file
-- Use appropriate proxy services to maintain functionality
-- Regularly rotate API keys and credentials
-- Monitor for any potential security vulnerabilities
+- The code tries to enable sandboxing in the browser that playwright normally disables
 
 ## 📞 Support
 

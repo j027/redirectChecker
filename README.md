@@ -91,7 +91,7 @@ Monitors removal status across:
 - **Runtime**: Node.js with TypeScript
 - **Database**: PostgreSQL
 - **Browser Automation**: Patchright (Playwright fork)
-- **AI/ML**: ONNX Runtime
+- **AI/ML**: ONNX Runtime (model trained using Ultralytics YOLO)
 - **Bot Framework**: Discord.js
 - **Image Processing**: Sharp
 - **HTTP Client**: Undici with proxy support
@@ -180,7 +180,7 @@ Identifies typosquatted domains that redirect to scam sites.
 
 ## 🤖 AI Classification
 
-The system uses an ONNX-based image classification model to analyze screenshots and determine if a website is a scam. The model processes 1280x1280 pixel screenshots with a confidence threshold of 0.7. This was created using Ultralytics YOLO, but I'll switch to something else because of the issues I had, it's probably the wrong tool for the job.
+The system uses an ONNX-based image classification model to analyze screenshots and determine if a website is a scam. The model processes 1280x1280 pixel screenshots with a confidence threshold of 0.98. This is necessary because of a high false positive rate and will be fixed in the future.
 
 ### Current Limitations
 - **Model accuracy needs improvement**: The current AI model has known accuracy issues that are being addressed

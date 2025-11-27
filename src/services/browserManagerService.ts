@@ -72,4 +72,40 @@ export class BrowserManagerService {
       }
     }
   }
+
+  /**
+   * Forcefully restarts a browser instance by closing it and creating a new one
+   * This is useful for cleaning up any lingering tabs or browser state
+   * @param browser Current browser instance
+   * @param isHeadless Whether to run in headless mode
+   * @returns A new browser instance
+   */
+  static async forceRestartBrowser(
+    browser: Browser | null,
+    isHeadless: boolean = false
+  ): Promise<Browser> {
+    console.log("Force restarting browser to clear lingering state...");
+    
+    // Close all existing contexts and the browser
+    if (browser) {
+      try {
+        const contexts = browser.contexts();
+        for (const context of contexts) {
+          try {
+            await context.close();
+          } catch (error) {
+            console.warn("Error closing browser context:", error);
+          }
+        }
+        await browser.close();
+      } catch (error) {
+        console.warn("Error during browser restart:", error);
+      }
+    }
+
+    // Create a fresh browser instance
+    const newBrowser = await BrowserManagerService.createBrowser(isHeadless);
+    console.log("Browser successfully restarted");
+    return newBrowser;
+  }
 }

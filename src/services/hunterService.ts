@@ -37,6 +37,22 @@ export class HunterService {
     await this.ensureBrowserIsHealthy();
   }
 
+  /**
+   * Force restart the browser to clear any lingering state
+   */
+  public async restartBrowser(): Promise<void> {
+    console.log("Restarting hunter service browser...");
+    try {
+      this.browserInitializing = true;
+      this.browser = await BrowserManagerService.forceRestartBrowser(
+        this.browser,
+        this.isHeadless
+      );
+    } finally {
+      this.browserInitializing = false;
+    }
+  }
+
   private async ensureBrowserIsHealthy(): Promise<void> {
     await BrowserManagerService.ensureBrowserHealth(
       this.browser,

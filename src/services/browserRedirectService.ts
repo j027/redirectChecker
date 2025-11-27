@@ -21,6 +21,22 @@ export class BrowserRedirectService {
     await this.ensureBrowserIsHealthy();
   }
 
+  /**
+   * Force restart the browser to clear any lingering state
+   */
+  public async restartBrowser(): Promise<void> {
+    console.log("Restarting browser redirect service browser...");
+    try {
+      this.browserInitializing = true;
+      this.browser = await BrowserManagerService.forceRestartBrowser(
+        this.browser,
+        false
+      );
+    } finally {
+      this.browserInitializing = false;
+    }
+  }
+
   private async ensureBrowserIsHealthy(): Promise<void> {
     await BrowserManagerService.ensureBrowserHealth(
       this.browser,

@@ -3,6 +3,7 @@ import { flushQueues } from "./batchReportService.js";
 import { monitorTakedownStatus } from "./takedownMonitorService.js";
 import { hunterService } from "./hunterService.js";
 import { pruneOldRedirects } from "./redirectPruningService.js";
+import { browserRedirectService } from "./browserRedirectService.js";
 
 let checkInterval: NodeJS.Timeout | null = null;
 let batchInterval: NodeJS.Timeout | null = null;
@@ -62,6 +63,15 @@ export function startRedirectChecker() {
 
     try {
       redirectCheckerAbortController?.signal.throwIfAborted();
+      
+      // Restart browser before each run to clear lingering state
+      console.log("Restarting redirect checker browser before cycle...");
+      try {
+        await browserRedirectService.restartBrowser();
+      } catch (error) {
+        console.error("Error restarting redirect checker browser:", error);
+      }
+      
       await withAbort(checkRedirects(), redirectCheckerAbortController?.signal);
     } catch (error) {
       if (error instanceof Error && error.message === "AbortError") {
@@ -180,6 +190,14 @@ export function startAdHunter(): void {
 
     try {
       adHunterAbortController?.signal.throwIfAborted();
+
+      // Restart browser before each run to clear lingering state
+      console.log("Restarting ad hunter browser before cycle...");
+      try {
+        await hunterService.restartBrowser();
+      } catch (error) {
+        console.error("Error restarting ad hunter browser:", error);
+      }
 
       console.log("Starting hunting cycle...");
 

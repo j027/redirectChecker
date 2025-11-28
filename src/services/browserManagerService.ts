@@ -44,35 +44,22 @@ export class BrowserManagerService {
       executablePath: "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
       chromiumSandbox: true,
       args: [
-        // Disable GPU completely
+        // Disable GPU completely to prevent GLX/Vulkan errors
         '--disable-gpu',
-        '--disable-gpu-compositing',
-        '--disable-gpu-rasterization',
-        '--disable-gpu-sandbox',
+        '--disable-software-rasterizer',
+        
+        // Disable GPU features
         '--disable-accelerated-2d-canvas',
         '--disable-accelerated-video-decode',
-        '--disable-accelerated-video-encode',
-        '--disable-accelerated-mjpeg-decode',
         
-        // Disable all caching to prevent disk errors
-        '--disable-application-cache',
-        '--disable-cache',
-        '--disk-cache-size=1',
-        '--media-cache-size=1',
-        '--aggressive-cache-discard',
-        
-        // Use in-memory storage
-        '--no-pings',
-        '--disable-background-networking',
-        
-        // Disable features that cause crashes
-        '--disable-software-rasterizer',
+        // Don't use shared memory
         '--disable-dev-shm-usage',
-        '--no-first-run',
-        '--no-default-browser-check',
         
-        // Single process mode to avoid GPU process crashes
-        '--single-process',
+        // Ignore GPU blocklist to force software rendering
+        '--ignore-gpu-blocklist',
+        
+        // Use OSMesa for software GL rendering
+        '--use-gl=swiftshader',
       ],
     });
   }

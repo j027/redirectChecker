@@ -79,9 +79,9 @@ export class HunterService {
   public async huntSearchAds() {
     await this.ensureBrowserIsHealthy();
 
-    if (this.browser == null) {
+    if (this.browser == null || !this.browser.isConnected()) {
       console.error(
-        "Browser has not been initialized - search ad hunter failed"
+        "Browser has not been initialized or has crashed - search ad hunter failed"
       );
       return false;
     }
@@ -94,8 +94,8 @@ export class HunterService {
   public async huntTyposquat() {
     await this.ensureBrowserIsHealthy();
 
-    if (this.browser == null) {
-      console.error("Browser has not been initiaized - typosquat hunter failed");
+    if (this.browser == null || !this.browser.isConnected()) {
+      console.error("Browser has not been initialized or has crashed - typosquat hunter failed");
       return false;
     }
 
@@ -107,8 +107,8 @@ export class HunterService {
   public async huntPornhubAds() {
     await this.ensureBrowserIsHealthy();
 
-    if (this.browser == null) {
-      console.error("Browser has not been initialized - pornhub ad hunter failed");
+    if (this.browser == null || !this.browser.isConnected()) {
+      console.error("Browser has not been initialized or has crashed - pornhub ad hunter failed");
       return false;
     }
 
@@ -120,9 +120,9 @@ export class HunterService {
   public async huntAdSpyGlassAds() {
     await this.ensureBrowserIsHealthy();
 
-    if (this.browser == null) {
+    if (this.browser == null || !this.browser.isConnected()) {
       console.error(
-        "Browser has not been initialized - AdSpyGlass hunter failed"
+        "Browser has not been initialized or has crashed - AdSpyGlass hunter failed"
       );
       return false;
     }
@@ -138,9 +138,9 @@ export class HunterService {
   ): Promise<ProcessAdResult | null> {
     await this.ensureBrowserIsHealthy();
 
-    if (this.browser == null) {
+    if (this.browser == null || !this.browser.isConnected()) {
       console.error(
-        "Browser has not been initialized - ad hunter processor failed"
+        "Browser has not been initialized or has crashed - ad hunter processor failed"
       );
       return null;
     }

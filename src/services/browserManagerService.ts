@@ -13,9 +13,17 @@ export class BrowserManagerService {
     if (!browser) return false;
 
     try {
+      // Check if browser is still connected
+      if (!browser.isConnected()) {
+        console.warn("Browser is not connected");
+        return false;
+      }
+      
+      // Try to create and close a context to verify it works
       await browser.newContext().then((context) => context.close());
       return true;
     } catch (error) {
+      console.warn("Browser health check failed:", error);
       return false;
     }
   }
@@ -30,6 +38,11 @@ export class BrowserManagerService {
       headless: isHeadless,
       executablePath: "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
       chromiumSandbox: true,
+      args: [
+        '--disable-gpu',              // Disable GPU hardware acceleration
+        '--disable-accelerated-2d-canvas', // Disable 2D canvas acceleration
+        '--disable-accelerated-video-decode', // Disable video decode acceleration
+      ],
     });
   }
 

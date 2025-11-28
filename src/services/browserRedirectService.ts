@@ -65,9 +65,9 @@ export class BrowserRedirectService {
   ): Promise<string | null> {
     await this.ensureBrowserIsHealthy();
 
-    if (this.browser == null) {
+    if (this.browser == null || !this.browser.isConnected()) {
       console.error(
-        "Browser has not been initialized - redirect handling failed"
+        "Browser has not been initialized or has crashed - redirect handling failed"
       );
       return null;
     }

@@ -1,5 +1,5 @@
 import { chromium, Browser } from "patchright";
-import { setTimeout } from "timers/promises";
+import { setTimeout as setTimeoutPromise } from "timers/promises";
 
 export class BrowserManagerService {
   // Static utility methods that can be used by any service
@@ -19,8 +19,13 @@ export class BrowserManagerService {
         return false;
       }
       
-      // Try to create and close a context to verify it works
-      await browser.newContext().then((context) => context.close());
+      // Try to create and close a context to verify it works with timeout
+      const healthCheckPromise = browser.newContext().then((context) => context.close());
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error("Health check timeout")), 5000)
+      );
+      
+      await Promise.race([healthCheckPromise, timeoutPromise]);
       return true;
     } catch (error) {
       console.warn("Browser health check failed:", error);
@@ -39,9 +44,35 @@ export class BrowserManagerService {
       executablePath: "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
       chromiumSandbox: true,
       args: [
-        '--disable-gpu',              // Disable GPU hardware acceleration
-        '--disable-accelerated-2d-canvas', // Disable 2D canvas acceleration
-        '--disable-accelerated-video-decode', // Disable video decode acceleration
+        // Disable GPU completely
+        '--disable-gpu',
+        '--disable-gpu-compositing',
+        '--disable-gpu-rasterization',
+        '--disable-gpu-sandbox',
+        '--disable-accelerated-2d-canvas',
+        '--disable-accelerated-video-decode',
+        '--disable-accelerated-video-encode',
+        '--disable-accelerated-mjpeg-decode',
+        
+        // Disable all caching to prevent disk errors
+        '--disable-application-cache',
+        '--disable-cache',
+        '--disk-cache-size=1',
+        '--media-cache-size=1',
+        '--aggressive-cache-discard',
+        
+        // Use in-memory storage
+        '--no-pings',
+        '--disable-background-networking',
+        
+        // Disable features that cause crashes
+        '--disable-software-rasterizer',
+        '--disable-dev-shm-usage',
+        '--no-first-run',
+        '--no-default-browser-check',
+        
+        // Single process mode to avoid GPU process crashes
+        '--single-process',
       ],
     });
   }
@@ -56,20 +87,48 @@ export class BrowserManagerService {
   static async ensureBrowserHealth(
     browser: Browser | null,
     isInitializing: boolean,
-    initCallback: () => Promise<void>
+    initCallback: () => Promise<void>,
+    maxRetries: number = 3
   ): Promise<void> {
     // Wait if initialization is already in progress
     if (isInitializing) {
       console.log("Browser initialization already in progress, waiting...");
-      while (isInitializing) {
-        await setTimeout(500);
+      let waitTime = 0;
+      while (isInitializing && waitTime < 10000) {
+        await setTimeoutPromise(500);
+        waitTime += 500;
+      }
+      if (waitTime >= 10000) {
+        throw new Error("Browser initialization timed out");
       }
       return;
     }
 
-    // If browser doesn't exist or isn't healthy, initialize it
+    // If browser doesn't exist or isn't healthy, try to initialize it with retries
     if (!browser || !(await BrowserManagerService.isBrowserHealthy(browser))) {
-      await initCallback();
+      let lastError: Error | null = null;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`Attempting to initialize browser (attempt ${attempt}/${maxRetries})...`);
+          await initCallback();
+          
+          // Verify browser was actually initialized and is healthy
+          // Note: We can't directly check the browser here since it's managed by the service
+          // The initCallback should handle setting the browser instance
+          return;
+        } catch (error) {
+          lastError = error as Error;
+          console.error(`Browser initialization attempt ${attempt} failed:`, error);
+          
+          if (attempt < maxRetries) {
+            console.log(`Waiting 2 seconds before retry...`);
+            await setTimeoutPromise(2000);
+          }
+        }
+      }
+      
+      throw new Error(`Failed to initialize browser after ${maxRetries} attempts. Last error: ${lastError?.message}`);
     }
   }
 

@@ -41,8 +41,7 @@ export class BrowserManagerService {
   static async createBrowser(isHeadless: boolean = false): Promise<Browser> {
     return await chromium.launch({
       headless: isHeadless,
-      executablePath: "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
-      chromiumSandbox: false
+      chromiumSandbox: true
     });
   }
 

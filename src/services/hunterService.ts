@@ -27,6 +27,12 @@ interface ProcessAdResult {
   redirectionPath: string[];
 }
 
+// Individual hunter instances - each with their own browser
+export const searchAdHunter = new SearchAdHunter();
+export const typosquatHunter = new TyposquatHunter();
+export const pornhubAdHunter = new PornhubAdHunter();
+export const adSpyGlassHunter = new AdSpyGlassHunter();
+
 export class HunterService {
   private browser: Browser | null = null;
   private isHeadless: boolean = false;
@@ -76,60 +82,21 @@ export class HunterService {
     );
   }
 
+  // Legacy methods that delegate to individual hunters (kept for backward compatibility)
   public async huntSearchAds() {
-    await this.ensureBrowserIsHealthy();
-
-    if (this.browser == null || !this.browser.isConnected()) {
-      console.error(
-        "Browser has not been initialized or has crashed - search ad hunter failed"
-      );
-      return false;
-    }
-
-    const searchAdHunter = new SearchAdHunter(this.browser);
-    const result = await searchAdHunter.huntSearchAds();
-    return result;
+    return await searchAdHunter.huntSearchAds();
   }
 
   public async huntTyposquat() {
-    await this.ensureBrowserIsHealthy();
-
-    if (this.browser == null || !this.browser.isConnected()) {
-      console.error("Browser has not been initialized or has crashed - typosquat hunter failed");
-      return false;
-    }
-
-    const typosquatHunter = new TyposquatHunter(this.browser);
-    const result = await typosquatHunter.huntTyposquat();
-    return result;
+    return await typosquatHunter.huntTyposquat();
   }
 
   public async huntPornhubAds() {
-    await this.ensureBrowserIsHealthy();
-
-    if (this.browser == null || !this.browser.isConnected()) {
-      console.error("Browser has not been initialized or has crashed - pornhub ad hunter failed");
-      return false;
-    }
-
-    const pornhubAdHunter = new PornhubAdHunter(this.browser);
-    const result = await pornhubAdHunter.huntPornhubAds();
-    return result;
+    return await pornhubAdHunter.huntPornhubAds();
   }
 
   public async huntAdSpyGlassAds() {
-    await this.ensureBrowserIsHealthy();
-
-    if (this.browser == null || !this.browser.isConnected()) {
-      console.error(
-        "Browser has not been initialized or has crashed - AdSpyGlass hunter failed"
-      );
-      return false;
-    }
-
-    const adSpyGlassHunter = new AdSpyGlassHunter(this.browser);
-    const result = await adSpyGlassHunter.huntAdSpyGlassAds();
-    return result;
+    return await adSpyGlassHunter.huntAdSpyGlassAds();
   }
 
   public async processAd(

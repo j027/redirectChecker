@@ -8,18 +8,54 @@ import {
 import pool from "../dbPool.js";
 import crypto from "crypto";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
+import { BrowserManagerService } from "./browserManagerService.js";
 
 export class SearchAdHunter {
   private browser: Browser | null = null;
+  private browserInitializing: boolean = false;
 
-  constructor(browser: Browser) {
-    this.browser = browser;
+  async init(): Promise<void> {
+    await this.ensureBrowserIsHealthy();
+  }
+
+  async restartBrowser(): Promise<void> {
+    console.log("Restarting SearchAdHunter browser...");
+    try {
+      this.browserInitializing = true;
+      this.browser = await BrowserManagerService.forceRestartBrowser(this.browser, false);
+    } finally {
+      this.browserInitializing = false;
+    }
+  }
+
+  private async ensureBrowserIsHealthy(): Promise<void> {
+    await BrowserManagerService.ensureBrowserHealth(
+      this.browser,
+      this.browserInitializing,
+      async () => {
+        try {
+          this.browserInitializing = true;
+          await BrowserManagerService.closeBrowser(this.browser);
+          this.browser = await BrowserManagerService.createBrowser(false);
+          console.log("SearchAdHunter initialized new browser");
+        } finally {
+          this.browserInitializing = false;
+        }
+      }
+    );
+  }
+
+  async close(): Promise<void> {
+    await BrowserManagerService.closeBrowser(this.browser);
+    this.browser = null;
   }
 
   async huntSearchAds() {
-    if (this.browser == null) {
+    await this.ensureBrowserIsHealthy();
+
+    if (this.browser == null || !this.browser.isConnected()) {
       console.error(
-        "Browser has not been initialized - search ad hunter failed"
+        "Browser has not been initialized or crashed - search ad hunter failed"
       );
       return false;
     }

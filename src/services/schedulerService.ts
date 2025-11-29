@@ -1,7 +1,7 @@
 import { checkRedirects } from "./redirectMonitorService.js";
 import { flushQueues } from "./batchReportService.js";
 import { monitorTakedownStatus } from "./takedownMonitorService.js";
-import { hunterService } from "./hunterService.js";
+import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter } from "./hunterService.js";
 import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
 
@@ -181,6 +181,8 @@ export function startAdHunter(): void {
   adHunterAbortController = new AbortController();
   console.log("Starting ad hunter service");
 
+  let isHuntingInProgress = false;
+
   async function runAdHunter() {
     // Double-check that we're still supposed to be running
     if (!isRunning.adHunter) {
@@ -188,25 +190,35 @@ export function startAdHunter(): void {
       return;
     }
 
+    // Wait if previous cycle is still running
+    if (isHuntingInProgress) {
+      console.log("Previous hunt cycle still in progress, waiting...");
+      adHunterInterval = setTimeout(runAdHunter, 10 * 1000);
+      return;
+    }
+
+    isHuntingInProgress = true;
+
     try {
       adHunterAbortController?.signal.throwIfAborted();
 
-      // Restart browser before each run to clear lingering state
-      console.log("Restarting ad hunter browser before cycle...");
-      try {
-        await hunterService.restartBrowser();
-      } catch (error) {
-        console.error("Error restarting ad hunter browser:", error);
-      }
+      // Restart each hunter's browser before the cycle
+      console.log("Restarting all hunter browsers before cycle...");
+      await Promise.allSettled([
+        searchAdHunter.restartBrowser().catch(e => console.error("Error restarting SearchAdHunter browser:", e)),
+        typosquatHunter.restartBrowser().catch(e => console.error("Error restarting TyposquatHunter browser:", e)),
+        pornhubAdHunter.restartBrowser().catch(e => console.error("Error restarting PornhubAdHunter browser:", e)),
+        adSpyGlassHunter.restartBrowser().catch(e => console.error("Error restarting AdSpyGlassHunter browser:", e)),
+      ]);
 
       console.log("Starting hunting cycle...");
 
       const TIMEOUT_MS = 120000; // 2 minutes
 
-      // Run all hunt operations in parallel with timeouts
+      // Run all hunt operations in parallel with timeouts - each with their own browser
       const huntPromises = [
         withTimeout(
-          hunterService.huntSearchAds(),
+          searchAdHunter.huntSearchAds(),
           TIMEOUT_MS,
           "Search ad hunting"
         ).catch((error) => {
@@ -214,7 +226,7 @@ export function startAdHunter(): void {
           return null;
         }),
         withTimeout(
-          hunterService.huntTyposquat(),
+          typosquatHunter.huntTyposquat(),
           TIMEOUT_MS,
           "Typosquat hunting"
         ).catch((error) => {
@@ -222,7 +234,7 @@ export function startAdHunter(): void {
           return null;
         }),
         withTimeout(
-          hunterService.huntPornhubAds(),
+          pornhubAdHunter.huntPornhubAds(),
           TIMEOUT_MS,
           "Pornhub ad hunting"
         ).catch((error) => {
@@ -230,7 +242,7 @@ export function startAdHunter(): void {
           return null;
         }),
         withTimeout(
-          hunterService.huntAdSpyGlassAds(),
+          adSpyGlassHunter.huntAdSpyGlassAds(),
           TIMEOUT_MS,
           "AdSpyGlass ad hunting"
         ).catch((error) => {
@@ -250,10 +262,12 @@ export function startAdHunter(): void {
     } catch (error) {
       if (error instanceof Error && error.message === "AbortError") {
         console.log("Ad hunting cycle was cancelled");
+        isHuntingInProgress = false;
         return; // Don't schedule next run
       }
       console.error("Unexpected error in ad hunter:", error);
     } finally {
+      isHuntingInProgress = false;
       // ALWAYS schedule the next run, regardless of success or failure
       // This ensures the scheduler keeps running even if something fails
       if (isRunning.adHunter) {

@@ -5,15 +5,58 @@ import { parseProxy, spoofWindowsChrome } from "../utils/playwrightUtilities.js"
 import pool from "../dbPool.js";
 import crypto from "crypto";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
+import { BrowserManagerService } from "./browserManagerService.js";
 
 export class PornhubAdHunter {
   private browser: Browser | null = null;
+  private browserInitializing: boolean = false;
 
-  constructor(browser: Browser) {
-    this.browser = browser;
+  async init(): Promise<void> {
+    await this.ensureBrowserIsHealthy();
+  }
+
+  async restartBrowser(): Promise<void> {
+    console.log("Restarting PornhubAdHunter browser...");
+    try {
+      this.browserInitializing = true;
+      this.browser = await BrowserManagerService.forceRestartBrowser(this.browser, false);
+    } finally {
+      this.browserInitializing = false;
+    }
+  }
+
+  private async ensureBrowserIsHealthy(): Promise<void> {
+    await BrowserManagerService.ensureBrowserHealth(
+      this.browser,
+      this.browserInitializing,
+      async () => {
+        try {
+          this.browserInitializing = true;
+          await BrowserManagerService.closeBrowser(this.browser);
+          this.browser = await BrowserManagerService.createBrowser(false);
+          console.log("PornhubAdHunter initialized new browser");
+        } finally {
+          this.browserInitializing = false;
+        }
+      }
+    );
+  }
+
+  async close(): Promise<void> {
+    await BrowserManagerService.closeBrowser(this.browser);
+    this.browser = null;
   }
 
   async huntPornhubAds(): Promise<boolean> {
+    await this.ensureBrowserIsHealthy();
+
+    if (this.browser == null || !this.browser.isConnected()) {
+      console.error(
+        "Browser has not been initialized or crashed - pornhub ad hunter failed"
+      );
+      return false;
+    }
+
     // Get the pornhub ad URL
     let adUrl: string | null = null;
 

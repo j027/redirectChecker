@@ -4,12 +4,46 @@ import crypto from "crypto";
 import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
+import { BrowserManagerService } from "./browserManagerService.js";
 
 export class TyposquatHunter {
   private browser: Browser | null = null;
+  private browserInitializing: boolean = false;
 
-  constructor(browser: Browser) {
-    this.browser = browser;
+  async init(): Promise<void> {
+    await this.ensureBrowserIsHealthy();
+  }
+
+  async restartBrowser(): Promise<void> {
+    console.log("Restarting TyposquatHunter browser...");
+    try {
+      this.browserInitializing = true;
+      this.browser = await BrowserManagerService.forceRestartBrowser(this.browser, false);
+    } finally {
+      this.browserInitializing = false;
+    }
+  }
+
+  private async ensureBrowserIsHealthy(): Promise<void> {
+    await BrowserManagerService.ensureBrowserHealth(
+      this.browser,
+      this.browserInitializing,
+      async () => {
+        try {
+          this.browserInitializing = true;
+          await BrowserManagerService.closeBrowser(this.browser);
+          this.browser = await BrowserManagerService.createBrowser(false);
+          console.log("TyposquatHunter initialized new browser");
+        } finally {
+          this.browserInitializing = false;
+        }
+      }
+    );
+  }
+
+  async close(): Promise<void> {
+    await BrowserManagerService.closeBrowser(this.browser);
+    this.browser = null;
   }
 
   private getRandomTyposquatUrl(): string {
@@ -121,9 +155,11 @@ export class TyposquatHunter {
   }
 
   async huntTyposquat() {
-    if (this.browser == null) {
+    await this.ensureBrowserIsHealthy();
+
+    if (this.browser == null || !this.browser.isConnected()) {
       console.error(
-        "Browser has not been initialized - typosquat hunter failed"
+        "Browser has not been initialized or crashed - typosquat hunter failed"
       );
       return null;
     }

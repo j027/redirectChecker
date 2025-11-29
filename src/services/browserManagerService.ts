@@ -42,25 +42,7 @@ export class BrowserManagerService {
     return await chromium.launch({
       headless: isHeadless,
       executablePath: "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
-      chromiumSandbox: true,
-      args: [
-        // Disable GPU completely to prevent GLX/Vulkan errors
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        
-        // Disable GPU features
-        '--disable-accelerated-2d-canvas',
-        '--disable-accelerated-video-decode',
-        
-        // Don't use shared memory
-        '--disable-dev-shm-usage',
-        
-        // Ignore GPU blocklist to force software rendering
-        '--ignore-gpu-blocklist',
-        
-        // Use OSMesa for software GL rendering
-        '--use-gl=swiftshader',
-      ],
+      chromiumSandbox: false
     });
   }
 

@@ -221,16 +221,17 @@ export class TyposquatHunter {
 
           await client.query(
             `INSERT INTO ads
-             (id, ad_type, initial_url, final_url, redirect_path, is_scam, confidence_score)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             (id, ad_type, initial_url, final_url, redirect_path, classifier_is_scam, confidence_score, is_scam)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [
               adId,
               "typosquat",
               typosquat,
               finalUrl,
               hunterService.pgArray(redirectionPath),
-              isScam,
+              rawIsScam,
               confidenceScore,
+              isScam,
             ]
           );
 

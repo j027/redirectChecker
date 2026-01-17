@@ -304,11 +304,13 @@ export class SearchAdHunter {
                last_updated = CURRENT_TIMESTAMP,
                final_url = $1,
                redirect_path = $2,
-               confidence_score = $3
-             WHERE id = $4`,
+               classifier_is_scam = $3,
+               confidence_score = $4
+             WHERE id = $5`,
             [
               finalUrl,
               hunterService.pgArray(redirectionPath),
+              rawIsScam,
               confidenceScore,
               existingAd.id,
             ]
@@ -323,14 +325,14 @@ export class SearchAdHunter {
 
             // Add history record
             const reason = isScam
-              ? `Changed to scam with confidence ${confidenceScore}`
-              : `No longer classified as scam`;
+              ? `Changed to scam with confidence ${(confidenceScore * 100).toFixed(1)}%`
+              : `No longer classified as scam (confidence: ${(confidenceScore * 100).toFixed(1)}%)`;
 
             await client.query(
               `INSERT INTO ad_status_history 
-               (ad_id, previous_status, new_status, reason)
-               VALUES ($1, $2, $3, $4)`,
-              [existingAd.id, existingAd.is_scam, isScam, reason]
+               (ad_id, previous_status, new_status, classifier_is_scam, confidence_score, reason)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [existingAd.id, existingAd.is_scam, isScam, rawIsScam, confidenceScore, reason]
             );
 
             console.log(
@@ -366,16 +368,17 @@ export class SearchAdHunter {
 
           await client.query(
             `INSERT INTO ads
-             (id, ad_type, initial_url, final_url, redirect_path, is_scam, confidence_score)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             (id, ad_type, initial_url, final_url, redirect_path, classifier_is_scam, confidence_score, is_scam)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [
               adId,
               "search",
               adDestination,
               finalUrl,
               hunterService.pgArray(redirectionPath),
-              isScam,
+              rawIsScam,
               confidenceScore,
+              isScam,
             ]
           );
 

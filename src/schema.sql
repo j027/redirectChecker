@@ -64,16 +64,17 @@ CREATE TABLE IF NOT EXISTS url_training_dataset
 -- Main ads table - generic for all ad types
 CREATE TABLE IF NOT EXISTS ads
 (
-    id               UUID PRIMARY KEY,
-    ad_type          VARCHAR(50) NOT NULL,
-    initial_url      TEXT        NOT NULL, -- Original ad URL
-    final_url        TEXT        NOT NULL, -- Where it ultimately leads
-    redirect_path    TEXT[]      NOT NULL, -- PostgreSQL array of URLs in redirect chain
-    is_scam          BOOLEAN     NOT NULL,
-    confidence_score FLOAT,                -- Optional confidence in classification
-    first_seen       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    last_seen        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    last_updated     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    id                 UUID PRIMARY KEY,
+    ad_type            VARCHAR(50) NOT NULL,
+    initial_url        TEXT        NOT NULL, -- Original ad URL
+    final_url          TEXT        NOT NULL, -- Where it ultimately leads
+    redirect_path      TEXT[]      NOT NULL, -- PostgreSQL array of URLs in redirect chain
+    classifier_is_scam BOOLEAN,              -- Raw classifier output
+    confidence_score   FLOAT,                -- Classifier confidence in its prediction
+    is_scam            BOOLEAN     NOT NULL, -- Effective decision (classifier_is_scam AND confidence >= threshold)
+    first_seen         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_seen          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_updated       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Search ad specific attributes
@@ -88,12 +89,14 @@ CREATE TABLE IF NOT EXISTS search_ads
 -- History table to track status changes
 CREATE TABLE IF NOT EXISTS ad_status_history
 (
-    id              SERIAL PRIMARY KEY,
-    ad_id           UUID REFERENCES ads (id) ON DELETE CASCADE,
-    previous_status BOOLEAN,
-    new_status      BOOLEAN,
-    change_date     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    reason          TEXT -- Reason for status change
+    id                   SERIAL PRIMARY KEY,
+    ad_id                UUID REFERENCES ads (id) ON DELETE CASCADE,
+    previous_status      BOOLEAN,
+    new_status           BOOLEAN,
+    classifier_is_scam   BOOLEAN,  -- Raw classifier output at time of change
+    confidence_score     FLOAT,    -- Classifier confidence at time of change
+    change_date          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    reason               TEXT      -- Reason for status change
 );
 
 CREATE TABLE IF NOT EXISTS webrisk_monthly_reports

@@ -266,7 +266,9 @@ export class SearchAdHunter {
     const classifierResult = await aiClassifierService.runInference(screenshot);
 
     try {
-      const { isScam, confidenceScore } = classifierResult;
+      const { isScam: rawIsScam, confidenceScore } = classifierResult;
+      // Only treat as scam if confidence is above threshold
+      const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
       const finalUrl =
         redirectionPath[redirectionPath.length - 1] || adDestination;
 
@@ -274,8 +276,8 @@ export class SearchAdHunter {
         finalUrl,
         screenshot,
         html,
-        classifierResult.isScam,
-        classifierResult.confidenceScore
+        rawIsScam,
+        confidenceScore
       );
 
       // Get a client from the pool for transaction support
@@ -334,7 +336,7 @@ export class SearchAdHunter {
             console.log(
               `Ad status changed from ${existingAd.is_scam} to ${isScam}`
             );
-            if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
+            if (isScam) {
               await sendAlert({
                 type: "adScam",
                 initialUrl: adDestination,
@@ -385,7 +387,7 @@ export class SearchAdHunter {
           );
 
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
-          if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
+          if (isScam) {
             await sendAlert({
               type: "adScam",
               initialUrl: adDestination,

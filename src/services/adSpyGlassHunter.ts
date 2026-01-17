@@ -217,15 +217,17 @@ export class AdSpyGlassHunter {
     }
 
     const classifierResult = await aiClassifierService.runInference(screenshot);
-    const { isScam, confidenceScore } = classifierResult;
+    const { isScam: rawIsScam, confidenceScore } = classifierResult;
+    // Only treat as scam if confidence is above threshold
+    const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
 
     try {
-      // Save the classified data to AI service
+      // Save the classified data to AI service (use raw values for training)
       await aiClassifierService.saveData(
         finalUrl,
         screenshot,
         html,
-        isScam,
+        rawIsScam,
         confidenceScore
       );
 
@@ -276,11 +278,10 @@ export class AdSpyGlassHunter {
         }
 
         // Only send an alert if:
-        // 1. It's classified as a scam with high confidence
+        // 1. It's classified as a scam
         // 2. We haven't seen this destination before from any AdSpyGlass ad
         if (
           isScam &&
-          confidenceScore > CONFIDENCE_THRESHOLD &&
           isNewDestination
         ) {
           const cloakerCandidate = hunterService.findCloakerCandidate(

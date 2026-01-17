@@ -108,17 +108,19 @@ export class PornhubAdHunter {
     const classifierResult = await aiClassifierService.runInference(screenshot);
 
     try {
-      const { isScam, confidenceScore } = classifierResult;
+      const { isScam: rawIsScam, confidenceScore } = classifierResult;
+      // Only treat as scam if confidence is above threshold
+      const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
       const finalUrl =
         redirectionPath[redirectionPath.length - 1] || adDestination;
 
-      // Save classifier data
+      // Save classifier data (use raw values for training)
       await aiClassifierService.saveData(
         finalUrl,
         screenshot,
         html,
-        classifierResult.isScam,
-        classifierResult.confidenceScore
+        rawIsScam,
+        confidenceScore
       );
 
       // Get a client from the pool for transaction support
@@ -183,8 +185,8 @@ export class PornhubAdHunter {
               `Pornhub ad status changed from ${existingAd.is_scam} to ${isScam}`
             );
 
-            // Send alert if status changed to scam with high confidence
-            if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
+            // Send alert if status changed to scam
+            if (isScam) {
               await sendAlert({
                 type: "pornhubAd",
                 initialUrl: adDestination,
@@ -228,8 +230,8 @@ export class PornhubAdHunter {
 
           console.log(`Inserted new pornhub ad: ${adId}, is_scam: ${isScam}`);
 
-          // Send alert if new scam with high confidence
-          if (isScam && confidenceScore > CONFIDENCE_THRESHOLD) {
+          // Send alert if new scam
+          if (isScam) {
             await sendAlert({
               type: "pornhubAd",
               initialUrl: adDestination,

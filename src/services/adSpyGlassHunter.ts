@@ -300,17 +300,16 @@ export class AdSpyGlassHunter {
           });
           console.log(`Sent alert for new scam destination: ${finalUrl}`);
 
-          // TODO: uncomment once false positives are resolved (likely need to update the AI model)
-          // if (cloakerCandidate != null) {
-          //   const addedToChecker =
-          //     await hunterService.tryAddToRedirectChecker(cloakerCandidate);
-          //   if (addedToChecker) {
-          //     await sendCloakerAddedAlert(cloakerCandidate, "AdSpyGlass");
-          //     console.log(
-          //       `Added cloaker to redirect checker: ${cloakerCandidate}`
-          //     );
-          //   }
-          // }
+          if (cloakerCandidate != null) {
+            const addedToChecker =
+              await hunterService.tryAddToRedirectChecker(cloakerCandidate);
+            if (addedToChecker) {
+              await sendCloakerAddedAlert(cloakerCandidate, "AdSpyGlass");
+              console.log(
+                `Added cloaker to redirect checker: ${cloakerCandidate}`
+              );
+            }
+          }
         }
 
         await client.query("COMMIT");

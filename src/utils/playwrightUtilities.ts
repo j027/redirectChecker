@@ -1,6 +1,7 @@
 import { Page, Browser, BrowserContext, Frame, Request, Response } from "patchright";
 import { readConfig } from "../config.js";
 import crypto from 'crypto';
+import { WebGLConfig, getRandomWebGLConfig } from './webglConfigs.js';
 
 export async function blockGoogleAnalytics(page: Page) {
   await page.route("https://www.google-analytics.com/g/collect*", (route) => {
@@ -114,61 +115,13 @@ function generateBrandData(version: string): Array<{brand: string, version: stri
   return brands;
 }
 
-// Type definitions for WebGL spoofing
-interface WebGLConfig {
-  vendor: string;
-  renderer: string;
-}
-
-// Common Windows WebGL configurations
-const WEBGL_CONFIGS: WebGLConfig[] = [
-  // Intel configurations
-  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) HD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) HD Graphics 520 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) HD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  
-  // NVIDIA configurations
-  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1050 Ti Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 2060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3050 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  
-  // AMD configurations
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 550 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 560 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 570 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 580 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 5500 XT Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 5600 XT Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX 6600 XT Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 580 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  
-  // Laptop integrated/mobile GPUs
-  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce MX350 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3050 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon RX Vega 8 Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
-  { vendor: 'Google Inc.', renderer: 'ANGLE (AMD, AMD Radeon 680M Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' }
-];
-
 
 export async function spoofWebGL(
   page: Page,
   config?: WebGLConfig
 ): Promise<void> {
   // If no specific config is provided, pick a random one
-  const webGLConfig = config || WEBGL_CONFIGS[Math.floor(Math.random() * WEBGL_CONFIGS.length)];
+  const webGLConfig = config || getRandomWebGLConfig();
   
   await page.addInitScript(({ vendor, renderer }) => {
     const getParameterProxyHandler = {

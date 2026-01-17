@@ -80,7 +80,7 @@ export class AdSpyGlassHunter {
         // Navigate to video page without clicking to avoid popunder
         try {
             const video = page.locator('a[href*="video/"]').first();
-            await video.waitFor({state: "visible", timeout: 10000});
+            await video.waitFor({state: "visible", timeout: 30000});
             
             // Get the href attribute from the first video link
             const videoUrl = await video.getAttribute('href');

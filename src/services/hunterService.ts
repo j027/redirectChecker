@@ -17,7 +17,7 @@ import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
 
 // Given a detected scam, confidence level above this will be treated as one
-export const CONFIDENCE_THRESHOLD = 0.85;
+export const CONFIDENCE_THRESHOLD = 0.90;
 
 interface ProcessAdResult {
   screenshot: Buffer;

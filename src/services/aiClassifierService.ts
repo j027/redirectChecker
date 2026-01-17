@@ -15,7 +15,7 @@ import { BrowserManagerService } from './browserManagerService.js';
 // Constants for the model
 const INPUT_WIDTH = 224;
 const INPUT_HEIGHT = 224;
-const CONFIDENCE_THRESHOLD = 0.85;
+const CONFIDENCE_THRESHOLD = 0.90;
 
 // ImageNet normalization constants
 const IMAGENET_MEAN = [0.485, 0.456, 0.406];

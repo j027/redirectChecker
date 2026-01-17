@@ -181,9 +181,9 @@ Identifies typosquatted domains that redirect to scam sites.
 
 ## AI Classification
 
-The system uses a ResNet18-based ONNX image classification model to analyze screenshots and determine if a website is a scam. The model uses ImageNet normalization and processes 224x224 pixel screenshots with a confidence threshold of 0.85.
+The system uses a ResNet18-based ONNX image classification model to analyze screenshots and determine if a website is a scam. The model uses ImageNet normalization and processes 224x224 pixel screenshots with a confidence threshold of 0.90.
 
-Training data is collected only for low-confidence classifications (below 85%) to help improve the model on edge cases.
+Training data is collected only for low-confidence classifications (below 90%) to help improve the model on edge cases.
 
 ### Current Limitations
 - **Training data quality**: Ongoing work to improve training dataset

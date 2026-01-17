@@ -16,10 +16,8 @@ import { TyposquatHunter } from "./typosquatHunter.js";
 import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
 
-// given a detected scam, confidence level above this will be treated as one
-// this is because the image model has false positive issues otherwise
-// eventually will use both image and html model with hopefully fewer false positives
-export const CONFIDENCE_THRESHOLD = 0.98;
+// Given a detected scam, confidence level above this will be treated as one
+export const CONFIDENCE_THRESHOLD = 0.85;
 
 interface ProcessAdResult {
   screenshot: Buffer;

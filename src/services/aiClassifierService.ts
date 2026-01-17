@@ -13,14 +13,13 @@ import sharp from "sharp";
 import { BrowserManagerService } from './browserManagerService.js';
 
 // Constants for the model
-const INPUT_WIDTH = 1280;
-const INPUT_HEIGHT = 1280;
-const CONFIDENCE_THRESHOLD = 0.7;
+const INPUT_WIDTH = 224;
+const INPUT_HEIGHT = 224;
+const CONFIDENCE_THRESHOLD = 0.85;
 
-const MODEL_VERSIONS = {
-  IMAGE: "v0.0.2",
-  HTML: "v0.0.1",
-};
+// ImageNet normalization constants
+const IMAGENET_MEAN = [0.485, 0.456, 0.406];
+const IMAGENET_STD = [0.229, 0.224, 0.225];
 
 interface ClassificationResult {
   isScam: boolean;
@@ -43,12 +42,9 @@ export class AiClassifierService {
       const modelPath = path.join(
         process.cwd(),
         "models",
-        "image_scam_detector.onnx"
+        "scam_classifier.onnx"
       );
       this.model = await onnx.InferenceSession.create(modelPath);
-
-      // Update training dataset on startup
-      await this.updateTrainingDataset();
     } catch (error) {
       console.error("Error initializing AI Classifier:", error);
       throw error;
@@ -183,15 +179,23 @@ export class AiClassifierService {
 
       // Process output tensor
       const output = results[outputName].data as Float32Array;
-      console.log("Raw output:", Array.from(output));
+      console.log("Raw output (logits):", Array.from(output));
 
-      // Find the class with highest confidence
+      // Apply softmax to convert logits to probabilities
+      const maxLogit = Math.max(...Array.from(output));
+      const expValues = Array.from(output).map(x => Math.exp(x - maxLogit));
+      const sumExp = expValues.reduce((a, b) => a + b, 0);
+      const probabilities = expValues.map(x => x / sumExp);
+      
+      console.log("Probabilities after softmax:", probabilities);
+
+      // Find the class with highest probability
       let maxConfidenceIdx = 0;
-      let maxConfidence = output[0];
+      let maxConfidence = probabilities[0];
 
-      for (let i = 1; i < output.length; i++) {
-        if (output[i] > maxConfidence) {
-          maxConfidence = output[i];
+      for (let i = 1; i < probabilities.length; i++) {
+        if (probabilities[i] > maxConfidence) {
+          maxConfidence = probabilities[i];
           maxConfidenceIdx = i;
         }
       }
@@ -213,28 +217,42 @@ export class AiClassifierService {
 
   private async preprocessImage(imageBuffer: Buffer): Promise<Float32Array> {
     try {
-      // Resize and normalize the image using sharp
-      const processedBuffer = await sharp(imageBuffer)
-        .resize(INPUT_WIDTH, INPUT_HEIGHT)
+      // Resize to 256, then center crop to 224 (matching training transforms)
+      const resized = await sharp(imageBuffer)
+        .resize(256, 256)
         .removeAlpha()
         .raw()
         .toBuffer();
+
+      // Center crop from 256x256 to 224x224
+      const cropOffset = Math.floor((256 - INPUT_WIDTH) / 2); // 16 pixels
+      const croppedBuffer = new Uint8Array(INPUT_WIDTH * INPUT_HEIGHT * 3);
+      
+      for (let y = 0; y < INPUT_HEIGHT; y++) {
+        for (let x = 0; x < INPUT_WIDTH; x++) {
+          const srcIdx = ((y + cropOffset) * 256 + (x + cropOffset)) * 3;
+          const dstIdx = (y * INPUT_WIDTH + x) * 3;
+          croppedBuffer[dstIdx] = resized[srcIdx];
+          croppedBuffer[dstIdx + 1] = resized[srcIdx + 1];
+          croppedBuffer[dstIdx + 2] = resized[srcIdx + 2];
+        }
+      }
 
       // Create tensor with proper dimensions
       const pixelCount = INPUT_WIDTH * INPUT_HEIGHT;
       const tensorData = new Float32Array(3 * pixelCount);
 
-      // Convert from interleaved RGB to planar CHW format
+      // Convert from interleaved RGB to planar CHW format with ImageNet normalization
       for (let i = 0; i < pixelCount; i++) {
         // Sharp gives pixels in interleaved RGB format (R,G,B,R,G,B,...)
-        const r = processedBuffer[i * 3] / 255.0; // R value
-        const g = processedBuffer[i * 3 + 1] / 255.0; // G value
-        const b = processedBuffer[i * 3 + 2] / 255.0; // B value
+        const r = croppedBuffer[i * 3] / 255.0;
+        const g = croppedBuffer[i * 3 + 1] / 255.0;
+        const b = croppedBuffer[i * 3 + 2] / 255.0;
 
-        // Store in CHW format (all R values, then all G values, then all B values)
-        tensorData[i] = r; // R channel
-        tensorData[i + pixelCount] = g; // G channel
-        tensorData[i + 2 * pixelCount] = b; // B channel
+        // Apply ImageNet normalization: (pixel - mean) / std
+        tensorData[i] = (r - IMAGENET_MEAN[0]) / IMAGENET_STD[0]; // R channel
+        tensorData[i + pixelCount] = (g - IMAGENET_MEAN[1]) / IMAGENET_STD[1]; // G channel
+        tensorData[i + 2 * pixelCount] = (b - IMAGENET_MEAN[2]) / IMAGENET_STD[2]; // B channel
       }
 
       return tensorData;
@@ -251,6 +269,14 @@ export class AiClassifierService {
     isScam: boolean,
     confidenceScore: number
   ): Promise<void> {
+    // Only save data when model is not confident - these are the edge cases we need to improve
+    if (confidenceScore >= CONFIDENCE_THRESHOLD) {
+      console.log(
+        `Skipping save for ${url} - confidence ${(confidenceScore * 100).toFixed(2)}% is above threshold`
+      );
+      return;
+    }
+
     const client = await pool.connect();
 
     try {
@@ -288,8 +314,8 @@ export class AiClassifierService {
 
       // Insert into database
       await client.query(
-        "INSERT INTO url_training_dataset (uuid, url, is_scam, confidence_score, model_type, model_version) VALUES ($1, $2, $3, $4, $5, $6)",
-        [uuid, url, isScam, confidenceScore, "IMAGE", MODEL_VERSIONS.IMAGE]
+        "INSERT INTO url_training_dataset (uuid, url, is_scam, confidence_score) VALUES ($1, $2, $3, $4)",
+        [uuid, url, isScam, confidenceScore]
       );
 
       // Save to filesystem
@@ -297,182 +323,10 @@ export class AiClassifierService {
       await fs.writeFile(path.join(htmlDir, `${uuid}.html`), html);
 
       console.log(
-        `Saved classification data for ${url} (${isScam ? "scam" : "non_scam"}, confidence: ${confidenceScore.toFixed(4)})`
+        `Saved low-confidence classification data for ${url} (${isScam ? "scam" : "non_scam"}, confidence: ${(confidenceScore * 100).toFixed(2)}%)`
       );
     } catch (error) {
       console.error(`Error saving classification data for ${url}:`, error);
-    } finally {
-      client.release();
-    }
-  }
-
-  /**
-   * Updates all training dataset entries that have outdated model versions
-   * or missing confidence scores by running the latest model against them.
-   */
-  async updateTrainingDataset(): Promise<void> {
-    console.log("Starting training dataset update...");
-
-    if (!this.model) {
-      console.error("Model not initialized, cannot update training dataset");
-      return;
-    }
-
-    const client = await pool.connect();
-
-    try {
-      // Find entries that need updating
-      const needsUpdateQuery = await client.query(
-        `
-        SELECT uuid, url, is_scam, model_type, model_version 
-        FROM url_training_dataset 
-        WHERE model_version != $1 
-           OR confidence_score IS NULL
-        ORDER BY created_at DESC
-      `,
-        [MODEL_VERSIONS.IMAGE]
-      );
-
-      console.log(
-        `Found ${needsUpdateQuery.rows.length} entries that need updating`
-      );
-
-      // Process each entry
-      for (const entry of needsUpdateQuery.rows) {
-        console.log(`Processing entry ${entry.uuid} (${entry.url})`);
-
-        try {
-          // Prepare filesystem paths
-          const oldLabel = entry.is_scam ? "scam" : "non_scam";
-          const oldScreenshotPath = path.join(
-            process.cwd(),
-            "data",
-            "screenshots",
-            oldLabel,
-            `${entry.uuid}.png`
-          );
-          const oldHtmlPath = path.join(
-            process.cwd(),
-            "data",
-            "html",
-            oldLabel,
-            `${entry.uuid}.html`
-          );
-
-          // Load existing assets
-          let screenshot: Buffer;
-          let html: string;
-
-          try {
-            screenshot = await fs.readFile(oldScreenshotPath);
-            html = await fs.readFile(oldHtmlPath, "utf8");
-          } catch (fileError) {
-            console.error(
-              `Cannot find files for ${entry.uuid}, will reclassify URL`
-            );
-
-            // If files are missing, reclassify from URL
-            const result = await this.classifyUrl(entry.url);
-            if (!result) {
-              console.error(`Failed to reclassify URL ${entry.url}, skipping`);
-              continue;
-            }
-
-            // Update database with new classification
-            await client.query(
-              `
-              UPDATE url_training_dataset
-              SET is_scam = $1, 
-                  confidence_score = $2, 
-                  model_version = $3,
-                  last_updated = CURRENT_TIMESTAMP
-              WHERE uuid = $4
-            `,
-              [
-                result.isScam,
-                result.confidenceScore,
-                MODEL_VERSIONS.IMAGE,
-                entry.uuid,
-              ]
-            );
-
-            console.log(
-              `Reclassified URL ${entry.url} as ${result.isScam ? "scam" : "non_scam"} with confidence ${result.confidenceScore.toFixed(4)}`
-            );
-            continue;
-          }
-
-          // Run inference with current model
-          const prediction = await this.runInference(screenshot);
-          const newLabel = prediction.isScam ? "scam" : "non_scam";
-
-          // Update the database
-          await client.query(
-            `
-            UPDATE url_training_dataset
-            SET is_scam = $1, 
-                confidence_score = $2, 
-                model_version = $3,
-                last_updated = CURRENT_TIMESTAMP
-            WHERE uuid = $4
-          `,
-            [
-              prediction.isScam,
-              prediction.confidenceScore,
-              MODEL_VERSIONS.IMAGE,
-              entry.uuid,
-            ]
-          );
-
-          // If classification changed, move files to new location
-          if (oldLabel !== newLabel) {
-            // Create new directories if needed
-            const newScreenshotDir = path.join(
-              process.cwd(),
-              "data",
-              "screenshots",
-              newLabel
-            );
-            const newHtmlDir = path.join(
-              process.cwd(),
-              "data",
-              "html",
-              newLabel
-            );
-
-            await fs.mkdir(newScreenshotDir, { recursive: true });
-            await fs.mkdir(newHtmlDir, { recursive: true });
-
-            // Move files
-            const newScreenshotPath = path.join(
-              newScreenshotDir,
-              `${entry.uuid}.png`
-            );
-            const newHtmlPath = path.join(newHtmlDir, `${entry.uuid}.html`);
-
-            await fs.writeFile(newScreenshotPath, screenshot);
-            await fs.writeFile(newHtmlPath, html);
-
-            // Remove old files
-            await fs.unlink(oldScreenshotPath);
-            await fs.unlink(oldHtmlPath);
-
-            console.log(
-              `Moved files for ${entry.uuid} from ${oldLabel} to ${newLabel}`
-            );
-          }
-
-          console.log(
-            `Updated entry ${entry.uuid} as ${prediction.isScam ? "scam" : "non_scam"} with confidence ${prediction.confidenceScore.toFixed(4)}`
-          );
-        } catch (entryError) {
-          console.error(`Error processing entry ${entry.uuid}:`, entryError);
-        }
-      }
-
-      console.log("Training dataset update completed");
-    } catch (error) {
-      console.error("Error updating training dataset:", error);
     } finally {
       client.release();
     }

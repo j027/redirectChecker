@@ -11,6 +11,7 @@ import {
 import crypto from "crypto";
 import sharp from "sharp";
 import { BrowserManagerService } from './browserManagerService.js';
+import { URL } from 'url';
 
 // Constants for the model
 const INPUT_WIDTH = 224;
@@ -33,6 +34,7 @@ export class AiClassifierService {
   private model: onnx.InferenceSession | null = null;
   private browser: Browser | null = null;
   private browserInitializing: boolean = false;
+  private whitelist: Set<string> = new Set();
 
   async init() {
     try {
@@ -45,9 +47,43 @@ export class AiClassifierService {
         "scam_classifier.onnx"
       );
       this.model = await onnx.InferenceSession.create(modelPath);
+
+      // Load whitelist
+      await this.loadWhitelist();
     } catch (error) {
       console.error("Error initializing AI Classifier:", error);
       throw error;
+    }
+  }
+
+  private async loadWhitelist(): Promise<void> {
+    try {
+      const whitelistPath = path.join(process.cwd(), "whitelist.json");
+      const whitelistData = await fs.readFile(whitelistPath, "utf-8");
+      const whitelist = JSON.parse(whitelistData);
+      this.whitelist = new Set(whitelist.domains);
+      console.log(`Loaded ${this.whitelist.size} domains into whitelist`);
+    } catch (error) {
+      console.error("Error loading whitelist:", error);
+      this.whitelist = new Set(); // Empty set if file doesn't exist
+    }
+  }
+
+  private isWhitelisted(url: string): boolean {
+    try {
+      const parsedUrl = new URL(url);
+      const hostname = parsedUrl.hostname.toLowerCase();
+      
+      // Check exact match and also check if it's a subdomain of whitelisted domain
+      for (const domain of this.whitelist) {
+        if (hostname === domain || hostname.endsWith(`.${domain}`)) {
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error(`Error parsing URL ${url}:`, error);
+      return false;
     }
   }
 
@@ -104,6 +140,18 @@ export class AiClassifierService {
       const screenshot = await page.screenshot();
       const html = await page.content();
       const currentUrl = page.url();
+
+      // Check if URL is whitelisted
+      if (this.isWhitelisted(currentUrl)) {
+        console.log(`✅ Whitelisted domain detected: ${currentUrl} - Skipping AI classification`);
+        return {
+          isScam: false,
+          confidenceScore: 1.0,
+          screenshot,
+          html,
+          url: currentUrl,
+        };
+      }
 
       // Process the image for the model
       const prediction = await this.runInference(screenshot);

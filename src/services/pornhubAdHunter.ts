@@ -6,6 +6,7 @@ import pool from "../dbPool.js";
 import crypto from "crypto";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
+import { reportSite } from "./reportService.js";
 
 export class PornhubAdHunter {
   private browser: Browser | null = null;
@@ -203,9 +204,14 @@ export class PornhubAdHunter {
                 await hunterService.tryAddToRedirectChecker(adDestination);
               if (addedToRedirectChecker) {
                 await sendCloakerAddedAlert(adDestination, "Pornhub Ad");
+              } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {
+                // Cloaking scam detected - force report even though redirect checker failed
+                console.log(`⚠️ Cloaking scam detected - forcing direct report for: ${finalUrl}`);
+                await reportSite(finalUrl, adDestination, screenshot, html);
+                await sendCloakerAddedAlert(finalUrl, "Pornhub Ad (Force Reported)");
               }
               console.log(
-                `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed"}`
+                `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed (possibly cloaking)"}`
               );
             }
           }
@@ -249,9 +255,14 @@ export class PornhubAdHunter {
               await hunterService.tryAddToRedirectChecker(adDestination);
             if (addedToRedirectChecker) {
               await sendCloakerAddedAlert(adDestination, "Pornhub Ad");
+            } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {
+              // Cloaking scam detected - force report even though redirect checker failed
+              console.log(`⚠️ Cloaking scam detected - forcing direct report for: ${finalUrl}`);
+              await reportSite(finalUrl, adDestination, screenshot, html);
+              await sendCloakerAddedAlert(finalUrl, "Pornhub Ad (Force Reported)");
             }
             console.log(
-              `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`
+              `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed (possibly cloaking)"}`
             );
           }
         }
@@ -390,6 +401,58 @@ export class PornhubAdHunter {
     } catch (error) {
       console.log("Error while trying to canonicalize pornhub ad url", error);
       return null;
+    }
+  }
+
+  /**
+   * Determines if a scam should be force-reported even if redirect checker fails.
+   * This handles cloaking scams that use fingerprinting to hide from automated detection.
+   * 
+   * Criteria for force reporting:
+   * 1. Contains known scammer patterns (e.g., "ABR" path)
+   * 2. Same-domain redirect (initial and final URL on same domain but different paths)
+   * 3. Short redirect chain (2-3 hops, typical of self-redirecting cloakers)
+   */
+  private shouldForceReport(initialUrl: string, finalUrl: string, redirectionPath: string[]): boolean {
+    try {
+      const initialHostname = new URL(initialUrl).hostname;
+      const finalHostname = new URL(finalUrl).hostname;
+      const finalPath = new URL(finalUrl).pathname;
+      
+      // Check for known scammer patterns
+      const knownCloakerPatterns = [
+        '/ABR/',           // Known tech support scam pattern
+        '/landers/',       // Common landing page pattern for scammers
+        '/landing/',
+        '/land/',
+        'mp_adult'
+      ];
+      
+      const hasKnownPattern = knownCloakerPatterns.some(pattern => 
+        finalPath.includes(pattern) || initialUrl.includes(pattern)
+      );
+      
+      // Same-domain redirect check
+      const isSameDomainRedirect = initialHostname === finalHostname && initialUrl !== finalUrl;
+      
+      // Short redirect chain (typical of cloaking)
+      const isShortChain = redirectionPath.length >= 2 && redirectionPath.length <= 4;
+      
+      // Force report if it matches cloaking criteria
+      const shouldForce = (hasKnownPattern && isSameDomainRedirect) || 
+                         (isSameDomainRedirect && isShortChain);
+      
+      if (shouldForce) {
+        console.log(`🎯 Cloaking scam pattern detected:`);
+        console.log(`   - Known pattern: ${hasKnownPattern}`);
+        console.log(`   - Same domain redirect: ${isSameDomainRedirect}`);
+        console.log(`   - Short chain (${redirectionPath.length} hops): ${isShortChain}`);
+      }
+      
+      return shouldForce;
+    } catch (error) {
+      console.error(`Error in shouldForceReport: ${error}`);
+      return false;
     }
   }
 }

@@ -107,7 +107,7 @@ export class SignalService {
       return;
     }
 
-    // Inject script to intercept suspicious API calls
+    // Inject script to intercept suspicious API calls using Proxy
     await page.addInitScript(() => {
       // Track API calls via a global object
       (window as any).__signalDetection = {
@@ -116,42 +116,47 @@ export class SignalService {
         pointerLockRequested: false,
       };
 
-      // Intercept fullscreen requests
-      const originalRequestFullscreen = Element.prototype.requestFullscreen;
-      Element.prototype.requestFullscreen = function (...args) {
-        (window as any).__signalDetection.fullscreenRequested = true;
-        console.log("[SIGNAL] Fullscreen API requested");
-        return originalRequestFullscreen.apply(this, args);
-      };
-
-      // Also intercept webkit/moz prefixed versions
-      const webkitFullscreen = (Element.prototype as any).webkitRequestFullscreen;
-      if (webkitFullscreen) {
-        (Element.prototype as any).webkitRequestFullscreen = function (...args: any[]) {
+      // Use Proxy to intercept requestFullscreen
+      const fullscreenHandler = {
+        apply: function(target: any, ctx: any, args: any[]) {
           (window as any).__signalDetection.fullscreenRequested = true;
-          console.log("[SIGNAL] Webkit Fullscreen API requested");
-          return webkitFullscreen.apply(this, args);
-        };
+          return Reflect.apply(target, ctx, args);
+        }
+      };
+      Element.prototype.requestFullscreen = new Proxy(
+        Element.prototype.requestFullscreen,
+        fullscreenHandler
+      );
+
+      // Also intercept webkit prefixed version
+      if ((Element.prototype as any).webkitRequestFullscreen) {
+        (Element.prototype as any).webkitRequestFullscreen = new Proxy(
+          (Element.prototype as any).webkitRequestFullscreen,
+          fullscreenHandler
+        );
       }
 
-      // Intercept keyboard lock
+      // Intercept keyboard lock using Proxy
       const nav = navigator as any;
       if (nav.keyboard && nav.keyboard.lock) {
-        const originalKeyboardLock = nav.keyboard.lock.bind(nav.keyboard);
-        nav.keyboard.lock = function (...args: any[]) {
-          (window as any).__signalDetection.keyboardLockRequested = true;
-          console.log("[SIGNAL] Keyboard Lock API requested");
-          return originalKeyboardLock(...args);
-        };
+        nav.keyboard.lock = new Proxy(nav.keyboard.lock, {
+          apply: function(target: any, ctx: any, args: any[]) {
+            (window as any).__signalDetection.keyboardLockRequested = true;
+            return Reflect.apply(target, ctx, args);
+          }
+        });
       }
 
-      // Intercept pointer lock
-      const originalRequestPointerLock = Element.prototype.requestPointerLock;
-      Element.prototype.requestPointerLock = function (...args) {
-        (window as any).__signalDetection.pointerLockRequested = true;
-        console.log("[SIGNAL] Pointer Lock API requested");
-        return originalRequestPointerLock.apply(this, args as []);
-      };
+      // Intercept pointer lock using Proxy
+      Element.prototype.requestPointerLock = new Proxy(
+        Element.prototype.requestPointerLock,
+        {
+          apply: function(target: any, ctx: any, args: any[]) {
+            (window as any).__signalDetection.pointerLockRequested = true;
+            return Reflect.apply(target, ctx, args);
+          }
+        }
+      );
     });
 
     this.apiCallListenerAttached = true;

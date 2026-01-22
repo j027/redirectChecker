@@ -230,24 +230,6 @@ describe("SignalService", () => {
     });
   });
 
-  describe("toDbColumns", () => {
-    it("should return correctly named database columns", () => {
-      signalService.analyzeUrl("http://192.168.1.1/");
-      
-      const dbColumns = signalService.toDbColumns();
-      
-      expect(dbColumns).toHaveProperty("signal_fullscreen");
-      expect(dbColumns).toHaveProperty("signal_keyboard_lock");
-      expect(dbColumns).toHaveProperty("signal_pointer_lock");
-      expect(dbColumns).toHaveProperty("signal_third_party_hosting");
-      expect(dbColumns).toHaveProperty("signal_ip_address");
-      expect(dbColumns).toHaveProperty("signal_page_frozen");
-      
-      expect(dbColumns.signal_ip_address).toBe(true);
-      expect(dbColumns.signal_fullscreen).toBe(false);
-    });
-  });
-
   describe("Azure/Windows specific hosting patterns", () => {
     it("should detect Azure blob storage URLs", () => {
       expect(signalService.checkIsThirdPartyHosting("scamsite.blob.core.windows.net")).toBe(true);

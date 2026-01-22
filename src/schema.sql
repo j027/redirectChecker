@@ -10,13 +10,15 @@ CREATE TABLE IF NOT EXISTS redirects
 -- along with timestamps to record when the destination was first and last seen.
 CREATE TABLE IF NOT EXISTS redirect_destinations
 (
-    id              SERIAL PRIMARY KEY,
-    redirect_id     INTEGER     NOT NULL REFERENCES redirects (id) ON DELETE CASCADE,
-    destination_url TEXT UNIQUE NOT NULL,                  -- The target URL where the redirect sends the user
-    first_seen      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this destination was first recorded
-    last_seen       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this destination was most recently observed
-    is_popup        BOOLEAN     DEFAULT FALSE,             -- Indicates if the destination is a popup
-    hostname        TEXT UNIQUE NOT NULL                   -- hostname for deduplication purposes
+    id                 SERIAL PRIMARY KEY,
+    redirect_id        INTEGER     NOT NULL REFERENCES redirects (id) ON DELETE CASCADE,
+    destination_url    TEXT UNIQUE NOT NULL,                  -- The target URL where the redirect sends the user
+    first_seen         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this destination was first recorded
+    last_seen          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this destination was most recently observed
+    is_scam            BOOLEAN     DEFAULT FALSE,             -- Whether the destination is classified as a scam
+    hostname           TEXT UNIQUE NOT NULL,                  -- hostname for deduplication purposes
+    classifier_is_scam BOOLEAN     DEFAULT NULL,              -- Raw classifier output
+    confidence_score   FLOAT       DEFAULT NULL               -- Classifier confidence in its prediction
 );
 
 -- Table for tracking takendown status of redirect destinations over time

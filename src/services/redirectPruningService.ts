@@ -68,7 +68,7 @@ async function pruneInactiveScamRedirects(): Promise<void> {
         SELECT 1 
         FROM redirect_destinations rd
         WHERE rd.redirect_id = r.id
-          AND rd.is_popup = true
+          AND rd.is_scam = true
           AND rd.last_seen > NOW() - INTERVAL '5 days'
       )
     `);

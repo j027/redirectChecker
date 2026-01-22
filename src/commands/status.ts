@@ -22,7 +22,7 @@ export const statusCommand: CommandDefinition = {
                d.destination_url,
                d.first_seen,
                d.last_seen,
-               d.is_popup,
+               d.is_scam,
                ts.safebrowsing_flagged_at,
                ts.netcraft_flagged_at, 
                ts.smartscreen_flagged_at,
@@ -58,7 +58,7 @@ export const statusCommand: CommandDefinition = {
           url: string;
           firstSeen: string;
           lastSeen: string;
-          isPopup: boolean;
+          isScam: boolean;
           firstSeenDate: Date;
           hasTakedownStatus: boolean;
           safebrowsingFlaggedAt: Date | null;
@@ -83,7 +83,7 @@ export const statusCommand: CommandDefinition = {
             url: row.destination_url,
             firstSeen,
             lastSeen,
-            isPopup: row.is_popup,
+            isScam: row.is_scam,
             firstSeenDate: new Date(row.first_seen),
             hasTakedownStatus: row.has_takedown_status,
             safebrowsingFlaggedAt: row.safebrowsing_flagged_at ? new Date(row.safebrowsing_flagged_at) : null,
@@ -150,7 +150,7 @@ export const statusCommand: CommandDefinition = {
           let takedownStatusLines = [];
           
           // Only show status for destinations that have been checked
-          if (dest.isPopup && dest.hasTakedownStatus) {
+          if (dest.isScam && dest.hasTakedownStatus) {
             if (dest.safebrowsingFlaggedAt) {
               const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.safebrowsingFlaggedAt);
               takedownStatusLines.push(`${EMOJI.SAFEBROWSING} ${timeDiff}`);
@@ -186,8 +186,8 @@ export const statusCommand: CommandDefinition = {
               inline: true
             },
             {
-              name: "Popup",
-              value: `${dest.isPopup ? "Yes" : "No"}`,
+              name: "Scam",
+              value: `${dest.isScam ? "Yes" : "No"}`,
               inline: true
             }
           );

@@ -4,6 +4,7 @@ import { RedirectType } from "../redirectType.js";
 import { reportSite } from "./reportService.js";
 import { initTakedownStatusForDestination } from "./takedownMonitorService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
+import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();
@@ -81,18 +82,32 @@ async function processRedirectEntry(
         return;
       }
 
+      // Apply confidence threshold for effective scam decision (consistent with hunters)
+      const classifierIsScam = classificationResult.isScam;
+      const confidenceScore = classificationResult.confidenceScore;
+      const isScam = classifierIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
+
       // Now we insert, still within the same transaction
       const insertResult = await client.query(
-        "INSERT INTO redirect_destinations (redirect_id, destination_url, hostname, is_popup) VALUES ($1, $2, $3, $4) RETURNING id",
-        [redirectId, redirectDestination, canonicalDestination, classificationResult.isScam]
+        `INSERT INTO redirect_destinations 
+         (redirect_id, destination_url, hostname, is_scam, classifier_is_scam, confidence_score) 
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [
+          redirectId, 
+          redirectDestination, 
+          canonicalDestination, 
+          isScam,
+          classifierIsScam,
+          confidenceScore
+        ]
       );
 
       // Initialize security status for this new destination
       const destinationId = insertResult.rows[0].id;
-      await initTakedownStatusForDestination(destinationId, classificationResult.isScam, client);
+      await initTakedownStatusForDestination(destinationId, isScam, client);
 
       // If it's a scam site, report it with the screenshot and HTML
-      if (classificationResult.isScam) {
+      if (isScam) {
         await reportSite(
           redirectDestination,
           sourceUrl,

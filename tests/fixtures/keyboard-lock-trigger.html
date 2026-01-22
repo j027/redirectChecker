@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Keyboard Lock Test</title>
+</head>
+<body>
+  <h1>Keyboard Lock Test Page</h1>
+  <script>
+    // Automatically request keyboard lock on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        if (navigator.keyboard && navigator.keyboard.lock) {
+          navigator.keyboard.lock(['Escape']).catch(err => {
+            console.log('Keyboard lock request failed (expected in test):', err);
+          });
+        } else {
+          console.log('Keyboard lock API not available');
+        }
+      }, 100);
+    });
+  </script>
+</body>
+</html>

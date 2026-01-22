@@ -18,7 +18,14 @@ CREATE TABLE IF NOT EXISTS redirect_destinations
     is_scam            BOOLEAN     DEFAULT FALSE,             -- Whether the destination is classified as a scam
     hostname           TEXT UNIQUE NOT NULL,                  -- hostname for deduplication purposes
     classifier_is_scam BOOLEAN     DEFAULT NULL,              -- Raw classifier output
-    confidence_score   FLOAT       DEFAULT NULL               -- Classifier confidence in its prediction
+    confidence_score   FLOAT       DEFAULT NULL,              -- Classifier confidence in its prediction
+    -- Signal detection columns
+    signal_fullscreen          BOOLEAN DEFAULT FALSE,         -- Fullscreen API was requested
+    signal_keyboard_lock       BOOLEAN DEFAULT FALSE,         -- Keyboard lock API was requested
+    signal_pointer_lock        BOOLEAN DEFAULT FALSE,         -- Pointer lock API was requested
+    signal_third_party_hosting BOOLEAN DEFAULT FALSE,         -- Hosted on third-party platform
+    signal_ip_address          BOOLEAN DEFAULT FALSE,         -- Hosted on IP address instead of domain
+    signal_page_frozen         BOOLEAN DEFAULT FALSE          -- Page load was frozen/slow (advisory)
 );
 
 -- Table for tracking takendown status of redirect destinations over time
@@ -73,10 +80,17 @@ CREATE TABLE IF NOT EXISTS ads
     redirect_path      TEXT[]      NOT NULL, -- PostgreSQL array of URLs in redirect chain
     classifier_is_scam BOOLEAN,              -- Raw classifier output
     confidence_score   FLOAT,                -- Classifier confidence in its prediction
-    is_scam            BOOLEAN     NOT NULL, -- Effective decision (classifier_is_scam AND confidence >= threshold)
+    is_scam            BOOLEAN     NOT NULL, -- Effective decision (classifier_is_scam AND confidence >= threshold AND has signal)
     first_seen         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     last_seen          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    last_updated       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    last_updated       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    -- Signal detection columns
+    signal_fullscreen          BOOLEAN DEFAULT FALSE,         -- Fullscreen API was requested
+    signal_keyboard_lock       BOOLEAN DEFAULT FALSE,         -- Keyboard lock API was requested
+    signal_pointer_lock        BOOLEAN DEFAULT FALSE,         -- Pointer lock API was requested
+    signal_third_party_hosting BOOLEAN DEFAULT FALSE,         -- Hosted on third-party platform
+    signal_ip_address          BOOLEAN DEFAULT FALSE,         -- Hosted on IP address instead of domain
+    signal_page_frozen         BOOLEAN DEFAULT FALSE          -- Page load was frozen/slow (advisory)
 );
 
 -- Search ad specific attributes

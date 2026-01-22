@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Fullscreen Test</title>
+</head>
+<body>
+  <h1>Fullscreen Test Page</h1>
+  <script>
+    // Automatically request fullscreen on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      // Small delay to ensure page is ready
+      setTimeout(() => {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.log('Fullscreen request failed (expected in test):', err);
+        });
+      }, 100);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Pointer Lock Test</title>
+</head>
+<body>
+  <h1>Pointer Lock Test Page</h1>
+  <div id="target" style="width: 100px; height: 100px; background: red;"></div>
+  <script>
+    // Automatically request pointer lock on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        const target = document.getElementById('target');
+        target.requestPointerLock();
+      }, 100);
+    });
+  </script>
+</body>
+</html>

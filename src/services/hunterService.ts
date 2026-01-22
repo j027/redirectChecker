@@ -15,6 +15,7 @@ import { SearchAdHunter } from "./searchAdHunter.js";
 import { TyposquatHunter } from "./typosquatHunter.js";
 import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
+import { createSignalService, DetectedSignals, createEmptySignals } from "./signalService.js";
 
 // Given a detected scam, confidence level above this will be treated as one
 export const CONFIDENCE_THRESHOLD = 0.90;
@@ -23,6 +24,7 @@ interface ProcessAdResult {
   screenshot: Buffer;
   html: string;
   redirectionPath: string[];
+  signals: DetectedSignals;
 }
 
 // Individual hunter instances - each with their own browser
@@ -110,6 +112,9 @@ export class HunterService {
       return null;
     }
 
+    // Create signal service for this ad processing
+    const signalService = createSignalService();
+
     const context = await this.browser.newContext({
       proxy: await parseProxy(true),
       viewport: null,
@@ -119,10 +124,15 @@ export class HunterService {
     let screenshot: Buffer | null = null;
     let html: string | null = null;
     let redirectionPath: string[] | null = null;
+    let signals: DetectedSignals = createEmptySignals();
 
     try {
       await spoofWindowsChrome(context, page);
       await blockGoogleAnalytics(page);
+      
+      // Attach signal listeners before navigation
+      await signalService.attachApiListeners(page);
+      
       const redirectTracker = await trackRedirectionPath(page, adDestination);
       await page.goto(adDestination, { referer });
 
@@ -133,6 +143,15 @@ export class HunterService {
       screenshot = await page.screenshot();
       html = await page.content();
       redirectionPath = redirectTracker.getPath();
+      
+      // Collect signals from the final URL
+      const finalUrl = redirectionPath[redirectionPath.length - 1] || adDestination;
+      await signalService.detectAllSignals(page, finalUrl);
+      signals = signalService.getSignals();
+      
+      if (signalService.hasWeightedSignal()) {
+        console.log(`🚨 Weighted signals detected for ad ${adDestination}:`, signals);
+      }
     } catch (error) {
       console.log(`There was an error when processing ad destination ${error}`);
       return null;
@@ -141,7 +160,7 @@ export class HunterService {
       await context.close();
     }
 
-    return { screenshot, html, redirectionPath };
+    return { screenshot, html, redirectionPath, signals };
   }
 
   /**

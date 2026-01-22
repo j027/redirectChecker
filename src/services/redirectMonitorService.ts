@@ -5,6 +5,7 @@ import { reportSite } from "./reportService.js";
 import { initTakedownStatusForDestination } from "./takedownMonitorService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
+import { hasWeightedSignal } from "./signalService.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();
@@ -82,23 +83,34 @@ async function processRedirectEntry(
         return;
       }
 
-      // Apply confidence threshold for effective scam decision (consistent with hunters)
+      // Apply confidence threshold AND signal requirement for effective scam decision
       const classifierIsScam = classificationResult.isScam;
       const confidenceScore = classificationResult.confidenceScore;
-      const isScam = classifierIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
+      const signals = classificationResult.signals;
+      
+      // Scam = classifier says scam AND confidence >= threshold AND at least one weighted signal
+      const isScam = classifierIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasWeightedSignal(signals);
 
       // Now we insert, still within the same transaction
       const insertResult = await client.query(
         `INSERT INTO redirect_destinations 
-         (redirect_id, destination_url, hostname, is_scam, classifier_is_scam, confidence_score) 
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+         (redirect_id, destination_url, hostname, is_scam, classifier_is_scam, confidence_score,
+          signal_fullscreen, signal_keyboard_lock, signal_pointer_lock, 
+          signal_third_party_hosting, signal_ip_address, signal_page_frozen) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
         [
           redirectId, 
           redirectDestination, 
           canonicalDestination, 
           isScam,
           classifierIsScam,
-          confidenceScore
+          confidenceScore,
+          signals.fullscreenRequested,
+          signals.keyboardLockRequested,
+          signals.pointerLockRequested,
+          signals.isThirdPartyHosting,
+          signals.isIpAddress,
+          signals.pageLoadFrozen
         ]
       );
 

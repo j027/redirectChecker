@@ -12,6 +12,7 @@ import crypto from "crypto";
 import sharp from "sharp";
 import { BrowserManagerService } from './browserManagerService.js';
 import { URL } from 'url';
+import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from './signalService.js';
 
 // Constants for the model
 const INPUT_WIDTH = 224;
@@ -28,6 +29,7 @@ interface ClassificationResult {
   screenshot: Buffer;
   html: string;
   url: string;
+  signals: DetectedSignals;
 }
 
 export class AiClassifierService {
@@ -123,6 +125,9 @@ export class AiClassifierService {
       return null;
     }
 
+    // Create a signal service for this classification
+    const signalService = createSignalService();
+
     // Setup page and navigation
     const context = await this.browser.newContext({
       viewport: null,
@@ -130,9 +135,18 @@ export class AiClassifierService {
     const page = await context.newPage();
     await blockGoogleAnalytics(page);
 
+    // Attach signal listeners before navigation
+    await signalService.attachApiListeners(page);
+
     try {
       await spoofWindowsChrome(context, page);
-      await page.goto(url);
+      
+      // Navigate with timeout monitoring for frozen page detection
+      const navigationPromise = page.goto(url);
+      const loadMonitorPromise = signalService.monitorPageLoad(page, 30000);
+      
+      await navigationPromise;
+      await loadMonitorPromise;
 
       await page.mouse.click(0, 0);
 
@@ -140,6 +154,10 @@ export class AiClassifierService {
       const screenshot = await page.screenshot();
       const html = await page.content();
       const currentUrl = page.url();
+
+      // Collect all signals
+      await signalService.detectAllSignals(page, currentUrl);
+      const signals = signalService.getSignals();
 
       // Check if URL is whitelisted
       if (this.isWhitelisted(currentUrl)) {
@@ -150,6 +168,7 @@ export class AiClassifierService {
           screenshot,
           html,
           url: currentUrl,
+          signals: createEmptySignals(),
         };
       }
 
@@ -157,6 +176,11 @@ export class AiClassifierService {
       const prediction = await this.runInference(screenshot);
       const isScam = prediction.isScam;
       const confidenceScore = prediction.confidenceScore;
+
+      // Log detected signals
+      if (hasWeightedSignal(signals)) {
+        console.log(`🚨 Weighted signals detected for ${currentUrl}:`, signals);
+      }
 
       // Save data regardless of classification
       await this.saveData(
@@ -185,6 +209,7 @@ export class AiClassifierService {
         screenshot,
         html,
         url: currentUrl,
+        signals,
       };
     } catch (error) {
       console.error(`Error classifying URL ${url}:`, error);

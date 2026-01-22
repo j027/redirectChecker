@@ -6,6 +6,7 @@ import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
+import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
 
 export class AdSpyGlassHunter {
   private browser: Browser | null = null;
@@ -162,11 +163,18 @@ export class AdSpyGlassHunter {
     await spoofWindowsChrome(page.context(), page, userAgent);
     await blockGoogleAnalytics(page);
 
+    // Create signal service for this popup
+    const signalService = createSignalService();
+    
     let screenshot: Buffer | null = null;
     let html: string | null = null;
     let redirectionPath: string[] | null = null;
+    let signals: DetectedSignals = createEmptySignals();
 
     try {
+      // Attach signal listeners
+      await signalService.attachApiListeners(page);
+      
       // Set up redirect tracking for this popup page
       const redirectTracker = await trackRedirectionPath(page, page.url());
       
@@ -180,11 +188,20 @@ export class AdSpyGlassHunter {
       html = await page.content();
       redirectionPath = redirectTracker.getPath();
       
+      // Collect signals
+      const finalUrl = redirectionPath[redirectionPath.length - 1] || page.url();
+      await signalService.detectAllSignals(page, finalUrl);
+      signals = signalService.getSignals();
+      
+      if (signalService.hasWeightedSignal()) {
+        console.log(`🚨 Weighted signals detected for AdSpyGlass popup:`, signals);
+      }
+      
       console.log(`AdSpyGlass popup captured: ${page.url()}`);
       console.log(`Redirect path: ${redirectionPath}`);
 
       // Process this ad popup
-      await this.handleAdSpyGlassAd(page.url(), screenshot, html, redirectionPath);
+      await this.handleAdSpyGlassAd(page.url(), screenshot, html, redirectionPath, signals);
       
     } catch (error) {
       console.log(`Error handling AdSpyGlass ad popup: ${error}`);
@@ -202,7 +219,8 @@ export class AdSpyGlassHunter {
     adUrl: string,
     screenshot: Buffer,
     html: string,
-    redirectionPath: string[]
+    redirectionPath: string[],
+    signals: DetectedSignals
   ) {
     const finalUrl = redirectionPath[redirectionPath.length - 1] || adUrl;
 
@@ -225,8 +243,9 @@ export class AdSpyGlassHunter {
     }
 
     const { isScam: rawIsScam, confidenceScore } = classifierResult;
-    // Only treat as scam if confidence is above threshold
-    const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
+    // Only treat as scam if confidence is above threshold AND has a weighted signal
+    const hasSignal = hasWeightedSignal(signals);
+    const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
 
     try {
       // Save the classified data to AI service (use raw values for training)
@@ -257,8 +276,9 @@ export class AdSpyGlassHunter {
 
           await client.query(
             `INSERT INTO ads
-             (id, ad_type, initial_url, final_url, redirect_path, classifier_is_scam, confidence_score, is_scam)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             (id, ad_type, initial_url, final_url, redirect_path, classifier_is_scam, confidence_score, is_scam,
+              signal_fullscreen, signal_keyboard_lock, signal_pointer_lock, signal_third_party_hosting, signal_ip_address, signal_page_frozen)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
             [
               adId,
               "adspyglass",
@@ -268,6 +288,12 @@ export class AdSpyGlassHunter {
               rawIsScam,
               confidenceScore,
               isScam,
+              signals.fullscreenRequested,
+              signals.keyboardLockRequested,
+              signals.pointerLockRequested,
+              signals.isThirdPartyHosting,
+              signals.isIpAddress,
+              signals.pageLoadFrozen,
             ]
           );
 

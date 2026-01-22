@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { reportSite } from "./reportService.js";
+import { DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
 
 export class PornhubAdHunter {
   private browser: Browser | null = null;
@@ -105,7 +106,7 @@ export class PornhubAdHunter {
       return;
     }
 
-    const { screenshot, html, redirectionPath } = processResult;
+    const { screenshot, html, redirectionPath, signals } = processResult;
     const classifierResult = await aiClassifierService.runInference(screenshot);
     const finalUrl =
       redirectionPath[redirectionPath.length - 1] || adDestination;
@@ -118,8 +119,9 @@ export class PornhubAdHunter {
 
     try {
       const { isScam: rawIsScam, confidenceScore } = classifierResult;
-      // Only treat as scam if confidence is above threshold
-      const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
+      // Only treat as scam if confidence is above threshold AND has a weighted signal
+      const hasSignal = hasWeightedSignal(signals);
+      const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
 
       // Save classifier data (use raw values for training)
       await aiClassifierService.saveData(
@@ -160,13 +162,25 @@ export class PornhubAdHunter {
                final_url = $1,
                redirect_path = $2,
                classifier_is_scam = $3,
-               confidence_score = $4
-             WHERE id = $5`,
+               confidence_score = $4,
+               signal_fullscreen = $5,
+               signal_keyboard_lock = $6,
+               signal_pointer_lock = $7,
+               signal_third_party_hosting = $8,
+               signal_ip_address = $9,
+               signal_page_frozen = $10
+             WHERE id = $11`,
             [
               finalUrl,
               hunterService.pgArray(redirectionPath),
               rawIsScam,
               confidenceScore,
+              signals.fullscreenRequested,
+              signals.keyboardLockRequested,
+              signals.pointerLockRequested,
+              signals.isThirdPartyHosting,
+              signals.isIpAddress,
+              signals.pageLoadFrozen,
               existingAd.id,
             ]
           );
@@ -229,8 +243,9 @@ export class PornhubAdHunter {
 
           await client.query(
             `INSERT INTO ads
-             (id, ad_type, initial_url, final_url, redirect_path, classifier_is_scam, confidence_score, is_scam)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             (id, ad_type, initial_url, final_url, redirect_path, classifier_is_scam, confidence_score, is_scam,
+              signal_fullscreen, signal_keyboard_lock, signal_pointer_lock, signal_third_party_hosting, signal_ip_address, signal_page_frozen)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
             [
               adId,
               "pornhub",
@@ -240,6 +255,12 @@ export class PornhubAdHunter {
               rawIsScam,
               confidenceScore,
               isScam,
+              signals.fullscreenRequested,
+              signals.keyboardLockRequested,
+              signals.pointerLockRequested,
+              signals.isThirdPartyHosting,
+              signals.isIpAddress,
+              signals.pageLoadFrozen,
             ]
           );
 

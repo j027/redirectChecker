@@ -217,6 +217,13 @@ export class AdSpyGlassHunter {
     }
 
     const classifierResult = await aiClassifierService.runInference(screenshot);
+
+    // Check if URL is whitelisted - skip processing if so
+    if (aiClassifierService.isWhitelisted(finalUrl)) {
+      console.log(`✅ Whitelisted domain detected: ${finalUrl} - Skipping AdSpyGlass ad processing`);
+      return;
+    }
+
     const { isScam: rawIsScam, confidenceScore } = classifierResult;
     // Only treat as scam if confidence is above threshold
     const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;

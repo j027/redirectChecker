@@ -264,13 +264,19 @@ export class SearchAdHunter {
 
     const { screenshot, html, redirectionPath } = processResult;
     const classifierResult = await aiClassifierService.runInference(screenshot);
+    const finalUrl =
+      redirectionPath[redirectionPath.length - 1] || adDestination;
+
+    // Check if URL is whitelisted - skip processing if so
+    if (aiClassifierService.isWhitelisted(finalUrl)) {
+      console.log(`✅ Whitelisted domain detected: ${finalUrl} - Skipping search ad processing`);
+      return;
+    }
 
     try {
       const { isScam: rawIsScam, confidenceScore } = classifierResult;
       // Only treat as scam if confidence is above threshold
       const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
-      const finalUrl =
-        redirectionPath[redirectionPath.length - 1] || adDestination;
 
       await aiClassifierService.saveData(
         finalUrl,

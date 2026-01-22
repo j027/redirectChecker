@@ -69,7 +69,7 @@ export class AiClassifierService {
     }
   }
 
-  private isWhitelisted(url: string): boolean {
+  public isWhitelisted(url: string): boolean {
     try {
       const parsedUrl = new URL(url);
       const hostname = parsedUrl.hostname.toLowerCase();

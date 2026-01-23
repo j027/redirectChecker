@@ -173,4 +173,57 @@ describe("SignalService Browser Integration", () => {
 
     await browser.close();
   }, 30000);
+
+  it("should detect page freeze via timer drift", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const signalService = createSignalService();
+
+    await signalService.attachApiListeners(page);
+    await page.goto("https://example.com");
+
+    // Inject script that blocks the main thread for 2 seconds
+    // This will cause timer drift to exceed the 1 second threshold
+    await page.evaluate(() => {
+      const script = document.createElement('script');
+      script.textContent = `
+        const start = Date.now();
+        while (Date.now() - start < 2000) {
+          // Busy loop to block main thread
+        }
+      `;
+      document.head.appendChild(script);
+    });
+
+    // Wait a bit for the drift detection interval to fire after the freeze
+    await page.waitForTimeout(500);
+
+    await signalService.collectApiSignals(page);
+    const signals = signalService.getSignals();
+
+    expect(signals.pageLoadFrozen).toBe(true);
+
+    await browser.close();
+  }, 30000);
+
+  it("should not detect page freeze on a responsive page", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const signalService = createSignalService();
+
+    await signalService.attachApiListeners(page);
+    await page.goto("https://example.com");
+
+    // Wait for a few drift check intervals to pass
+    await page.waitForTimeout(1000);
+
+    await signalService.collectApiSignals(page);
+    const signals = signalService.getSignals();
+
+    expect(signals.pageLoadFrozen).toBe(false);
+
+    await browser.close();
+  }, 30000);
 });

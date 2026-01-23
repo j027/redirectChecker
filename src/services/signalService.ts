@@ -141,6 +141,7 @@ export class SignalService {
           el.setAttribute('data-pointer', 'false');
           el.setAttribute('data-worker-bomb', 'false');
           el.setAttribute('data-worker-count', '0');
+          el.setAttribute('data-page-frozen', 'false');
           // Append to documentElement to work before body exists
           (document.documentElement || document.body || document).appendChild(el);
         }
@@ -148,7 +149,7 @@ export class SignalService {
       };
 
       // Helper to set a signal
-      const setSignal = (type: 'fullscreen' | 'keyboard' | 'pointer' | 'worker-bomb') => {
+      const setSignal = (type: 'fullscreen' | 'keyboard' | 'pointer' | 'worker-bomb' | 'page-frozen') => {
         try {
           const el = getOrCreateSignalElement();
           el.setAttribute(`data-${type}`, 'true');
@@ -156,6 +157,29 @@ export class SignalService {
           // Ignore errors
         }
       };
+
+      // Timer drift detection for page freeze/lag
+      // Detects when JavaScript execution is blocked (busy loops, etc.)
+      const DRIFT_CHECK_INTERVAL = 200;  // Check every 200ms
+      const DRIFT_THRESHOLD = 1000;       // 1 second of drift indicates freeze
+      let lastCheckTime = Date.now();
+      
+      try {
+        setInterval(() => {
+          const now = Date.now();
+          const expectedElapsed = DRIFT_CHECK_INTERVAL;
+          const actualElapsed = now - lastCheckTime;
+          const drift = actualElapsed - expectedElapsed;
+          
+          if (drift > DRIFT_THRESHOLD) {
+            setSignal('page-frozen');
+          }
+          
+          lastCheckTime = now;
+        }, DRIFT_CHECK_INTERVAL);
+      } catch {
+        // Ignore errors
+      }
 
       // Worker bomb detection threshold
       const WORKER_BOMB_THRESHOLD = 5;
@@ -263,13 +287,14 @@ export class SignalService {
       const signals = await page.evaluate((id: string) => {
         const el = document.getElementById(id);
         if (!el) {
-          return { fullscreen: false, keyboard: false, pointer: false, workerBomb: false };
+          return { fullscreen: false, keyboard: false, pointer: false, workerBomb: false, pageFrozen: false };
         }
         return {
           fullscreen: el.getAttribute('data-fullscreen') === 'true',
           keyboard: el.getAttribute('data-keyboard') === 'true',
           pointer: el.getAttribute('data-pointer') === 'true',
           workerBomb: el.getAttribute('data-worker-bomb') === 'true',
+          pageFrozen: el.getAttribute('data-page-frozen') === 'true',
         };
       }, elementId);
 
@@ -277,6 +302,7 @@ export class SignalService {
       this.signals.keyboardLockRequested = signals.keyboard;
       this.signals.pointerLockRequested = signals.pointer;
       this.signals.workerBombDetected = signals.workerBomb;
+      this.signals.pageLoadFrozen = signals.pageFrozen;
     } catch {
       // Ignore errors - element may not exist yet
     }

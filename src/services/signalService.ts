@@ -120,6 +120,7 @@ export class SignalService {
       const fullscreenHandler = {
         apply: function(target: any, ctx: any, args: any[]) {
           (window as any).__signalDetection.fullscreenRequested = true;
+          console.log("[SIGNAL] Fullscreen API requested");
           return Reflect.apply(target, ctx, args);
         }
       };

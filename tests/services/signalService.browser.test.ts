@@ -15,9 +15,6 @@ describe("SignalService Browser Integration", () => {
 
     // Click the "Enter full screen" button
     await page.click('text=Enter full screen');
-    
-    // Small wait for the API call to happen
-    await page.waitForTimeout(500);
 
     await signalService.collectApiSignals(page);
     const signals = signalService.getSignals();
@@ -39,11 +36,9 @@ describe("SignalService Browser Integration", () => {
 
     // First enter fullscreen (required for keyboard lock)
     await page.click('text=Enter full screen');
-    await page.waitForTimeout(500);
     
     // Then activate keyboard lock
     await page.click('text=Activate keyboard lock');
-    await page.waitForTimeout(500);
 
     await signalService.collectApiSignals(page);
     const signals = signalService.getSignals();
@@ -63,23 +58,9 @@ describe("SignalService Browser Integration", () => {
     await signalService.attachApiListeners(page);
     
     // Navigate to a real page first so init script runs
-    await page.goto("about:blank");
-    
-    // Add a button that triggers pointer lock
-    await page.evaluate(() => {
-      const btn = document.createElement('button');
-      btn.id = 'lock-btn';
-      btn.textContent = 'Lock Pointer';
-      btn.addEventListener('click', function() {
-        this.requestPointerLock();
-      });
-      document.body.appendChild(btn);
-    });
-
-    // Click the button to trigger pointer lock
-    await page.click('#lock-btn');
-    await page.waitForTimeout(500);
-
+    await page.goto("https://mdn.github.io/dom-examples/pointer-lock/");
+    await page.locator('canvas').click();
+  
     await signalService.collectApiSignals(page);
     const signals = signalService.getSignals();
 
@@ -120,7 +101,6 @@ describe("SignalService Browser Integration", () => {
 
     // Trigger fullscreen
     await page.click('text=Enter full screen');
-    await page.waitForTimeout(500);
 
     // Use detectAllSignals with a third-party hosting URL
     const signals = await signalService.detectAllSignals(page, "https://scam.herokuapp.com/page");

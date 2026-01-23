@@ -1,6 +1,7 @@
 import { Page, BrowserContext } from "patchright";
 import { parse as parseTldts } from "tldts";
 import { isIP } from "net";
+import crypto from "crypto";
 
 /**
  * Signals detected during page analysis
@@ -58,6 +59,15 @@ const ADDITIONAL_THIRD_PARTY_HOSTING = [
 export class SignalService {
   private signals: DetectedSignals = createEmptySignals();
   private apiCallListenerAttached: boolean = false;
+  private bindingName: string = '';
+
+  /**
+   * Generates a random binding name to reduce fingerprinting
+   */
+  private generateBindingName(): string {
+    const randomHex = crypto.randomBytes(16).toString('hex');
+    return `__sb_${randomHex}`;
+  }
 
   /**
    * Resets all signals to their default (false) state
@@ -65,6 +75,7 @@ export class SignalService {
   public reset(): void {
     this.signals = createEmptySignals();
     this.apiCallListenerAttached = false;
+    this.bindingName = '';
   }
 
   /**
@@ -99,88 +110,138 @@ export class SignalService {
   }
 
   /**
-   * Attaches listeners to detect suspicious API calls on a page
-   * Should be called before navigating to the target URL
+   * Attaches listeners to detect suspicious API calls on a page.
+   * Uses a hidden DOM element to store signal state, which is then
+   * read by collectApiSignals. This approach works reliably with
+   * addInitScript since DOM manipulation works from init scripts.
+   * Should be called before navigating to the target URL.
    */
   public async attachApiListeners(page: Page): Promise<void> {
     if (this.apiCallListenerAttached) {
       return;
     }
 
-    // Inject script to intercept suspicious API calls using Proxy
-    await page.addInitScript(() => {
-      // Track API calls via a global object
-      (window as any).__signalDetection = {
-        fullscreenRequested: false,
-        keyboardLockRequested: false,
-        pointerLockRequested: false,
+    // Generate a random element ID to reduce fingerprinting
+    this.bindingName = this.generateBindingName();
+
+    // Inject the hooks that store signals in a hidden DOM element
+    await page.addInitScript((elementId: string) => {
+      // Create hidden element to store signals (created on first signal)
+      const getOrCreateSignalElement = () => {
+        let el = document.getElementById(elementId);
+        if (!el) {
+          el = document.createElement('div');
+          el.id = elementId;
+          el.style.display = 'none';
+          el.setAttribute('data-fullscreen', 'false');
+          el.setAttribute('data-keyboard', 'false');
+          el.setAttribute('data-pointer', 'false');
+          // Append to documentElement to work before body exists
+          (document.documentElement || document.body || document).appendChild(el);
+        }
+        return el;
       };
 
-      // Use Proxy to intercept requestFullscreen
-      const fullscreenHandler = {
-        apply: function(target: any, ctx: any, args: any[]) {
-          (window as any).__signalDetection.fullscreenRequested = true;
-          console.log("[SIGNAL] Fullscreen API requested");
-          return Reflect.apply(target, ctx, args);
+      // Helper to set a signal
+      const setSignal = (type: 'fullscreen' | 'keyboard' | 'pointer') => {
+        try {
+          const el = getOrCreateSignalElement();
+          el.setAttribute(`data-${type}`, 'true');
+        } catch {
+          // Ignore errors
         }
       };
-      Element.prototype.requestFullscreen = new Proxy(
-        Element.prototype.requestFullscreen,
-        fullscreenHandler
-      );
 
-      // Also intercept webkit prefixed version
-      if ((Element.prototype as any).webkitRequestFullscreen) {
-        (Element.prototype as any).webkitRequestFullscreen = new Proxy(
-          (Element.prototype as any).webkitRequestFullscreen,
-          fullscreenHandler
-        );
-      }
-
-      // Intercept keyboard lock using Proxy
-      const nav = navigator as any;
-      if (nav.keyboard && nav.keyboard.lock) {
-        nav.keyboard.lock = new Proxy(nav.keyboard.lock, {
-          apply: function(target: any, ctx: any, args: any[]) {
-            (window as any).__signalDetection.keyboardLockRequested = true;
+      // Hook requestFullscreen
+      try {
+        const originalFullscreen = Element.prototype.requestFullscreen;
+        Element.prototype.requestFullscreen = new Proxy(originalFullscreen, {
+          apply(target, ctx, args) {
+            setSignal('fullscreen');
             return Reflect.apply(target, ctx, args);
           }
         });
+      } catch {
+        // API not available
       }
 
-      // Intercept pointer lock using Proxy
-      Element.prototype.requestPointerLock = new Proxy(
-        Element.prototype.requestPointerLock,
-        {
-          apply: function(target: any, ctx: any, args: any[]) {
-            (window as any).__signalDetection.pointerLockRequested = true;
+      // Hook webkitRequestFullscreen (prefixed version)
+      try {
+        const proto = Element.prototype as any;
+        if (typeof proto.webkitRequestFullscreen === 'function') {
+          const originalWebkitFullscreen = proto.webkitRequestFullscreen;
+          proto.webkitRequestFullscreen = new Proxy(originalWebkitFullscreen, {
+            apply(target, ctx, args) {
+              setSignal('fullscreen');
+              return Reflect.apply(target, ctx, args);
+            }
+          });
+        }
+      } catch {
+        // API not available
+      }
+
+      // Hook navigator.keyboard.lock
+      try {
+        const nav = navigator as any;
+        if (nav.keyboard && typeof nav.keyboard.lock === 'function') {
+          const originalLock = nav.keyboard.lock.bind(nav.keyboard);
+          nav.keyboard.lock = new Proxy(originalLock, {
+            apply(target, ctx, args) {
+              setSignal('keyboard');
+              return Reflect.apply(target, ctx, args);
+            }
+          });
+        }
+      } catch {
+        // API not available
+      }
+
+      // Hook requestPointerLock
+      try {
+        const originalPointerLock = Element.prototype.requestPointerLock;
+        Element.prototype.requestPointerLock = new Proxy(originalPointerLock, {
+          apply(target, ctx, args) {
+            setSignal('pointer');
             return Reflect.apply(target, ctx, args);
           }
-        }
-      );
-    });
+        });
+      } catch {
+        // API not available
+      }
+    }, this.bindingName);
 
     this.apiCallListenerAttached = true;
   }
 
   /**
-   * Collects the API call signals from the page after navigation
+   * Collects the API call signals from the hidden DOM element.
+   * Call this after the page has loaded and APIs may have been called.
    */
   public async collectApiSignals(page: Page): Promise<void> {
-    try {
-      const detection = await page.evaluate(() => {
-        return (window as any).__signalDetection || {
-          fullscreenRequested: false,
-          keyboardLockRequested: false,
-          pointerLockRequested: false,
-        };
-      });
+    const elementId = this.bindingName;
+    if (!elementId) {
+      return;
+    }
 
-      this.signals.fullscreenRequested = detection.fullscreenRequested;
-      this.signals.keyboardLockRequested = detection.keyboardLockRequested;
-      this.signals.pointerLockRequested = detection.pointerLockRequested;
-    } catch (error) {
-      console.error("Error collecting API signals:", error);
+    try {
+      const signals = await page.evaluate((id: string) => {
+        const el = document.getElementById(id);
+        if (!el) {
+          return { fullscreen: false, keyboard: false, pointer: false };
+        }
+        return {
+          fullscreen: el.getAttribute('data-fullscreen') === 'true',
+          keyboard: el.getAttribute('data-keyboard') === 'true',
+          pointer: el.getAttribute('data-pointer') === 'true',
+        };
+      }, elementId);
+
+      this.signals.fullscreenRequested = signals.fullscreen;
+      this.signals.keyboardLockRequested = signals.keyboard;
+      this.signals.pointerLockRequested = signals.pointer;
+    } catch {
+      // Ignore errors - element may not exist yet
     }
   }
 
@@ -257,14 +318,14 @@ export class SignalService {
   }
 
   /**
-   * Performs full signal detection on a page
-   * This is a convenience method that runs all applicable checks
+   * Performs full signal detection on a page.
+   * Collects API signals from DOM and analyzes the URL.
    */
   public async detectAllSignals(page: Page, url: string): Promise<DetectedSignals> {
     // Analyze the URL for hosting signals
     this.analyzeUrl(url);
 
-    // Collect API signals from the page
+    // Collect API signals from the hidden DOM element
     await this.collectApiSignals(page);
 
     return this.getSignals();

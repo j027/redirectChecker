@@ -2,130 +2,132 @@ import { describe, it, expect } from "vitest";
 import { chromium } from "patchright";
 import { createSignalService } from "../../src/services/signalService.js";
 
-describe("SignalService Browser Integration - Manual Testing", () => {
+describe("SignalService Browser Integration", () => {
   
-  it.only("manual - fullscreen detection with keyboard-lock demo", async () => {
-    const browser = await chromium.launch({ headless: false });
+  it("should detect fullscreen request on chrome.dev keyboard-lock demo", async () => {
+    const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
 
-    console.log('\n========================================');
-    console.log('Fullscreen Detection Test');
-    console.log('========================================');
-    console.log('1. Attach signal listeners...');
     await signalService.attachApiListeners(page);
-
-    console.log('2. Navigate to keyboard-lock demo...');
     await page.goto("https://chrome.dev/keyboard-lock/");
 
-    console.log('\n>>> You have 30 seconds to click the FULLSCREEN button on the page <<<');
-    console.log('>>> Check browser console for activity <<<\n');
+    // Click the "Enter full screen" button
+    await page.click('text=Enter full screen');
     
-    await page.waitForTimeout(30000);
+    // Small wait for the API call to happen
+    await page.waitForTimeout(500);
 
-    console.log('3. Collecting signals...');
     await signalService.collectApiSignals(page);
     const signals = signalService.getSignals();
-
-    console.log('\n========================================');
-    console.log('RESULTS:');
-    console.log('========================================');
-    console.log('Fullscreen Requested:', signals.fullscreenRequested);
-    console.log('Keyboard Lock Requested:', signals.keyboardLockRequested);
-    console.log('Pointer Lock Requested:', signals.pointerLockRequested);
-    console.log('========================================\n');
-
-    await browser.close();
 
     expect(signals.fullscreenRequested).toBe(true);
-  }, 60000);
+    expect(signals.keyboardLockRequested).toBe(false);
 
-  it.skip("manual - keyboard lock detection with chrome.dev demo", async () => {
-    const browser = await chromium.launch({ headless: false });
+    await browser.close();
+  }, 30000);
+
+  it("should detect keyboard lock request on chrome.dev keyboard-lock demo", async () => {
+    const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
 
-    console.log('\n========================================');
-    console.log('Keyboard Lock Detection Test');
-    console.log('========================================');
-    console.log('1. Attach signal listeners...');
     await signalService.attachApiListeners(page);
-
-    console.log('2. Navigate to keyboard lock demo...');
     await page.goto("https://chrome.dev/keyboard-lock/");
 
-    console.log('\n>>> You have 30 seconds to interact with the demo <<<');
-    console.log('>>> Try triggering keyboard lock <<<');
-    console.log('>>> Check browser console for activity <<<\n');
+    // First enter fullscreen (required for keyboard lock)
+    await page.click('text=Enter full screen');
+    await page.waitForTimeout(500);
     
-    await page.waitForTimeout(30000);
+    // Then activate keyboard lock
+    await page.click('text=Activate keyboard lock');
+    await page.waitForTimeout(500);
 
-    console.log('3. Collecting signals...');
     await signalService.collectApiSignals(page);
     const signals = signalService.getSignals();
 
-    console.log('\n========================================');
-    console.log('RESULTS:');
-    console.log('========================================');
-    console.log('Fullscreen Requested:', signals.fullscreenRequested);
-    console.log('Keyboard Lock Requested:', signals.keyboardLockRequested);
-    console.log('Pointer Lock Requested:', signals.pointerLockRequested);
-    console.log('========================================\n');
+    expect(signals.fullscreenRequested).toBe(true);
+    expect(signals.keyboardLockRequested).toBe(true);
 
     await browser.close();
+  }, 30000);
 
-    expect(signals.keyboardLockRequested).toBe(true);
-  }, 60000);
-
-  it.skip("manual - pointer lock detection with example.com", async () => {
-    const browser = await chromium.launch({ headless: false });
+  it("should detect pointer lock request", async () => {
+    const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
 
-    console.log('\n========================================');
-    console.log('Pointer Lock Detection Test');
-    console.log('========================================');
-    console.log('1. Attach signal listeners...');
     await signalService.attachApiListeners(page);
-
-    console.log('2. Navigate to example.com...');
-    await page.goto("https://example.com");
-
-    console.log('3. Adding pointer lock button to page...');
+    
+    // Navigate to a real page first so init script runs
+    await page.goto("about:blank");
+    
+    // Add a button that triggers pointer lock
     await page.evaluate(() => {
-      const btn = document.createElement("button");
-      btn.id = "pointer-lock-btn";
-      btn.textContent = "CLICK ME TO LOCK POINTER";
-      btn.style.cssText = "position: fixed; top: 20px; left: 20px; padding: 20px; font-size: 20px; z-index: 9999; background: blue; color: white; cursor: pointer;";
-      btn.onclick = () => {
-        console.log('Button clicked - requesting pointer lock');
-        btn.requestPointerLock();
-      };
+      const btn = document.createElement('button');
+      btn.id = 'lock-btn';
+      btn.textContent = 'Lock Pointer';
+      btn.addEventListener('click', function() {
+        this.requestPointerLock();
+      });
       document.body.appendChild(btn);
     });
 
-    console.log('\n>>> You have 30 seconds to click the blue button <<<');
-    console.log('>>> Check browser console for activity <<<\n');
-    
-    await page.waitForTimeout(30000);
+    // Click the button to trigger pointer lock
+    await page.click('#lock-btn');
+    await page.waitForTimeout(500);
 
-    console.log('4. Collecting signals...');
     await signalService.collectApiSignals(page);
     const signals = signalService.getSignals();
 
-    console.log('\n========================================');
-    console.log('RESULTS:');
-    console.log('========================================');
-    console.log('Fullscreen Requested:', signals.fullscreenRequested);
-    console.log('Keyboard Lock Requested:', signals.keyboardLockRequested);
-    console.log('Pointer Lock Requested:', signals.pointerLockRequested);
-    console.log('========================================\n');
+    expect(signals.pointerLockRequested).toBe(true);
+    expect(signals.fullscreenRequested).toBe(false);
+    expect(signals.keyboardLockRequested).toBe(false);
 
     await browser.close();
+  }, 30000);
 
-    expect(signals.pointerLockRequested).toBe(true);
-  }, 60000);
+  it("should not detect signals on a clean page", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const signalService = createSignalService();
+
+    await signalService.attachApiListeners(page);
+    await page.goto("https://example.com");
+
+    await signalService.collectApiSignals(page);
+    const signals = signalService.getSignals();
+
+    expect(signals.fullscreenRequested).toBe(false);
+    expect(signals.keyboardLockRequested).toBe(false);
+    expect(signals.pointerLockRequested).toBe(false);
+
+    await browser.close();
+  }, 30000);
+
+  it("should detect signals combined with URL analysis via detectAllSignals", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const signalService = createSignalService();
+
+    await signalService.attachApiListeners(page);
+    await page.goto("https://chrome.dev/keyboard-lock/");
+
+    // Trigger fullscreen
+    await page.click('text=Enter full screen');
+    await page.waitForTimeout(500);
+
+    // Use detectAllSignals with a third-party hosting URL
+    const signals = await signalService.detectAllSignals(page, "https://scam.herokuapp.com/page");
+
+    expect(signals.fullscreenRequested).toBe(true);
+    expect(signals.isThirdPartyHosting).toBe(true);
+
+    await browser.close();
+  }, 30000);
 });

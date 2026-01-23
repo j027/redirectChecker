@@ -110,4 +110,67 @@ describe("SignalService Browser Integration", () => {
 
     await browser.close();
   }, 30000);
+
+  it("should detect worker bomb when many workers are spawned", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const signalService = createSignalService();
+
+    await signalService.attachApiListeners(page);
+    await page.goto("https://example.com");
+
+    // Inject script via DOM to use the page's proxied Worker constructor
+    await page.evaluate(() => {
+      const script = document.createElement('script');
+      script.textContent = `
+        const workerCode = 'self.onmessage = function() {}';
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        for (let i = 0; i < 6; i++) {
+          new Worker(url);
+        }
+      `;
+      document.head.appendChild(script);
+    });
+
+    await signalService.collectApiSignals(page);
+    const signals = signalService.getSignals();
+
+    expect(signals.workerBombDetected).toBe(true);
+    expect(signals.fullscreenRequested).toBe(false);
+
+    await browser.close();
+  }, 30000);
+
+  it("should not detect worker bomb when few workers are spawned", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const signalService = createSignalService();
+
+    await signalService.attachApiListeners(page);
+    await page.goto("https://example.com");
+
+    // Inject script via DOM to use the page's proxied Worker constructor
+    await page.evaluate(() => {
+      const script = document.createElement('script');
+      script.textContent = `
+        const workerCode = 'self.onmessage = function() {}';
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        for (let i = 0; i < 3; i++) {
+          new Worker(url);
+        }
+      `;
+      document.head.appendChild(script);
+    });
+
+    await signalService.collectApiSignals(page);
+    const signals = signalService.getSignals();
+
+    expect(signals.workerBombDetected).toBe(false);
+
+    await browser.close();
+  }, 30000);
 });

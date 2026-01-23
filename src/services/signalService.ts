@@ -14,7 +14,7 @@ export interface DetectedSignals {
   isThirdPartyHosting: boolean;
   isIpAddress: boolean;
   pageLoadFrozen: boolean;      // Advisory: page took too long to load
-  // workerBombDetected: boolean; // TODO: implement later
+  workerBombDetected: boolean;  // Many web workers spawned rapidly (scam tactic to freeze browser)
 }
 
 /**
@@ -28,6 +28,7 @@ export function createEmptySignals(): DetectedSignals {
     isThirdPartyHosting: false,
     isIpAddress: false,
     pageLoadFrozen: false,
+    workerBombDetected: false,
   };
 }
 
@@ -42,7 +43,8 @@ export function hasWeightedSignal(signals: DetectedSignals): boolean {
     signals.keyboardLockRequested ||
     signals.pointerLockRequested ||
     signals.isThirdPartyHosting ||
-    signals.isIpAddress
+    signals.isIpAddress ||
+    signals.workerBombDetected
   );
 }
 
@@ -105,7 +107,8 @@ export class SignalService {
       this.signals.pointerLockRequested ||
       this.signals.isThirdPartyHosting ||
       this.signals.isIpAddress ||
-      this.signals.pageLoadFrozen
+      this.signals.pageLoadFrozen ||
+      this.signals.workerBombDetected
     );
   }
 
@@ -136,6 +139,8 @@ export class SignalService {
           el.setAttribute('data-fullscreen', 'false');
           el.setAttribute('data-keyboard', 'false');
           el.setAttribute('data-pointer', 'false');
+          el.setAttribute('data-worker-bomb', 'false');
+          el.setAttribute('data-worker-count', '0');
           // Append to documentElement to work before body exists
           (document.documentElement || document.body || document).appendChild(el);
         }
@@ -143,7 +148,7 @@ export class SignalService {
       };
 
       // Helper to set a signal
-      const setSignal = (type: 'fullscreen' | 'keyboard' | 'pointer') => {
+      const setSignal = (type: 'fullscreen' | 'keyboard' | 'pointer' | 'worker-bomb') => {
         try {
           const el = getOrCreateSignalElement();
           el.setAttribute(`data-${type}`, 'true');
@@ -151,6 +156,36 @@ export class SignalService {
           // Ignore errors
         }
       };
+
+      // Worker bomb detection threshold
+      const WORKER_BOMB_THRESHOLD = 5;
+
+      // Hook Worker constructor to detect worker bombs
+      try {
+        const OriginalWorker = (window as any).Worker;
+        if (typeof OriginalWorker === 'function') {
+          (window as any).Worker = new Proxy(OriginalWorker, {
+            construct(target, args, newTarget) {
+              // Count workers and check threshold
+              try {
+                const el = getOrCreateSignalElement();
+                const currentCount = parseInt(el.getAttribute('data-worker-count') || '0', 10);
+                const newCount = currentCount + 1;
+                el.setAttribute('data-worker-count', String(newCount));
+                
+                if (newCount >= WORKER_BOMB_THRESHOLD) {
+                  setSignal('worker-bomb');
+                }
+              } catch {
+                // Ignore errors
+              }
+              return Reflect.construct(target, args, newTarget);
+            }
+          });
+        }
+      } catch {
+        // API not available
+      }
 
       // Hook requestFullscreen
       try {
@@ -228,18 +263,20 @@ export class SignalService {
       const signals = await page.evaluate((id: string) => {
         const el = document.getElementById(id);
         if (!el) {
-          return { fullscreen: false, keyboard: false, pointer: false };
+          return { fullscreen: false, keyboard: false, pointer: false, workerBomb: false };
         }
         return {
           fullscreen: el.getAttribute('data-fullscreen') === 'true',
           keyboard: el.getAttribute('data-keyboard') === 'true',
           pointer: el.getAttribute('data-pointer') === 'true',
+          workerBomb: el.getAttribute('data-worker-bomb') === 'true',
         };
       }, elementId);
 
       this.signals.fullscreenRequested = signals.fullscreen;
       this.signals.keyboardLockRequested = signals.keyboard;
       this.signals.pointerLockRequested = signals.pointer;
+      this.signals.workerBombDetected = signals.workerBomb;
     } catch {
       // Ignore errors - element may not exist yet
     }

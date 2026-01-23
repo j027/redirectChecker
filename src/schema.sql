@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS redirect_destinations
     signal_pointer_lock        BOOLEAN DEFAULT FALSE,         -- Pointer lock API was requested
     signal_third_party_hosting BOOLEAN DEFAULT FALSE,         -- Hosted on third-party platform
     signal_ip_address          BOOLEAN DEFAULT FALSE,         -- Hosted on IP address instead of domain
-    signal_page_frozen         BOOLEAN DEFAULT FALSE          -- Page load was frozen/slow (advisory)
+    signal_page_frozen         BOOLEAN DEFAULT FALSE,         -- Page load was frozen/slow (advisory)
+    signal_worker_bomb         BOOLEAN DEFAULT FALSE          -- Many web workers spawned (scam tactic)
 );
 
 -- Table for tracking takendown status of redirect destinations over time
@@ -90,7 +91,8 @@ CREATE TABLE IF NOT EXISTS ads
     signal_pointer_lock        BOOLEAN DEFAULT FALSE,         -- Pointer lock API was requested
     signal_third_party_hosting BOOLEAN DEFAULT FALSE,         -- Hosted on third-party platform
     signal_ip_address          BOOLEAN DEFAULT FALSE,         -- Hosted on IP address instead of domain
-    signal_page_frozen         BOOLEAN DEFAULT FALSE          -- Page load was frozen/slow (advisory)
+    signal_page_frozen         BOOLEAN DEFAULT FALSE,         -- Page load was frozen/slow (advisory)
+    signal_worker_bomb         BOOLEAN DEFAULT FALSE          -- Many web workers spawned (scam tactic)
 );
 
 -- Search ad specific attributes

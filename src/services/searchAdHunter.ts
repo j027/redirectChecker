@@ -319,8 +319,9 @@ export class SearchAdHunter {
                signal_pointer_lock = $7,
                signal_third_party_hosting = $8,
                signal_ip_address = $9,
-               signal_page_frozen = $10
-             WHERE id = $11`,
+               signal_page_frozen = $10,
+               signal_worker_bomb = $11
+             WHERE id = $12`,
             [
               finalUrl,
               hunterService.pgArray(redirectionPath),
@@ -332,6 +333,7 @@ export class SearchAdHunter {
               signals.isThirdPartyHosting,
               signals.isIpAddress,
               signals.pageLoadFrozen,
+              signals.workerBombDetected,
               existingAd.id,
             ]
           );
@@ -389,8 +391,8 @@ export class SearchAdHunter {
           await client.query(
             `INSERT INTO ads
              (id, ad_type, initial_url, final_url, redirect_path, classifier_is_scam, confidence_score, is_scam,
-              signal_fullscreen, signal_keyboard_lock, signal_pointer_lock, signal_third_party_hosting, signal_ip_address, signal_page_frozen)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+              signal_fullscreen, signal_keyboard_lock, signal_pointer_lock, signal_third_party_hosting, signal_ip_address, signal_page_frozen, signal_worker_bomb)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
             [
               adId,
               "search",
@@ -406,6 +408,7 @@ export class SearchAdHunter {
               signals.isThirdPartyHosting,
               signals.isIpAddress,
               signals.pageLoadFrozen,
+              signals.workerBombDetected,
             ]
           );
 

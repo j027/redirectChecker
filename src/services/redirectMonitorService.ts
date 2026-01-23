@@ -96,8 +96,8 @@ async function processRedirectEntry(
         `INSERT INTO redirect_destinations 
          (redirect_id, destination_url, hostname, is_scam, classifier_is_scam, confidence_score,
           signal_fullscreen, signal_keyboard_lock, signal_pointer_lock, 
-          signal_third_party_hosting, signal_ip_address, signal_page_frozen) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+          signal_third_party_hosting, signal_ip_address, signal_page_frozen, signal_worker_bomb) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
         [
           redirectId, 
           redirectDestination, 
@@ -110,7 +110,8 @@ async function processRedirectEntry(
           signals.pointerLockRequested,
           signals.isThirdPartyHosting,
           signals.isIpAddress,
-          signals.pageLoadFrozen
+          signals.pageLoadFrozen,
+          signals.workerBombDetected
         ]
       );
 

@@ -56,6 +56,7 @@ const ADDITIONAL_THIRD_PARTY_HOSTING = [
   "web.core.windows.net",
   "surge.sh",
   "glitch.me",
+  "b-cdn.net",
 ];
 
 export class SignalService {

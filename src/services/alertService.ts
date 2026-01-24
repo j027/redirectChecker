@@ -1,4 +1,4 @@
-import { TextChannel } from "discord.js";
+import { EmbedBuilder, TextChannel } from "discord.js";
 import { readConfig } from "../config.js";
 import { discordClient } from "../discordBot.js";
 
@@ -16,8 +16,85 @@ export interface AlertPayload {
   cloakerCandidate?: string | null;
 }
 
+// Discord embed limits
+const EMBED_FIELD_VALUE_LIMIT = 1024;
+const EMBED_DESCRIPTION_LIMIT = 4096;
+
 /**
- * Unified alert function that handles different alert types
+ * Truncate a string to a maximum length, adding ellipsis if truncated
+ */
+function truncate(str: string, maxLength: number): string {
+  if (str.length <= maxLength) return str;
+  return str.substring(0, maxLength - 3) + "...";
+}
+
+/**
+ * Get alert configuration based on type
+ */
+function getAlertConfig(type: AlertType, isNew: boolean): { emoji: string; title: string; color: number } {
+  const configs: Record<AlertType, { newTitle: string; existingTitle: string; color: number }> = {
+    adScam: {
+      newTitle: "NEW SEARCH AD SCAM DETECTED",
+      existingTitle: "EXISTING SEARCH AD NOW MARKED AS SCAM",
+      color: 0xff0000, // Red
+    },
+    typosquat: {
+      newTitle: "NEW TYPOSQUAT SCAM DESTINATION",
+      existingTitle: "NEW TYPOSQUAT SCAM DESTINATION",
+      color: 0xff6600, // Orange
+    },
+    pornhubAd: {
+      newTitle: "NEW PORNHUB AD SCAM DETECTED",
+      existingTitle: "EXISTING PORNHUB AD NOW MARKED AS SCAM",
+      color: 0xff0000, // Red
+    },
+    adspyglass: {
+      newTitle: "NEW ADSPYGLASS AD SCAM DETECTED",
+      existingTitle: "EXISTING ADSPYGLASS AD NOW MARKED AS SCAM",
+      color: 0xff0000, // Red
+    },
+  };
+
+  const config = configs[type];
+  return {
+    emoji: isNew ? "🚨" : "⚠️",
+    title: isNew ? config.newTitle : config.existingTitle,
+    color: config.color,
+  };
+}
+
+/**
+ * Build redirect path field value with truncation
+ */
+function buildRedirectPathValue(
+  initialUrl: string,
+  finalUrl: string,
+  redirectionPath: string[] | null
+): string {
+  if (redirectionPath && redirectionPath.length > 0) {
+    let result = "";
+    let truncated = false;
+
+    for (let i = 0; i < redirectionPath.length; i++) {
+      const line = `${i + 1}. ${redirectionPath[i]}\n`;
+      // Reserve space for truncation message
+      if (result.length + line.length > EMBED_FIELD_VALUE_LIMIT - 50) {
+        const remaining = redirectionPath.length - i;
+        result += `... and ${remaining} more redirect(s)`;
+        truncated = true;
+        break;
+      }
+      result += line;
+    }
+
+    return result.trim();
+  } else {
+    return `**Initial:** ${truncate(initialUrl, 400)}\n**Final:** ${truncate(finalUrl, 400)}`;
+  }
+}
+
+/**
+ * Unified alert function that handles different alert types using embeds
  */
 export async function sendAlert(payload: AlertPayload): Promise<void> {
   try {
@@ -31,130 +108,61 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
 
     // Format confidence as percentage with 2 decimal places
     const confidencePercent = (payload.confidenceScore * 100).toFixed(2);
+    const isNew = payload.isNew ?? true;
+    const alertConfig = getAlertConfig(payload.type, isNew);
 
-    // Build message based on alert type
-    let messageText = "";
+    // Build the embed
+    const embed = new EmbedBuilder()
+      .setTitle(`${alertConfig.emoji} ${alertConfig.title} ${alertConfig.emoji}`)
+      .setColor(alertConfig.color)
+      .setTimestamp()
+      .setFooter({ text: `Confidence: ${confidencePercent}%` });
 
-    if (payload.type === "adScam") {
-      // Ad Scam alert formatting
-      const header = payload.isNew
-        ? `🚨 NEW SEARCH AD SCAM DETECTED 🚨 (Confidence: ${confidencePercent}%)`
-        : `⚠️ EXISTING SEARCH AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)`;
-
-      // Format ad text if available
-      let adTextSection = "";
-      if (payload.adText) {
-        const formattedAdText = payload.adText
-          .replace(/\s+/g, " ")
-          .trim()
-          .substring(0, 150);
-
-        adTextSection = `**Ad Text:**\n${formattedAdText}${formattedAdText.length >= 150 ? "..." : ""}\n\n`;
-      }
-
-      // Build path section
-      const pathSection = buildRedirectPathSection(
-        payload.initialUrl,
-        payload.finalUrl,
-        payload.redirectionPath
+    // Add type-specific fields
+    if (payload.type === "typosquat") {
+      embed.addFields(
+        { name: "Typosquat Domain", value: truncate(payload.initialUrl, EMBED_FIELD_VALUE_LIMIT), inline: false },
+        { name: "Final URL", value: truncate(payload.finalUrl, EMBED_FIELD_VALUE_LIMIT), inline: false }
       );
-
-      // Include cloaker info if available
-      const cloakerSection = payload.cloakerCandidate
-        ? `\n**Potential Cloaker:**\n${payload.cloakerCandidate}`
-        : "";
-
-      messageText = `${header}\n\n${adTextSection}${pathSection}${cloakerSection}`;
-    } else if (payload.type === "typosquat") {
-      // Typosquat alert formatting
-      const header = `🚨 NEW TYPOSQUAT SCAM DESTINATION 🚨 (Confidence: ${confidencePercent}%)`;
-
-      // Include domain info
-      let pathSection = `**Typosquat Domain:** ${payload.initialUrl}\n**Final URL:** ${payload.finalUrl}\n\n`;
-
-      // Add redirect path if available
-      if (payload.redirectionPath && payload.redirectionPath.length > 0) {
-        pathSection += buildRedirectList(payload.redirectionPath);
-      }
-
-      // Include cloaker info if available
-      const cloakerSection = payload.cloakerCandidate
-        ? `\n**Potential Cloaker:**\n${payload.cloakerCandidate}`
-        : "";
-
-      messageText = `${header}\n\n${pathSection}${cloakerSection}`;
-    } else if (payload.type === "pornhubAd") {
-      // Pornhub Ad alert formatting
-      const header = payload.isNew
-        ? `🚨 NEW PORNHUB AD SCAM DETECTED 🚨 (Confidence: ${confidencePercent}%)`
-        : `⚠️ EXISTING PORNHUB AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)`;
-
-      // Build path section
-      const pathSection = buildRedirectPathSection(
-        payload.initialUrl,
-        payload.finalUrl,
-        payload.redirectionPath
-      );
-
-      // Include cloaker info if available
-      const cloakerSection = payload.cloakerCandidate
-        ? `\n**Potential Cloaker:**\n${payload.cloakerCandidate}`
-        : "";
-
-      messageText = `${header}\n\n${pathSection}${cloakerSection}`;
-    } else if (payload.type === "adspyglass") {
-      // AdSpyGlass Ad alert formatting
-      const header = payload.isNew
-        ? `🚨 NEW ADSPYGLASS AD SCAM DETECTED 🚨 (Confidence: ${confidencePercent}%)`
-        : `⚠️ EXISTING ADSPYGLASS AD NOW MARKED AS SCAM ⚠️ (Confidence: ${confidencePercent}%)`;
-
-      // Build path section
-      const pathSection = buildRedirectPathSection(
-        payload.initialUrl,
-        payload.finalUrl,
-        payload.redirectionPath
-      );
-
-      // Include cloaker info if available
-      const cloakerSection = payload.cloakerCandidate
-        ? `\n**Potential Cloaker:**\n${payload.cloakerCandidate}`
-        : "";
-
-      messageText = `${header}\n\n${pathSection}${cloakerSection}`;
     }
 
-    await channel.send(messageText);
+    // Add ad text for adScam type
+    if (payload.type === "adScam" && payload.adText) {
+      const formattedAdText = payload.adText.replace(/\s+/g, " ").trim();
+      embed.addFields({
+        name: "Ad Text",
+        value: truncate(formattedAdText, EMBED_FIELD_VALUE_LIMIT),
+        inline: false,
+      });
+    }
+
+    // Add redirect path
+    const redirectValue = buildRedirectPathValue(
+      payload.initialUrl,
+      payload.finalUrl,
+      payload.redirectionPath
+    );
+    embed.addFields({
+      name: "Redirect Path",
+      value: truncate(redirectValue, EMBED_FIELD_VALUE_LIMIT),
+      inline: false,
+    });
+
+    // Add cloaker info if available
+    if (payload.cloakerCandidate) {
+      embed.addFields({
+        name: "Potential Cloaker",
+        value: truncate(payload.cloakerCandidate, EMBED_FIELD_VALUE_LIMIT),
+        inline: false,
+      });
+    }
+
+    await channel.send({ embeds: [embed] });
     console.log(`Discord ${payload.type} alert sent`);
   } catch (error) {
     console.error(`Error sending Discord notification: ${error}`);
     // Non-critical functionality, don't throw
   }
-}
-
-/**
- * Helper to build the redirect path section
- */
-function buildRedirectPathSection(
-  initialUrl: string,
-  finalUrl: string,
-  redirectionPath: string[] | null
-): string {
-  if (redirectionPath && redirectionPath.length > 0) {
-    return buildRedirectList(redirectionPath);
-  } else {
-    return `**Initial URL:** ${initialUrl}\n**Final URL:** ${finalUrl}`;
-  }
-}
-
-/**
- * Helper to format redirection list
- */
-function buildRedirectList(redirectionPath: string[]): string {
-  let result = "**Redirect Path:**\n";
-  redirectionPath.forEach((url, index) => {
-    result += `${index + 1}. ${url}\n`;
-  });
-  return result;
 }
 
 /**

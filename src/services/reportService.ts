@@ -7,6 +7,8 @@ import { enqueueReport } from "./batchReportService.js";
 import { browserReportService } from "./browserReportService.js";
 import pool from "../dbPool.js";
 import { WebRiskServiceClient } from '@google-cloud/web-risk';
+import { DetectedSignals } from './signalService.js';
+import { formatSignals, formatConfidence, SignalData } from '../utils/discordFormatting.js';
 
 let webRiskClient: WebRiskServiceClient|null = null; 
 
@@ -431,11 +433,17 @@ async function reportToGoogleWebRisk(site: string) {
   }
 }
 
+export interface ReportOptions {
+  signals?: DetectedSignals;
+  confidenceScore?: number;
+}
+
 export async function reportSite(
   site: string, 
   redirect: string, 
   screenshot: Buffer | null, 
-  html: string | null
+  html: string | null,
+  options?: ReportOptions
 ) {
   // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
   // checkphish, hybrid analysis, urlscan, and cloudflare url scanner
@@ -455,7 +463,7 @@ export async function reportSite(
   reports.push(reportToGoogleWebRisk(site));
 
   // send a message in the discord server with a link to the popup
-  reports.push(sendMessageToDiscord(site, redirect));
+  reports.push(sendMessageToDiscord(site, redirect, options?.signals, options?.confidenceScore));
 
   // crdf labs reports go into a queue that is reported every minute
   enqueueReport(site);
@@ -464,11 +472,47 @@ export async function reportSite(
   await Promise.allSettled(reports);
 }
 
-async function sendMessageToDiscord(site: string, redirect: string) {
+async function sendMessageToDiscord(
+  site: string, 
+  redirect: string, 
+  signals?: DetectedSignals, 
+  confidenceScore?: number
+) {
   const { channelId } = await readConfig();
   const channel = discordClient.channels.cache.get(channelId) as TextChannel;
   if (channel) {
-    await channel.send(`Found ${site} from ${redirect}`);
+    // Build the message with signals and confidence if available
+    let message = `Found ${site} from ${redirect}`;
+    
+    if (signals || confidenceScore !== undefined) {
+      const parts: string[] = [];
+      
+      if (confidenceScore !== undefined) {
+        parts.push(`${formatConfidence(confidenceScore)}`);
+      }
+      
+      if (signals) {
+        const signalData: SignalData = {
+          fullscreen: signals.fullscreenRequested,
+          keyboardLock: signals.keyboardLockRequested,
+          pointerLock: signals.pointerLockRequested,
+          thirdPartyHosting: signals.isThirdPartyHosting,
+          ipAddress: signals.isIpAddress,
+          pageFrozen: signals.pageLoadFrozen,
+          workerBomb: signals.workerBombDetected,
+        };
+        const signalEmojis = formatSignals(signalData);
+        if (signalEmojis) {
+          parts.push(signalEmojis);
+        }
+      }
+      
+      if (parts.length > 0) {
+        message += ` [${parts.join(' ')}]`;
+      }
+    }
+    
+    await channel.send(message);
   } else {
     console.error("Channel not found");
   }

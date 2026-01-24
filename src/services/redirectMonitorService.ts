@@ -125,7 +125,8 @@ async function processRedirectEntry(
           redirectDestination,
           sourceUrl,
           classificationResult.screenshot,
-          classificationResult.html
+          classificationResult.html,
+          { signals, confidenceScore }
         );
       }
       

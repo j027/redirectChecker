@@ -1,5 +1,5 @@
 import { CommandDefinition } from "./commands.js";
-import { EMOJI, formatTimeDifference, formatUrl } from "../utils/discordFormatting.js";
+import { EMOJI, formatTimeDifference, formatUrl, formatSignals, formatConfidence, SignalData } from "../utils/discordFormatting.js";
 import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from "discord.js";
 import pool from "../dbPool.js";
 
@@ -23,6 +23,14 @@ export const statusCommand: CommandDefinition = {
                d.first_seen,
                d.last_seen,
                d.is_scam,
+               d.confidence_score,
+               d.signal_fullscreen,
+               d.signal_keyboard_lock,
+               d.signal_pointer_lock,
+               d.signal_third_party_hosting,
+               d.signal_ip_address,
+               d.signal_page_frozen,
+               d.signal_worker_bomb,
                ts.safebrowsing_flagged_at,
                ts.netcraft_flagged_at, 
                ts.smartscreen_flagged_at,
@@ -59,6 +67,8 @@ export const statusCommand: CommandDefinition = {
           firstSeen: string;
           lastSeen: string;
           isScam: boolean;
+          confidenceScore: number | null;
+          signals: SignalData;
           firstSeenDate: Date;
           hasTakedownStatus: boolean;
           safebrowsingFlaggedAt: Date | null;
@@ -84,6 +94,16 @@ export const statusCommand: CommandDefinition = {
             firstSeen,
             lastSeen,
             isScam: row.is_scam,
+            confidenceScore: row.confidence_score,
+            signals: {
+              fullscreen: row.signal_fullscreen || false,
+              keyboardLock: row.signal_keyboard_lock || false,
+              pointerLock: row.signal_pointer_lock || false,
+              thirdPartyHosting: row.signal_third_party_hosting || false,
+              ipAddress: row.signal_ip_address || false,
+              pageFrozen: row.signal_page_frozen || false,
+              workerBomb: row.signal_worker_bomb || false,
+            },
             firstSeenDate: new Date(row.first_seen),
             hasTakedownStatus: row.has_takedown_status,
             safebrowsingFlaggedAt: row.safebrowsing_flagged_at ? new Date(row.safebrowsing_flagged_at) : null,
@@ -174,10 +194,22 @@ export const statusCommand: CommandDefinition = {
           
           let takedownStatus = takedownStatusLines.join(' | ');
           
+          // Build signals and confidence display for scams
+          let signalsDisplay = '';
+          if (dest.isScam) {
+            const signalEmojis = formatSignals(dest.signals);
+            const confidence = formatConfidence(dest.confidenceScore);
+            if (signalEmojis) {
+              signalsDisplay = `\n${signalEmojis} (${confidence})`;
+            } else {
+              signalsDisplay = `\n(${confidence})`;
+            }
+          }
+          
           embed.addFields(
             {
               name: "Destination",
-              value: `[${destinationDisplay}](${destinationFull})\n${takedownStatus}`,
+              value: `[${destinationDisplay}](${destinationFull})${signalsDisplay}\n${takedownStatus}`,
               inline: true
             },
             {

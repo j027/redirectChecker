@@ -229,7 +229,7 @@ export class PornhubAdHunter {
               } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {
                 // Cloaking scam detected - force report even though redirect checker failed
                 console.log(`⚠️ Cloaking scam detected - forcing direct report for: ${finalUrl}`);
-                await reportSite(finalUrl, adDestination, screenshot, html);
+                await reportSite(finalUrl, adDestination, screenshot, html, { signals, confidenceScore });
                 await sendCloakerAddedAlert(finalUrl, "Pornhub Ad (Force Reported)");
               }
               console.log(
@@ -288,7 +288,7 @@ export class PornhubAdHunter {
             } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {
               // Cloaking scam detected - force report even though redirect checker failed
               console.log(`⚠️ Cloaking scam detected - forcing direct report for: ${finalUrl}`);
-              await reportSite(finalUrl, adDestination, screenshot, html);
+              await reportSite(finalUrl, adDestination, screenshot, html, { signals, confidenceScore });
               await sendCloakerAddedAlert(finalUrl, "Pornhub Ad (Force Reported)");
             }
             console.log(

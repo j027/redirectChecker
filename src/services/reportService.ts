@@ -1,7 +1,7 @@
 import { readConfig } from "../config.js";
 import { fetch } from "undici";
 import { discordClient } from "../discordBot.js";
-import { TextChannel } from "discord.js";
+import { TextChannel, EmbedBuilder } from "discord.js";
 import { userAgentService } from "./userAgentService.js";
 import { enqueueReport } from "./batchReportService.js";
 import { browserReportService } from "./browserReportService.js";
@@ -481,38 +481,77 @@ async function sendMessageToDiscord(
   const { channelId } = await readConfig();
   const channel = discordClient.channels.cache.get(channelId) as TextChannel;
   if (channel) {
-    // Build the message with signals and confidence if available
-    let message = `Found ${site} from ${redirect}`;
+    // Build an embed for the scam report
+    const embed = new EmbedBuilder()
+      .setTitle('🚨 Scam Detected')
+      .setColor(0xff4444)
+      .setTimestamp();
     
-    if (signals || confidenceScore !== undefined) {
-      const parts: string[] = [];
-      
-      if (confidenceScore !== undefined) {
-        parts.push(`${formatConfidence(confidenceScore)}`);
-      }
-      
-      if (signals) {
-        const signalData: SignalData = {
-          fullscreen: signals.fullscreenRequested,
-          keyboardLock: signals.keyboardLockRequested,
-          pointerLock: signals.pointerLockRequested,
-          thirdPartyHosting: signals.isThirdPartyHosting,
-          ipAddress: signals.isIpAddress,
-          pageFrozen: signals.pageLoadFrozen,
-          workerBomb: signals.workerBombDetected,
-        };
-        const signalEmojis = formatSignals(signalData);
-        if (signalEmojis) {
-          parts.push(signalEmojis);
-        }
-      }
-      
-      if (parts.length > 0) {
-        message += ` [${parts.join(' ')}]`;
+    // Add scam URL field
+    try {
+      const siteUrl = new URL(site);
+      embed.addFields({
+        name: 'Scam URL',
+        value: `[${siteUrl.hostname}](${site})`,
+        inline: false
+      });
+    } catch {
+      embed.addFields({
+        name: 'Scam URL',
+        value: site,
+        inline: false
+      });
+    }
+    
+    // Add source/redirect field
+    if (redirect !== site) {
+      try {
+        const redirectUrl = new URL(redirect);
+        embed.addFields({
+          name: 'Source',
+          value: `[${redirectUrl.hostname}](${redirect})`,
+          inline: true
+        });
+      } catch {
+        embed.addFields({
+          name: 'Source',
+          value: redirect,
+          inline: true
+        });
       }
     }
     
-    await channel.send(message);
+    // Add confidence field
+    if (confidenceScore !== undefined) {
+      embed.addFields({
+        name: 'Confidence',
+        value: formatConfidence(confidenceScore),
+        inline: true
+      });
+    }
+    
+    // Add signals field
+    if (signals) {
+      const signalData: SignalData = {
+        fullscreen: signals.fullscreenRequested,
+        keyboardLock: signals.keyboardLockRequested,
+        pointerLock: signals.pointerLockRequested,
+        thirdPartyHosting: signals.isThirdPartyHosting,
+        ipAddress: signals.isIpAddress,
+        pageFrozen: signals.pageLoadFrozen,
+        workerBomb: signals.workerBombDetected,
+      };
+      const signalEmojis = formatSignals(signalData);
+      if (signalEmojis) {
+        embed.addFields({
+          name: 'Signals',
+          value: signalEmojis,
+          inline: true
+        });
+      }
+    }
+    
+    await channel.send({ embeds: [embed] });
   } else {
     console.error("Channel not found");
   }

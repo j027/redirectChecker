@@ -89,3 +89,18 @@ export function formatUrl(url: string): { display: string, full: string } {
     };
   }
 }
+
+/**
+ * Returns a compact legend explaining what each signal emoji means
+ */
+export function getSignalLegend(): string {
+  return [
+    `${EMOJI.FULLSCREEN} Fullscreen`,
+    `${EMOJI.KEYBOARD_LOCK} Keyboard Lock`,
+    `${EMOJI.POINTER_LOCK} Pointer Lock`,
+    `${EMOJI.THIRD_PARTY} 3rd Party Host`,
+    `${EMOJI.IP_ADDRESS} IP Address`,
+    `${EMOJI.PAGE_FROZEN} Page Frozen`,
+    `${EMOJI.WORKER_BOMB} Worker Bomb`,
+  ].join(' • ');
+}

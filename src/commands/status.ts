@@ -1,5 +1,5 @@
 import { CommandDefinition } from "./commands.js";
-import { EMOJI, formatTimeDifference, formatUrl, formatSignals, formatConfidence, SignalData } from "../utils/discordFormatting.js";
+import { EMOJI, formatTimeDifference, formatUrl, formatSignals, formatConfidence, SignalData, getSignalLegend } from "../utils/discordFormatting.js";
 import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from "discord.js";
 import pool from "../dbPool.js";
 
@@ -226,6 +226,20 @@ export const statusCommand: CommandDefinition = {
         }
 
         embeds.push(embed);
+      }
+
+      // Add legend as footer to the last embed, or create a legend embed if we have scams
+      if (embeds.length > 0) {
+        // Check if any destinations are scams (to show signal legend)
+        const hasScams = Array.from(redirects.values()).some(r => 
+          r.destinations.some(d => d.isScam)
+        );
+        
+        if (hasScams) {
+          embeds[embeds.length - 1].setFooter({ 
+            text: `Signal Legend: ${getSignalLegend()}` 
+          });
+        }
       }
 
       // Send each embed as a follow-up message

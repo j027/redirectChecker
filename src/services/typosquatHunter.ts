@@ -5,13 +5,17 @@ import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
-import { DetectedSignals, hasWeightedSignal } from "./signalService.js";
+import { hasWeightedSignal } from "./signalService.js";
+import fs from "fs/promises";
+import path from "path";
 
 export class TyposquatHunter {
   private browser: Browser | null = null;
   private browserInitializing: boolean = false;
+  private typosquatDomains: string[] = [];
 
   async init(): Promise<void> {
+    await this.loadTyposquats();
     await this.ensureBrowserIsHealthy();
   }
 
@@ -47,107 +51,36 @@ export class TyposquatHunter {
     this.browser = null;
   }
 
+  private async loadTyposquats(): Promise<void> {
+    const filePath = path.resolve(process.cwd(), "typosquats.json");
+    const data = await fs.readFile(filePath, "utf8");
+    const parsed: unknown = JSON.parse(data);
+
+    if (!Array.isArray(parsed)) {
+      throw new Error("Invalid typosquats.json format: expected an array of domain strings");
+    }
+
+    const domains = parsed
+      .filter((item): item is string => typeof item === "string")
+      .map((domain) => domain.trim())
+      .filter((domain) => domain.length > 0);
+
+    if (domains.length === 0) {
+      throw new Error("typosquats.json contained no valid domains");
+    }
+
+    // Remove duplicates
+    this.typosquatDomains = Array.from(new Set(domains));
+
+    console.log(`Loaded ${this.typosquatDomains.length} typosquat domains from ${filePath}`);
+  }
+
   private getRandomTyposquatUrl(): string {
-    const typosquatDomains = [
-      // Facebook typosquats
-      "facebaak.com",
-      "facebiik.com",
-      "fac3book.com",
-      "faceb00k.com",
-      "afcebook.com",
-      "faicebook.com",
-      "fucebook.com",
-      "facbeook.com",
-      "faceboko.com",
-      "faceblok.com",
-      "fzcebook.com",
-      "facebppk.com",
-      "ftacebook.com",
+    if (!this.typosquatDomains || this.typosquatDomains.length === 0) {
+      throw new Error("Typosquat domains not loaded; ensure typosquats.json exists and contains domains.");
+    }
 
-      // Gmail typosquats
-      "gmaip.com",
-      "gmai.com",
-      "gmaol.com",
-      "ggmail.com",
-      "gmaii.com",
-      "gmsail.com",
-      "ygmail.com",
-      "gmalil.com",
-      "gmaiol.com",
-      "gmaili.com",
-      "gjmail.com",
-      "gmailk.com",
-      "gmaijl.com",
-      "gmkail.com",
-      "gmaqil.com",
-      "gmqail.com",
-      "gmajil.com",
-
-      // Google typosquats
-      "googlo.com",
-      "goorle.com",
-      "googls.com",
-      "ygoogle.com",
-      "gopogle.com",
-      "googpe.com",
-      "gdoogle.com",
-      "voovle.com",
-      "goodgle.com",
-      "googloe.com",
-      "googlpe.com",
-      "googlre.com",
-      "goovgle.com",
-      "geogle.com",
-      "goigle.com",
-      "googae.com",
-      "googee.com",
-      "googfe.com",
-      "goohe.com",
-      "googln.com",
-      "googme.com",
-      "googre.com",
-      "googte.com",
-      "googwe.com",
-      "gookle.com",
-      "goolle.com",
-      "goonle.com",
-      "gooqle.com",
-      "gooxle.com",
-      "gooyle.com",
-      "gopgle.com",
-      "guogle.com",
-
-      // YouTube typosquats
-      "yotube.com",
-      "youutbe.com",
-      "outube.com",
-      "yautube.com",
-      "youtubo.com",
-      "yohtube.com",
-      "youthbe.com",
-      "yojutube.com",
-      "youtubd.com",
-      "youtubs.com",
-      "youtubu.com",
-
-      // Twitter typosquats
-      "twittre.com",
-      "twltter.com",
-      "twutter.com",
-      "fwitter.com",
-      "tsitter.com",
-      "twiyter.com",
-      "twittee.com",
-      "tywitter.com",
-      "twuitter.com",
-      "twiutter.com",
-      "twitfer.com",
-      "twittet.com",
-      "twiktter.com",
-    ];
-
-    const randomDomain =
-      typosquatDomains[crypto.randomInt(typosquatDomains.length)];
+    const randomDomain = this.typosquatDomains[crypto.randomInt(this.typosquatDomains.length)];
     if (!randomDomain.startsWith("http")) {
       return `http://${randomDomain}`;
     }

@@ -52,7 +52,7 @@ export class TyposquatHunter {
   }
 
   private async loadTyposquats(): Promise<void> {
-    const filePath = path.resolve(process.cwd(), "typosquats.json");
+    const filePath = path.join(process.cwd(), "typosquats.json");
     const data = await fs.readFile(filePath, "utf8");
     const parsed: unknown = JSON.parse(data);
 

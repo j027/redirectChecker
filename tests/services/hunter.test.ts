@@ -30,4 +30,10 @@ describe("Test the hunter service can operate successfully", () => {
 
     expect(result).toBe(true);
   });
+
+  it("work with typosquat ads", async () => {
+    const result = await service.huntTyposquat();
+
+    expect(result).toBe(true);
+  });
 });

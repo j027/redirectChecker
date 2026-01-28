@@ -41,6 +41,12 @@ export class HunterService {
   async init(headless = false) {
     this.isHeadless = headless;
     await this.ensureBrowserIsHealthy();
+    
+    // Initialize all individual hunters
+    await searchAdHunter.init();
+    await typosquatHunter.init();
+    await pornhubAdHunter.init();
+    await adSpyGlassHunter.init();
   }
 
   /**
@@ -400,6 +406,12 @@ export class HunterService {
       await this.browser.close();
       this.browser = null;
     }
+    
+    // Close all individual hunters
+    await searchAdHunter.close();
+    await typosquatHunter.close();
+    await pornhubAdHunter.close();
+    await adSpyGlassHunter.close();
   }
 }
 

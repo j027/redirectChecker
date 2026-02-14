@@ -28,6 +28,9 @@ function truncate(str: string, maxLength: number): string {
   return str.substring(0, maxLength - 3) + "...";
 }
 
+/** Max characters for a single URL before it gets truncated */
+const MAX_SINGLE_URL_LENGTH = 350;
+
 /**
  * Get alert configuration based on type
  */
@@ -64,33 +67,80 @@ function getAlertConfig(type: AlertType, isNew: boolean): { emoji: string; title
 }
 
 /**
- * Build redirect path field value with truncation
+ * Build the redirect path for the embed description.
+ * Strategy: show full URLs at the start and end of the chain (most important),
+ * only truncate excessively long individual URLs, and collapse the middle
+ * of the chain if the total exceeds the available character budget.
  */
-function buildRedirectPathValue(
+function buildRedirectPathDescription(
   initialUrl: string,
   finalUrl: string,
-  redirectionPath: string[] | null
+  redirectionPath: string[] | null,
+  availableChars: number
 ): string {
-  if (redirectionPath && redirectionPath.length > 0) {
-    let result = "";
-    let truncated = false;
-
-    for (let i = 0; i < redirectionPath.length; i++) {
-      const line = `${i + 1}. ${redirectionPath[i]}\n`;
-      // Reserve space for truncation message
-      if (result.length + line.length > EMBED_FIELD_VALUE_LIMIT - 50) {
-        const remaining = redirectionPath.length - i;
-        result += `... and ${remaining} more redirect(s)`;
-        truncated = true;
-        break;
-      }
-      result += line;
-    }
-
-    return result.trim();
-  } else {
+  if (!redirectionPath || redirectionPath.length === 0) {
     return `**Initial:** ${truncate(initialUrl, 400)}\n**Final:** ${truncate(finalUrl, 400)}`;
   }
+
+  const header = "**Redirect Path**\n";
+  const budget = availableChars - header.length;
+
+  // Format each URL as a numbered line, truncating only excessively long ones
+  const allLines = redirectionPath.map(
+    (url, i) => `${i + 1}. ${truncate(url, MAX_SINGLE_URL_LENGTH)}`
+  );
+
+  // If everything fits, return it all
+  const fullText = allLines.join("\n");
+  if (fullText.length <= budget) {
+    return header + fullText;
+  }
+
+  // Doesn't fit — keep as many from the start and end as possible,
+  // collapsing the middle of the chain.
+  // Start with 3 from each end and increase if space allows.
+  const total = allLines.length;
+  let keepStart = Math.min(3, total);
+  let keepEnd = Math.min(3, total);
+
+  // Try to show more from each end if there's room
+  for (let extra = 0; extra < total; extra++) {
+    const candidateStart = Math.min(keepStart + 1, total - keepEnd);
+    const candidateEnd = keepEnd;
+    if (candidateStart + candidateEnd >= total) break;
+
+    const hidden = total - candidateStart - candidateEnd;
+    const collapsedLine = `\n   ... ${hidden} more redirect(s) ...\n`;
+    const headText = allLines.slice(0, candidateStart).join("\n");
+    const tailText = allLines.slice(total - candidateEnd).join("\n");
+    const candidate = headText + collapsedLine + tailText;
+
+    if (candidate.length > budget) break;
+    keepStart = candidateStart;
+
+    // Try adding one more to the end too
+    const candidateEnd2 = Math.min(keepEnd + 1, total - keepStart);
+    if (keepStart + candidateEnd2 < total) {
+      const hidden2 = total - keepStart - candidateEnd2;
+      const collapsedLine2 = `\n   ... ${hidden2} more redirect(s) ...\n`;
+      const tailText2 = allLines.slice(total - candidateEnd2).join("\n");
+      const candidate2 = allLines.slice(0, keepStart).join("\n") + collapsedLine2 + tailText2;
+      if (candidate2.length <= budget) {
+        keepEnd = candidateEnd2;
+      }
+    }
+  }
+
+  if (keepStart + keepEnd >= total) {
+    // Everything fits after all (shouldn't happen but safe fallback)
+    return header + fullText;
+  }
+
+  const hidden = total - keepStart - keepEnd;
+  const collapsedLine = `\n   ... ${hidden} more redirect(s) ...\n`;
+  const headText = allLines.slice(0, keepStart).join("\n");
+  const tailText = allLines.slice(total - keepEnd).join("\n");
+  return truncate(header + headText + collapsedLine + tailText, availableChars);
 }
 
 /**
@@ -118,7 +168,7 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
       .setTimestamp()
       .setFooter({ text: `Confidence: ${confidencePercent}%` });
 
-    // Add type-specific fields
+    // Add type-specific fields (these use the 1024-char field limit)
     if (payload.type === "typosquat") {
       embed.addFields(
         { name: "Typosquat Domain", value: truncate(payload.initialUrl, EMBED_FIELD_VALUE_LIMIT), inline: false },
@@ -136,19 +186,7 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
       });
     }
 
-    // Add redirect path
-    const redirectValue = buildRedirectPathValue(
-      payload.initialUrl,
-      payload.finalUrl,
-      payload.redirectionPath
-    );
-    embed.addFields({
-      name: "Redirect Path",
-      value: truncate(redirectValue, EMBED_FIELD_VALUE_LIMIT),
-      inline: false,
-    });
-
-    // Add cloaker info if available
+    // Add cloaker info as a field (short enough for field limit)
     if (payload.cloakerCandidate) {
       embed.addFields({
         name: "Potential Cloaker",
@@ -156,6 +194,16 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
         inline: false,
       });
     }
+
+    // Use the embed description (4096 char limit) for the redirect path
+    // so we can show far more of the chain than a field allows
+    const redirectDescription = buildRedirectPathDescription(
+      payload.initialUrl,
+      payload.finalUrl,
+      payload.redirectionPath,
+      EMBED_DESCRIPTION_LIMIT
+    );
+    embed.setDescription(redirectDescription);
 
     await channel.send({ embeds: [embed] });
     console.log(`Discord ${payload.type} alert sent`);

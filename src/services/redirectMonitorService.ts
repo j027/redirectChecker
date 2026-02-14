@@ -5,7 +5,6 @@ import { reportSite } from "./reportService.js";
 import { initTakedownStatusForDestination } from "./takedownMonitorService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
-import { hasWeightedSignal } from "./signalService.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();
@@ -83,13 +82,13 @@ async function processRedirectEntry(
         return;
       }
 
-      // Apply confidence threshold AND signal requirement for effective scam decision
+      // Apply confidence threshold for effective scam decision (signals tracked but not required)
       const classifierIsScam = classificationResult.isScam;
       const confidenceScore = classificationResult.confidenceScore;
       const signals = classificationResult.signals;
       
-      // Scam = classifier says scam AND confidence >= threshold AND at least one weighted signal
-      const isScam = classifierIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasWeightedSignal(signals);
+      // Scam = classifier says scam AND confidence >= threshold
+      const isScam = classifierIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
 
       // Now we insert, still within the same transaction
       const insertResult = await client.query(

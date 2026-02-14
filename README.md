@@ -107,7 +107,7 @@ Monitors removal status across:
 - API keys for various security services
 - Mobile proxy with unlimited data for the hunter proxy
 - Residential proxy that rotates ip on every request for the main proxy
-- Chromium installed through flatpak (unless you want to adjust code)
+- Chromium installed through playwright
 
 ## Installation
 

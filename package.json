@@ -17,19 +17,19 @@
   "dependencies": {
     "@google-cloud/web-risk": "^5.3.1",
     "discord.js": "^14.25.1",
-    "dotenv": "^17.2.3",
-    "onnxruntime-node": "1.23.2",
+    "dotenv": "^17.3.1",
+    "onnxruntime-node": "1.24.1",
     "patchright": "^1.57.0",
-    "pg": "^8.17.1",
+    "pg": "^8.18.0",
     "sharp": "^0.34.5",
-    "tldts": "^7.0.19",
-    "undici": "^7.18.2",
+    "tldts": "^7.0.23",
+    "undici": "^7.22.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/node": "^24.10.9",
+    "@types/node": "^24.10.13",
     "@types/pg": "^8.16.0",
-    "prettier": "^3.8.0",
+    "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

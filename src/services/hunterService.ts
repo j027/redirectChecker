@@ -212,8 +212,10 @@ export class HunterService {
 
     // Try each redirect type in priority order
     const redirectTypesToTry = [
-      RedirectType.HTTP,
-      RedirectType.WeeblyDigitalOceanJs,
+      //RedirectType.HTTP, 
+      // disabled for now as it might be getting detected
+      // and causing the redirects to get burned after finding the first scam destination
+      // not sure why this is happening
       RedirectType.BrowserRedirect,
       RedirectType.BrowserRedirectPornhub,
       RedirectType.BrowserRedirectHunterProxy

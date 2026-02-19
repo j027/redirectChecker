@@ -15,9 +15,6 @@ export async function handleRedirect(
     case RedirectType.HTTP:
       location = await httpRedirect(redirectUrl);
       break;
-    case RedirectType.WeeblyDigitalOceanJs:
-      location = await weeblyDigitalOceanJs(redirectUrl);
-      break;
     case RedirectType.BrowserRedirect:
       location = await browserRedirectService.handleRedirect(redirectUrl);
       break;
@@ -58,33 +55,3 @@ async function httpRedirect(redirectUrl: string): Promise<string | null> {
   return response.headers.get("location");
 }
 
-async function weeblyDigitalOceanJs(
-  redirectUrl: string,
-): Promise<string | null> {
-
-  // fail hard if the user agent is not available - this ensures this is properly fixed
-  const userAgent = await userAgentService.getUserAgent();
-  if (userAgent == null) {
-    throw new Error("Failed to get user agent");
-  }
-
-  const weeblyPage = await fetch(redirectUrl, {
-    method: "GET",
-    redirect: "manual",
-    headers: {
-      "User-Agent": userAgent,
-    },
-  }).then((r) => r.text());
-
-  const digitalOceanRedirectRegex: RegExp =
-    /(?<=(const|let|var) redirect.*url = \")https:\/\/.*(?=\";)/i;
-  const nextRedirect = weeblyPage.match(digitalOceanRedirectRegex);
-
-  // if we can't find the next digitalocean redirect
-  if (nextRedirect == null || nextRedirect.length == 0) {
-    return null;
-  }
-
-  // pass onto the standard redirect handling, as it is now a normal http redirect from here
-  return httpRedirect(nextRedirect[0]);
-}

@@ -7,6 +7,7 @@ import pool from "../dbPool.js";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
+import { logHunterEvent } from "./hunterEventLogger.js";
 
 export class AdSpyGlassHunter {
   private browser: Browser | null = null;
@@ -55,10 +56,12 @@ export class AdSpyGlassHunter {
       console.error(
         "Browser has not been initialized or crashed - AdSpyGlass hunter failed"
       );
+      await logHunterEvent("adspyglass", "error", "Browser not initialized or crashed");
       return false;
     }
 
     let site = this.getRandomWebsite();
+    await logHunterEvent("adspyglass", "cycle_start", `Starting AdSpyGlass hunt`, { site });
 
     const context = await this.browser.newContext({
         proxy: await parseProxy(true),
@@ -141,6 +144,7 @@ export class AdSpyGlassHunter {
     }
     catch (error) {
         console.error("Error navigating to site with AdSpyGlass ads:", error);
+        await logHunterEvent("adspyglass", "error", `Navigation error: ${error}`, { site });
         return false;
     }
 
@@ -149,6 +153,7 @@ export class AdSpyGlassHunter {
     }
     catch (error) {
         console.error("Error handling adspyglass popup ads:", error);
+        await logHunterEvent("adspyglass", "error", `Popup handling error: ${error}`, { site });
         return false;
     } finally {
         await page.close();
@@ -156,6 +161,7 @@ export class AdSpyGlassHunter {
     }
 
     // if we got here, we probably found some ads and didn't break anything
+    await logHunterEvent("adspyglass", "cycle_end", `AdSpyGlass hunt complete`, { site, popups: popupPromises.length });
     return true;
   }
 
@@ -231,6 +237,7 @@ export class AdSpyGlassHunter {
       console.log(
         `AdSpyGlass ad ${adUrl} has no meaningful redirects, skipping`
       );
+      await logHunterEvent("adspyglass", "ad_skipped", `No meaningful redirects`, { url: adUrl, final_url: finalUrl });
       return;
     }
 
@@ -239,6 +246,7 @@ export class AdSpyGlassHunter {
     // Check if URL is whitelisted - skip processing if so
     if (aiClassifierService.isWhitelisted(finalUrl)) {
       console.log(`✅ Whitelisted domain detected: ${finalUrl} - Skipping AdSpyGlass ad processing`);
+      await logHunterEvent("adspyglass", "whitelisted", `Whitelisted: ${finalUrl}`, { url: adUrl, final_url: finalUrl });
       return;
     }
 
@@ -246,6 +254,16 @@ export class AdSpyGlassHunter {
     // Only treat as scam if confidence is above threshold AND has a weighted signal
     const hasSignal = hasWeightedSignal(signals);
     const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
+
+    await logHunterEvent("adspyglass", "classification", `Classified ${finalUrl}`, {
+      url: adUrl,
+      final_url: finalUrl,
+      classifier_is_scam: rawIsScam,
+      confidence: confidenceScore,
+      has_signal: hasSignal,
+      effective_is_scam: isScam,
+      redirect_hops: redirectionPath.length
+    });
 
     try {
       // Save the classified data to AI service (use raw values for training)
@@ -299,6 +317,9 @@ export class AdSpyGlassHunter {
           );
 
           console.log(`New AdSpyGlass record: ${adUrl} -> ${finalUrl}`);
+          await logHunterEvent("adspyglass", "ad_processed", `New ad: ${isScam ? "SCAM" : "clean"}`, {
+            url: adUrl, final_url: finalUrl, is_scam: isScam, confidence: confidenceScore
+          });
         } else {
           // We've seen this destination before, just update last_seen timestamp
           await client.query(
@@ -333,6 +354,9 @@ export class AdSpyGlassHunter {
             cloakerCandidate,
           });
           console.log(`Sent alert for new scam destination: ${finalUrl}`);
+          await logHunterEvent("adspyglass", "scam_detected", `New scam: ${finalUrl}`, {
+            url: adUrl, final_url: finalUrl, confidence: confidenceScore, cloaker: cloakerCandidate
+          });
 
           if (cloakerCandidate != null) {
             const addedToChecker =
@@ -350,12 +374,14 @@ export class AdSpyGlassHunter {
       } catch (error) {
         await client.query("ROLLBACK");
         console.error(`Database error: ${error}`);
+        await logHunterEvent("adspyglass", "error", `Database error: ${error}`, { url: adUrl });
         throw error;
       } finally {
         client.release();
       }
     } catch (error) {
       console.error(`Error in AdSpyGlass hunter: ${error}`);
+      await logHunterEvent("adspyglass", "error", `Error: ${error}`, { url: adUrl });
     }
   }
 

@@ -10,6 +10,7 @@ import crypto from "crypto";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { DetectedSignals, hasWeightedSignal } from "./signalService.js";
+import { logHunterEvent } from "./hunterEventLogger.js";
 
 export class SearchAdHunter {
   private browser: Browser | null = null;
@@ -58,6 +59,7 @@ export class SearchAdHunter {
       console.error(
         "Browser has not been initialized or crashed - search ad hunter failed"
       );
+      await logHunterEvent("search", "error", "Browser not initialized or crashed");
       return false;
     }
 
@@ -69,6 +71,7 @@ export class SearchAdHunter {
     // not spoofing chrome on windows because that breaks ad load
     const page = await context.newPage();
     const searchUrl = this.generateSearchUrl();
+    await logHunterEvent("search", "cycle_start", `Starting search ad hunt`, { search_url: searchUrl });
 
     try {
       await blockGoogleAnalytics(page);
@@ -174,6 +177,12 @@ export class SearchAdHunter {
         `Found ${uniqueAdContainers.length} unique search ads after deduplication`
       );
 
+      await logHunterEvent("search", "ads_found", `Found ${uniqueAdContainers.length} unique search ads`, {
+        total_before_dedup: adContainers.length,
+        unique_after_dedup: uniqueAdContainers.length,
+        search_url: searchUrl
+      });
+
       // Process ads using the deduplicated list
       const BATCH_SIZE = 5;
       let successCount = 0;
@@ -226,9 +235,15 @@ export class SearchAdHunter {
       console.log(
         `Ad processing complete. Success: ${successCount}, Failed: ${failCount}`
       );
+      await logHunterEvent("search", "cycle_end", `Search ad hunt complete`, {
+        success_count: successCount,
+        fail_count: failCount,
+        total_ads: uniqueAdContainers.length
+      });
       return true;
     } catch (error) {
       console.log(`Error while hunting for scams in search ads: ${error}`);
+      await logHunterEvent("search", "error", `Error during search ad hunt: ${error}`, { search_url: searchUrl });
       return false;
     } finally {
       await page.close();
@@ -252,6 +267,7 @@ export class SearchAdHunter {
     // we already saw this, and it's a scam so then skip it
     const isKnownScam = await this.checkIfSearchAdIsKnownScam(adDestination);
     if (isKnownScam) {
+      await logHunterEvent("search", "ad_skipped", `Known scam, skipping`, { url: adDestination });
       return;
     }
 
@@ -260,6 +276,7 @@ export class SearchAdHunter {
       "https://syndicatedsearch.goog/"
     );
     if (processResult == null) {
+      await logHunterEvent("search", "error", `Failed to process ad`, { url: adDestination });
       return;
     }
 
@@ -271,6 +288,7 @@ export class SearchAdHunter {
     // Check if URL is whitelisted - skip processing if so
     if (aiClassifierService.isWhitelisted(finalUrl)) {
       console.log(`✅ Whitelisted domain detected: ${finalUrl} - Skipping search ad processing`);
+      await logHunterEvent("search", "whitelisted", `Whitelisted domain: ${finalUrl}`, { url: adDestination, final_url: finalUrl });
       return;
     }
 
@@ -279,6 +297,25 @@ export class SearchAdHunter {
       // Only treat as scam if confidence is above threshold AND has a weighted signal
       const hasSignal = hasWeightedSignal(signals);
       const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
+
+      await logHunterEvent("search", "classification", `Classified ${finalUrl}`, {
+        url: adDestination,
+        final_url: finalUrl,
+        classifier_is_scam: rawIsScam,
+        confidence: confidenceScore,
+        has_signal: hasSignal,
+        effective_is_scam: isScam,
+        redirect_hops: redirectionPath.length,
+        signals: {
+          fullscreen: signals.fullscreenRequested,
+          keyboard_lock: signals.keyboardLockRequested,
+          pointer_lock: signals.pointerLockRequested,
+          third_party: signals.isThirdPartyHosting,
+          ip_address: signals.isIpAddress,
+          page_frozen: signals.pageLoadFrozen,
+          worker_bomb: signals.workerBombDetected
+        }
+      });
 
       await aiClassifierService.saveData(
         finalUrl,
@@ -360,6 +397,9 @@ export class SearchAdHunter {
             console.log(
               `Ad status changed from ${existingAd.is_scam} to ${isScam}`
             );
+            await logHunterEvent("search", "status_changed", `Status changed from ${existingAd.is_scam} to ${isScam}`, {
+              url: adDestination, final_url: finalUrl, confidence: confidenceScore
+            });
             if (isScam) {
               await sendAlert({
                 type: "adScam",
@@ -420,7 +460,13 @@ export class SearchAdHunter {
           );
 
           console.log(`Inserted new ad: ${adId}, is_scam: ${isScam}`);
+          await logHunterEvent("search", "ad_processed", `New ad: ${isScam ? "SCAM" : "clean"}`, {
+            ad_id: adId, url: adDestination, final_url: finalUrl, is_scam: isScam, confidence: confidenceScore
+          });
           if (isScam) {
+            await logHunterEvent("search", "scam_detected", `New scam detected: ${finalUrl}`, {
+              url: adDestination, final_url: finalUrl, confidence: confidenceScore
+            });
             await sendAlert({
               type: "adScam",
               initialUrl: adDestination,
@@ -440,6 +486,9 @@ export class SearchAdHunter {
             console.log(
               `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`
             );
+            if (addedToRedirectChecker) {
+              await logHunterEvent("search", "added_to_checker", `Added ${adDestination} to redirect checker`, { url: adDestination });
+            }
           }
         }
 

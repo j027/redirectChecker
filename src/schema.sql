@@ -124,9 +124,34 @@ CREATE TABLE IF NOT EXISTS webrisk_monthly_reports
         CHECK (report_count >= 0)
 );
 
+-- Hunter event logs - tracks what each hunter does during its lifecycle
+CREATE TABLE IF NOT EXISTS hunter_events (
+    id          SERIAL PRIMARY KEY,
+    hunter_type VARCHAR(50)  NOT NULL,  -- 'search', 'typosquat', 'pornhub', 'adspyglass', 'scheduler'
+    event_type  VARCHAR(50)  NOT NULL,  -- 'cycle_start', 'cycle_end', 'ads_found', 'ad_processed', 'scam_detected', 'error', 'skipped', 'timeout', etc.
+    message     TEXT         NOT NULL,  -- Human-readable log message
+    details     JSONB        DEFAULT NULL, -- Structured data (URLs, counts, errors, classification results, etc.)
+    created_at  TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Redirect checker event logs - tracks redirect monitoring activity
+CREATE TABLE IF NOT EXISTS redirect_events (
+    id          SERIAL PRIMARY KEY,
+    event_type  VARCHAR(50)  NOT NULL,  -- 'check_start', 'check_end', 'new_destination', 'classification', 'scam_found', 'no_redirect', 'error'
+    source_url  TEXT         DEFAULT NULL, -- The redirect source URL being checked
+    message     TEXT         NOT NULL,  -- Human-readable log message
+    details     JSONB        DEFAULT NULL, -- Structured data
+    created_at  TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes
 CREATE INDEX idx_ads_type ON ads (ad_type);
 CREATE INDEX idx_ads_scam ON ads (is_scam);
 CREATE INDEX idx_ads_last_seen ON ads (last_seen);
 CREATE INDEX idx_search_ads_search_url ON search_ads (search_url);
 CREATE INDEX idx_redirect_destinations_hostname ON redirect_destinations (hostname);
+CREATE INDEX idx_hunter_events_type ON hunter_events (hunter_type);
+CREATE INDEX idx_hunter_events_event ON hunter_events (event_type);
+CREATE INDEX idx_hunter_events_created ON hunter_events (created_at DESC);
+CREATE INDEX idx_redirect_events_type ON redirect_events (event_type);
+CREATE INDEX idx_redirect_events_created ON redirect_events (created_at DESC);

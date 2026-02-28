@@ -8,6 +8,7 @@ import { BrowserManagerService } from "./browserManagerService.js";
 import { hasWeightedSignal } from "./signalService.js";
 import fs from "fs/promises";
 import path from "path";
+import { logHunterEvent } from "./hunterEventLogger.js";
 
 export class TyposquatHunter {
   private browser: Browser | null = null;
@@ -95,16 +96,19 @@ export class TyposquatHunter {
       console.error(
         "Browser has not been initialized or crashed - typosquat hunter failed"
       );
+      await logHunterEvent("typosquat", "error", "Browser not initialized or crashed");
       return null;
     }
 
     const typosquat = this.getRandomTyposquatUrl();
     console.log(`Checking typosquat domain: ${typosquat}`);
+    await logHunterEvent("typosquat", "cycle_start", `Checking typosquat domain`, { domain: typosquat });
 
     const result = await hunterService.processAd(typosquat);
 
     if (result == null) {
       console.log(`Failed to process typosquat: ${typosquat}`);
+      await logHunterEvent("typosquat", "error", `Failed to process typosquat`, { domain: typosquat });
       return null;
     }
 
@@ -118,6 +122,7 @@ export class TyposquatHunter {
       console.log(
         `Typosquat ${typosquat} has no meaningful redirects, skipping`
       );
+      await logHunterEvent("typosquat", "ad_skipped", `No meaningful redirects`, { domain: typosquat, final_url: finalUrl });
       return null;
     }
 
@@ -126,6 +131,7 @@ export class TyposquatHunter {
     // Check if URL is whitelisted - skip processing if so
     if (aiClassifierService.isWhitelisted(finalUrl)) {
       console.log(`✅ Whitelisted domain detected: ${finalUrl} - Skipping typosquat processing`);
+      await logHunterEvent("typosquat", "whitelisted", `Whitelisted: ${finalUrl}`, { domain: typosquat, final_url: finalUrl });
       return null;
     }
 
@@ -133,6 +139,16 @@ export class TyposquatHunter {
     // Only treat as scam if confidence is above threshold AND has a weighted signal
     const hasSignal = hasWeightedSignal(signals);
     const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
+
+    await logHunterEvent("typosquat", "classification", `Classified ${finalUrl}`, {
+      domain: typosquat,
+      final_url: finalUrl,
+      classifier_is_scam: rawIsScam,
+      confidence: confidenceScore,
+      has_signal: hasSignal,
+      effective_is_scam: isScam,
+      redirect_hops: redirectionPath.length
+    });
 
     try {
       // Save the classified data to AI service (use raw values for training)
@@ -186,6 +202,9 @@ export class TyposquatHunter {
           );
 
           console.log(`New typosquat record: ${typosquat} -> ${finalUrl}`);
+          await logHunterEvent("typosquat", "ad_processed", `New typosquat: ${isScam ? "SCAM" : "clean"}`, {
+            domain: typosquat, final_url: finalUrl, is_scam: isScam, confidence: confidenceScore
+          });
         } else {
           // We've seen this destination before, just update last_seen timestamp
           await client.query(
@@ -220,6 +239,9 @@ export class TyposquatHunter {
             cloakerCandidate,
           });
           console.log(`Sent alert for new scam destination: ${finalUrl}`);
+          await logHunterEvent("typosquat", "scam_detected", `New scam: ${finalUrl}`, {
+            domain: typosquat, final_url: finalUrl, confidence: confidenceScore, cloaker: cloakerCandidate
+          });
 
           if (cloakerCandidate != null) {
             const addedToChecker =
@@ -238,12 +260,14 @@ export class TyposquatHunter {
       } catch (error) {
         await client.query("ROLLBACK");
         console.error(`Database error: ${error}`);
+        await logHunterEvent("typosquat", "error", `Database error: ${error}`, { domain: typosquat });
         throw error;
       } finally {
         client.release();
       }
     } catch (error) {
       console.error(`Error in typosquat hunter: ${error}`);
+      await logHunterEvent("typosquat", "error", `Error: ${error}`, { domain: typosquat });
       return null;
     }
   }

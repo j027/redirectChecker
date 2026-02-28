@@ -13,7 +13,8 @@ import {
   startAdHunter,
   stopAdHunter,
   startRedirectPruner,
-  stopRedirectPruner
+  stopRedirectPruner,
+  startEventLogPruner
 } from "./services/schedulerService.js";
 import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
@@ -37,6 +38,7 @@ async function initializeServices() {
   startTakedownMonitor();
   startAdHunter();
   startRedirectPruner();
+  startEventLogPruner();
 }
 
 async function shutdownServices() {

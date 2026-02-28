@@ -5,6 +5,7 @@ import { reportSite } from "./reportService.js";
 import { initTakedownStatusForDestination } from "./takedownMonitorService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
+import { logRedirectEvent } from "./redirectEventLogger.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();
@@ -13,10 +14,15 @@ export async function checkRedirects() {
     redirects = await client.query("SELECT id, source_url, type FROM redirects");
   } catch (e) {
     console.log(e);
+    await logRedirectEvent("error", `Failed to query redirects: ${e}`);
     return;
   } finally {
     client.release();
   }
+
+  await logRedirectEvent("check_start", `Starting redirect check cycle for ${redirects.rows.length} redirects`, undefined, {
+    redirect_count: redirects.rows.length
+  });
 
   const redirectHandlers: Promise<void>[] = [];
 
@@ -28,6 +34,9 @@ export async function checkRedirects() {
   });
 
   await Promise.allSettled(redirectHandlers);
+  await logRedirectEvent("check_end", `Redirect check cycle complete`, undefined, {
+    redirect_count: redirects.rows.length
+  });
 }
 
 async function processRedirectEntry(
@@ -40,8 +49,15 @@ async function processRedirectEntry(
 
   // if we didn't redirect anywhere
   if (redirectDestination == null) {
+    await logRedirectEvent("no_redirect", `No redirect destination found`, sourceUrl, {
+      type: redirectType
+    });
     return;
   }
+
+  await logRedirectEvent("redirect_followed", `Redirected to ${redirectDestination}`, sourceUrl, {
+    destination: redirectDestination, type: redirectType
+  });
 
   const client = await pool.connect();
   try {
@@ -71,6 +87,9 @@ async function processRedirectEntry(
         "UPDATE redirect_destinations SET last_seen = NOW() WHERE id = $1",
         [result.rows[0].id]
       );
+      await logRedirectEvent("existing_destination", `Known destination, updated last_seen`, sourceUrl, {
+        hostname: canonicalDestination
+      });
       // Commit the transaction - we're done
       await client.query('COMMIT');
     } else {
@@ -78,6 +97,9 @@ async function processRedirectEntry(
       const classificationResult = await aiClassifierService.classifyUrl(redirectDestination);
       if (classificationResult == null) {
         console.log("Could not get a classification result - giving up");
+        await logRedirectEvent("error", `Classification failed`, sourceUrl, {
+          destination: redirectDestination
+        });
         await client.query('ROLLBACK'); // Roll back transaction
         return;
       }
@@ -89,6 +111,13 @@ async function processRedirectEntry(
       
       // Scam = classifier says scam AND confidence >= threshold
       const isScam = classifierIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
+
+      await logRedirectEvent("classification", `Classified ${redirectDestination}: ${isScam ? "SCAM" : "clean"}`, sourceUrl, {
+        destination: redirectDestination,
+        classifier_is_scam: classifierIsScam,
+        confidence: confidenceScore,
+        effective_is_scam: isScam
+      });
 
       // Now we insert, still within the same transaction
       const insertResult = await client.query(
@@ -118,8 +147,15 @@ async function processRedirectEntry(
       const destinationId = insertResult.rows[0].id;
       await initTakedownStatusForDestination(destinationId, isScam, client);
 
+      await logRedirectEvent("new_destination", `New destination: ${redirectDestination} (${isScam ? "SCAM" : "clean"})`, sourceUrl, {
+        destination: redirectDestination, hostname: canonicalDestination, is_scam: isScam, confidence: confidenceScore
+      });
+
       // If it's a scam site, report it with the screenshot and HTML
       if (isScam) {
+        await logRedirectEvent("scam_found", `Scam detected: ${redirectDestination}`, sourceUrl, {
+          destination: redirectDestination, confidence: confidenceScore
+        });
         await reportSite(
           redirectDestination,
           sourceUrl,
@@ -136,6 +172,9 @@ async function processRedirectEntry(
     // If an error occurs, roll back the transaction
     await client.query('ROLLBACK');
     console.log("Error updating redirect_history:", error);
+    await logRedirectEvent("error", `Error processing redirect: ${error}`, sourceUrl, {
+      destination: redirectDestination
+    });
   } finally {
     client.release();
   }

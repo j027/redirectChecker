@@ -8,6 +8,7 @@ import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { reportSite } from "./reportService.js";
 import { DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
+import { logHunterEvent } from "./hunterEventLogger.js";
 
 export class PornhubAdHunter {
   private browser: Browser | null = null;
@@ -56,6 +57,7 @@ export class PornhubAdHunter {
       console.error(
         "Browser has not been initialized or crashed - pornhub ad hunter failed"
       );
+      await logHunterEvent("pornhub", "error", "Browser not initialized or crashed");
       return false;
     }
 
@@ -72,6 +74,7 @@ export class PornhubAdHunter {
 
     if (adUrl == null) {
       console.log("Failed to get pornhub ad url, giving up");
+      await logHunterEvent("pornhub", "error", "Failed to get pornhub ad URL after 10 attempts");
       return false;
     }
 
@@ -82,6 +85,7 @@ export class PornhubAdHunter {
     }
 
     console.log("Got a pornhub ad URL:", adDestination);
+    await logHunterEvent("pornhub", "cycle_start", `Processing pornhub ad`, { url: adDestination });
 
     // Process the ad (similar to handleSearchAd)
     await this.handlePornhubAd(adDestination);
@@ -93,6 +97,7 @@ export class PornhubAdHunter {
     // Check if this is already a known scam
     const isKnownScam = await this.checkIfPornhubAdIsKnownScam(adDestination);
     if (isKnownScam) {
+      await logHunterEvent("pornhub", "ad_skipped", `Known scam, skipping`, { url: adDestination });
       return;
     }
 
@@ -103,6 +108,7 @@ export class PornhubAdHunter {
     );
     if (processResult == null) {
       console.log("Failed to process pornhub ad");
+      await logHunterEvent("pornhub", "error", `Failed to process ad`, { url: adDestination });
       return;
     }
 
@@ -114,6 +120,7 @@ export class PornhubAdHunter {
     // Check if URL is whitelisted - skip processing if so
     if (aiClassifierService.isWhitelisted(finalUrl)) {
       console.log(`✅ Whitelisted domain detected: ${finalUrl} - Skipping pornhub ad processing`);
+      await logHunterEvent("pornhub", "whitelisted", `Whitelisted: ${finalUrl}`, { url: adDestination, final_url: finalUrl });
       return;
     }
 
@@ -122,6 +129,16 @@ export class PornhubAdHunter {
       // Only treat as scam if confidence is above threshold AND has a weighted signal
       const hasSignal = hasWeightedSignal(signals);
       const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
+
+      await logHunterEvent("pornhub", "classification", `Classified ${finalUrl}`, {
+        url: adDestination,
+        final_url: finalUrl,
+        classifier_is_scam: rawIsScam,
+        confidence: confidenceScore,
+        has_signal: hasSignal,
+        effective_is_scam: isScam,
+        redirect_hops: redirectionPath.length
+      });
 
       // Save classifier data (use raw values for training)
       await aiClassifierService.saveData(
@@ -209,6 +226,9 @@ export class PornhubAdHunter {
             console.log(
               `Pornhub ad status changed from ${existingAd.is_scam} to ${isScam}`
             );
+            await logHunterEvent("pornhub", "status_changed", `Status changed from ${existingAd.is_scam} to ${isScam}`, {
+              url: adDestination, final_url: finalUrl, confidence: confidenceScore
+            });
 
             // Send alert if status changed to scam
             if (isScam) {
@@ -268,6 +288,9 @@ export class PornhubAdHunter {
           );
 
           console.log(`Inserted new pornhub ad: ${adId}, is_scam: ${isScam}`);
+          await logHunterEvent("pornhub", "ad_processed", `New pornhub ad: ${isScam ? "SCAM" : "clean"}`, {
+            ad_id: adId, url: adDestination, final_url: finalUrl, is_scam: isScam, confidence: confidenceScore
+          });
 
           // Send alert if new scam
           if (isScam) {
@@ -303,12 +326,14 @@ export class PornhubAdHunter {
         // Rollback on error
         await client.query("ROLLBACK");
         console.log(`Error while trying to update ad in the database ${error}`)
+        await logHunterEvent("pornhub", "error", `Database error: ${error}`, { url: adDestination });
       } finally {
         // Always release the client back to the pool
         client.release();
       }
     } catch (dbError) {
       console.error(`Database error while processing pornhub ad: ${dbError}`);
+      await logHunterEvent("pornhub", "error", `Database error: ${dbError}`, { url: adDestination });
     }
   }
 

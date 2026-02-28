@@ -4,6 +4,8 @@ import { monitorTakedownStatus } from "./takedownMonitorService.js";
 import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter } from "./hunterService.js";
 import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
+import { logHunterEvent, pruneHunterEvents } from "./hunterEventLogger.js";
+import { pruneRedirectEvents } from "./redirectEventLogger.js";
 
 let checkInterval: NodeJS.Timeout | null = null;
 let batchInterval: NodeJS.Timeout | null = null;
@@ -202,8 +204,11 @@ export function startAdHunter(): void {
     try {
       adHunterAbortController?.signal.throwIfAborted();
 
+      await logHunterEvent("scheduler", "cycle_start", "Starting hunting cycle");
+
       // Restart each hunter's browser before the cycle
       console.log("Restarting all hunter browsers before cycle...");
+      await logHunterEvent("scheduler", "browser_restart", "Restarting all hunter browsers");
       await Promise.allSettled([
         searchAdHunter.restartBrowser().catch(e => console.error("Error restarting SearchAdHunter browser:", e)),
         typosquatHunter.restartBrowser().catch(e => console.error("Error restarting TyposquatHunter browser:", e)),
@@ -214,6 +219,7 @@ export function startAdHunter(): void {
       console.log("Starting hunting cycle...");
 
       const TIMEOUT_MS = 120000; // 2 minutes
+      const cycleStartTime = Date.now();
 
       // Run all hunt operations in parallel with timeouts - each with their own browser
       const huntPromises = [
@@ -223,6 +229,7 @@ export function startAdHunter(): void {
           "Search ad hunting"
         ).catch((error) => {
           console.error(`Error during search ad hunting: ${error.message}`);
+          logHunterEvent("search", "error", `Hunt failed: ${error.message}`);
           return null;
         }),
         withTimeout(
@@ -231,6 +238,7 @@ export function startAdHunter(): void {
           "Typosquat hunting"
         ).catch((error) => {
           console.error(`Error during typosquat hunting: ${error.message}`);
+          logHunterEvent("typosquat", "error", `Hunt failed: ${error.message}`);
           return null;
         }),
         withTimeout(
@@ -239,6 +247,7 @@ export function startAdHunter(): void {
           "Pornhub ad hunting"
         ).catch((error) => {
           console.error(`Error during pornhub ad hunting: ${error.message}`);
+          logHunterEvent("pornhub", "error", `Hunt failed: ${error.message}`);
           return null;
         }),
         withTimeout(
@@ -247,6 +256,7 @@ export function startAdHunter(): void {
           "AdSpyGlass ad hunting"
         ).catch((error) => {
           console.error(`Error during AdSpyGlass ad hunting: ${error.message}`);
+          logHunterEvent("adspyglass", "error", `Hunt failed: ${error.message}`);
           return null;
         }),
         // Future hunt types can be added here
@@ -258,7 +268,9 @@ export function startAdHunter(): void {
         adHunterAbortController?.signal
       );
 
+      const cycleDurationMs = Date.now() - cycleStartTime;
       console.log("Completed ad hunting cycle");
+      await logHunterEvent("scheduler", "cycle_end", `Hunting cycle completed in ${(cycleDurationMs / 1000).toFixed(1)}s`, { duration_ms: cycleDurationMs });
     } catch (error) {
       if (error instanceof Error && error.message === "AbortError") {
         console.log("Ad hunting cycle was cancelled");
@@ -266,6 +278,7 @@ export function startAdHunter(): void {
         return; // Don't schedule next run
       }
       console.error("Unexpected error in ad hunter:", error);
+      await logHunterEvent("scheduler", "error", `Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       isHuntingInProgress = false;
       // ALWAYS schedule the next run, regardless of success or failure
@@ -318,6 +331,25 @@ export function startRedirectPruner(): void {
 
   // Start the first pruning cycle immediately
   runRedirectPruning();
+}
+
+export function startEventLogPruner(): void {
+  async function runEventPruning() {
+    try {
+      const hunterPruned = await pruneHunterEvents(7);
+      const redirectPruned = await pruneRedirectEvents(7);
+      if (hunterPruned > 0 || redirectPruned > 0) {
+        console.log(`Pruned ${hunterPruned} hunter events and ${redirectPruned} redirect events`);
+      }
+    } catch (error) {
+      console.error("Error during event log pruning:", error);
+    }
+
+    // Run pruning once per day
+    setTimeout(runEventPruning, 24 * 60 * 60 * 1000);
+  }
+
+  runEventPruning();
 }
 
 export function stopRedirectPruner(): void {

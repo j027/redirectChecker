@@ -1,237 +1,93 @@
 # Tech Support Scam Hunter
 
-A sophisticated automated system designed to hunt and track tech support scams by following malicious advertising redirects across the web. This project monitors scam campaigns, tracks their takedown status across major security platforms, and uses AI-powered classification to identify fraudulent websites.
+An automated system that hunts tech support scams by following malicious ad redirects across the web. It monitors scam campaigns, classifies fraudulent sites with AI, reports them to security services, and tracks their takedown status.
 
 ## Content Warning
 
-**This software will access and load NSFW (Not Safe for Work) content during operation.**
+**This software loads NSFW content.** It monitors ads on adult sites (including Pornhub) as part of scam detection. Browser instances will display explicit content, and screenshots of adult sites are captured for AI analysis. Users must be of legal age in their jurisdiction.
 
-RedirectChecker monitors advertisements on adult entertainment platforms including pornographic websites as part of its scam hunting methodology. When running this software:
+## How It Works
 
-- **Adult content will be loaded and displayed** in browser instances
-- **Screenshots of NSFW sites may be captured** for AI analysis
-- **Adult advertisements will be followed** as part of the tracking process
-- **Explicit content may appear in logs and debugging output**
+1. **Hunters** crawl ads from search engines, adult sites, and typosquatted domains
+2. **Browser automation** follows redirect chains using stealth techniques (Patchright, proxy rotation, fingerprint spoofing)
+3. **AI classifier** (ResNet18 ONNX model) analyzes screenshots to detect scam pages
+4. **Signal detection** identifies suspicious behaviors (fullscreen requests, keyboard/pointer lock, worker bombs)
+5. **Scam decision** requires: classifier confidence ≥ 90% AND at least one weighted signal
+6. **Reporting** submits confirmed scams to Google SafeBrowsing, Netcraft, and SmartScreen
+7. **Takedown monitoring** tracks when security services flag the URLs
+8. **Discord bot** provides management, alerts, and debugging via slash commands
 
-**Users should be aware that:**
-- This software is not suitable for use in workplace environments
-- Adult content exposure is an inherent part of the scam hunting process
-- Users must be of legal age in their jurisdiction to view such content
-- Appropriate content filtering may be necessary in shared environments
+### Hunters
 
-By using this software, you acknowledge that you understand and accept exposure to adult content as part of the scam detection process.
+| Hunter | Source | Method |
+|--------|--------|--------|
+| Search Ad | Syndicated search ad networks | Scrapes iframe ads from search result pages |
+| Pornhub Ad | Pornhub ad API | Fetches and follows ad redirect URLs |
+| AdSpyGlass | Adult sites using AdSpyGlass | Triggers popunder ads by clicking video players |
+| Typosquat | Typosquatted domains | Visits domains from `typosquats.json` and follows redirects |
 
-## Overview
+## Tech Stack
 
-RedirectChecker combats tech support scams by:
-
-- **Following malicious ads** from various sources (search engines, adult sites, etc.)
-- **Tracking redirect chains** using multiple bypass strategies
-- **AI-powered scam detection** via screenshot analysis
-- **Monitoring takedown status** across security platforms
-- **Automated reporting** to security services
-- **Discord bot interface** for management and alerts
-
-## Architecture
-
-### Core Components
-
-- **Discord Bot**: Management interface with slash commands
-- **Hunter Services**: Automated ad crawling and redirect discovery
-- **AI Classifier**: ONNX-based image classification for scam detection
-- **Takedown Monitor**: Tracks removal status across security platforms
-- **Browser Services**: Stealth browsing with anti-detection measures
-
-### Database Schema
-
-PostgreSQL database tracking:
-- Redirect sources and destinations
-- Takedown status across platforms
-- AI classification results
-- Browser user agents
-
-## Features
-
-### Ad Hunting
-- **Search Ad Hunter**: Monitors search engine advertisements
-- **AdSpyGlass Hunter**: Tracks ads on adult entertainment sites
-- **Pornhub Ad Hunter**: Specialized tracking for Pornhub advertisements
-- **Typosquat Hunter**: Detects scams from typosquatted domains
-> Typosquatted domains have ads that redirect somewhere, and sometimes they go to scams.
-
-### Redirect Handling
-Multiple redirect bypass strategies:
-- HTTP redirect following
-- JavaScript-based redirects (Weebly/DigitalOcean)
-> Some scammers use a simple javascript based redirect, so this can be more efficient than a full browser.
-- Browser-based redirect following
-- Specialized handlers for different platforms
-
-### Stealth Technologies
-- **Patchright**: Modified Playwright for enhanced stealth
-- **Puppeteer-Extra-Stealth**: Some anti-detection measures were taken from here and ported to Playwright
-- **Custom fingerprinting protection**
-- **Proxy rotation and management**
-
-### AI-Powered Classification
-- ONNX-based image classification model
-- Screenshot analysis for scam detection
-- Training data management and storage
-- Confidence-based classification thresholds
-
-### Takedown Tracking
-Monitors removal status across:
-- **Google SafeBrowsing**
-- **Microsoft SmartScreen** 
-- **Netcraft**
-- **DNS resolution status**
-
-## Technology Stack
-
-- **Runtime**: Node.js with TypeScript
+- **Runtime**: Node.js 24 + TypeScript
 - **Database**: PostgreSQL
-- **Browser Automation**: Patchright (Playwright fork)
-- **AI/ML**: ONNX Runtime (model trained using Ultralytics YOLO)
-- **Bot Framework**: Discord.js
-- **Image Processing**: Sharp
-- **HTTP Client**: Undici with proxy support
+- **Browser**: Patchright (stealth Playwright fork)
+- **AI/ML**: ONNX Runtime (model trained with Ultralytics YOLO)
+- **Bot**: Discord.js
 - **Testing**: Vitest
-- **Operating System**: Linux (you will likely need to make adjustments on other platforms)
 
 ## Prerequisites
 
-- Node.js 22 with Yarn package manager
-- PostgreSQL database
-- Discord bot token and application
-- Proxy services for stealth browsing
-- API keys for various security services
-- Mobile proxy with unlimited data for the hunter proxy
-- Residential proxy that rotates ip on every request for the main proxy
-- Chromium installed through playwright
+- Node.js 24 with Yarn
+- PostgreSQL
+- Discord bot token
+- Mobile proxy (unlimited data) for hunters + rotating residential proxy for the redirect checker
+- Google Web Risk API credentials (for reporting)
+- Chromium (installed via Playwright)
 
-## Installation
+## Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/j027/redirectChecker.git
-   cd redirectChecker
-   ```
-
-2. **Install dependencies**
-   ```bash
-   yarn install
-   ```
-
-3. **Configure environment**
-   
-   You must create a config.json file that follows the structure as defined in the code. See the Configuration section below for more details.
-
-4. **Initialize database**
-   ```bash
-   yarn init-db:dev
-   ```
-
-5. **Deploy Discord commands**
-   ```bash
-   yarn deploy:dev
-   ```
-
-## Configuration
-
-Create a `config.json` file with the following structure that meets the structure expected by `src/config.ts` which is what reads the config.json.
-
-Environment variables are used in `.env` for Postgres credentials and credentials for the web risk API. If you do not have all the credentials, you may need to comment out those parts of  the code to prevent issues.
-
-## Usage
-
-### Development Mode
 ```bash
-yarn start:dev
+git clone https://github.com/j027/redirectChecker.git
+cd redirectChecker
+corepack enable
+yarn install
 ```
 
-### Production Mode
+Create `config.json` following the structure in `src/config.ts`, and a `.env` with Postgres/API credentials.
+
 ```bash
-yarn build
-yarn start
+yarn init-db:dev      # Initialize database
+yarn deploy:dev       # Register Discord commands
+yarn start:dev        # Start in dev mode
 ```
 
-### Discord Commands
+For production: `yarn build && yarn start`
 
-- `/add <url> <redirect_type>` - Add a new redirect to monitor
-- `/remove <id>` - Remove a redirect from monitoring
-- `/status` - View system status and statistics
-- `/takedown_status <count>` - View recent takedowns and how long they took (default to last 10, but up to 20)
+## Discord Commands
 
-### Running Tests
+| Command | Description |
+|---------|-------------|
+| `/add <url> <type>` | Add a redirect to monitor |
+| `/remove <id>` | Remove a redirect |
+| `/status` | View all redirects and their current status |
+| `/takedown_status [count]` | View recent takedowns and timing |
+| `/report <url>` | Manually report a URL |
+| `/hunterlogs` | View hunter event logs (filterable by hunter/event type) |
+| `/ads` | Browse detected ads with scam/clean filtering |
+| `/redirectlogs` | View redirect checker logs (filterable by event/source) |
+
+## Testing
+
 ```bash
 yarn test
 ```
-> Some of these tests require a valid display for the browser to open in as it's not always a headless browser.
 
-## Hunter Services
-
-### Search Ad Hunter
-Monitors search engine advertisements for tech support scam keywords and follows redirect chains.
-
-### AdSpyGlass Hunter
-Tracks advertisements on adult entertainment platforms where scam ads are commonly placed.
-
-### Typosquat Hunter
-Identifies typosquatted domains that redirect to scam sites.
-
-## AI Classification
-
-The system uses a ResNet18-based ONNX image classification model to analyze screenshots and determine if a website is a scam. The model uses ImageNet normalization and processes 224x224 pixel screenshots with a confidence threshold of 0.90.
-
-Training data is collected only for low-confidence classifications (below 90%) to help improve the model on edge cases.
-
-### Current Limitations
-- **Training data quality**: Ongoing work to improve training dataset
-
-## Monitoring & Alerts
-
-The system provides real-time monitoring through:
-- Discord notifications for new scam discoveries
-- Takedown status tracking across multiple platforms
-- Performance metrics and health checks
-- Automated reporting to security services
-
-## Roadmap
-
-### Planned Improvements
-- **Enhanced AI model**: Fix current accuracy issues with the classification model
-- **Additional ad providers**: Expand monitoring to more advertising networks
-- **Improved stealth capabilities**: Enhanced anti-detection measures
-
-### Potential Ad Providers
-- Social media advertising platforms
-- Mobile app advertisement networks
-- Email-based advertising campaigns
-- Additional adult content platforms
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+Some tests require a display for non-headless browser instances.
 
 ## License
 
-This project is licensed under the terms specified in the LICENSE file.
+See [LICENSE](LICENSE).
 
 ## Disclaimer
 
-> **Warning:** This tool is designed for research and cybersecurity purposes to help identify and combat online scams. Users should comply with all applicable laws and regulations when using this software. The authors are not responsible for any misuse of this tool.
-
-> **Note:** This project utilizes undocumented APIs for some security service checks where no official public APIs are available for takedown status monitoring.
-
-## Security
-
-- All credentials should be stored securely in the config file
-- The code tries to enable sandboxing in the browser that playwright normally disables
-
-## Support
-
-For questions, issues, or contributions, please open an issue on the GitHub repository.
+This tool is for cybersecurity research to combat online scams. Users must comply with applicable laws. Some takedown status checks use undocumented APIs where no public alternatives exist.

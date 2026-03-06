@@ -1,5 +1,6 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { setTimeout } from "timers/promises";
+import { chromium } from "patchright";
 import { readConfig } from "./config.js";
 import { commands } from "./commands/commands.js";
 import { closePool } from "./dbPool.js";
@@ -21,10 +22,35 @@ import { browserRedirectService} from "./services/browserRedirectService.js";
 import { aiClassifierService } from "./services/aiClassifierService.js";
 import { hunterService } from "./services/hunterService.js";
 import { initializeGoogleWebRiskClient } from "./services/reportService.js";
+import { getLatestChromeVersion } from "./services/chromeUserAgentService.js";
 
 export const discordClient = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 });
+
+/**
+ * Compares bundled Chromium version against latest stable Chrome.
+ * Logs a warning if they differ by more than 1 major version.
+ */
+async function checkChromiumVersionDrift(): Promise<void> {
+  try {
+    const browser = await chromium.launch({ headless: true });
+    const bundledVersion = browser.version();
+    await browser.close();
+
+    const bundledMajor = parseInt(bundledVersion.split('.')[0]);
+    const stableMajor = await getLatestChromeVersion();
+    const drift = stableMajor - bundledMajor;
+
+    if (drift > 1) {
+      console.warn(`⚠️  CHROMIUM VERSION DRIFT: bundled Chromium ${bundledMajor}, stable Chrome ${stableMajor} (${drift} versions behind). Update patchright to avoid bot detection.`);
+    } else {
+      console.log(`Chromium version check OK: bundled ${bundledMajor}, stable ${stableMajor}`);
+    }
+  } catch (error) {
+    console.error("Failed to check Chromium version drift:", error);
+  }
+}
 
 async function initializeServices() {
   await aiClassifierService.init();
@@ -73,6 +99,7 @@ async function main() {
   console.log("Starting up...");
   const { token } = await readConfig();
   await initializeServices();
+  await checkChromiumVersionDrift();
 
   // Log in to Discord with your client's token
   console.log("Logging into discord");

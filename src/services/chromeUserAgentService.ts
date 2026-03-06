@@ -2,7 +2,7 @@ interface ChromeRelease {
   version: string;
 }
 
-async function getLatestChromeVersion(): Promise<number> {
+export async function getLatestChromeVersion(): Promise<number> {
   const response = await fetch(
     "https://chromiumdash.appspot.com/fetch_releases?channel=Stable&platform=Windows&num=1&offset=0",
   );

@@ -1,6 +1,7 @@
 import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { CommandDefinition } from "./commands.js";
 import { reportSite } from "../services/reportService.js";
+import { isValidUrl } from "../utils/urlUtils.js";
 
 export const reportCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
@@ -48,10 +49,3 @@ export const reportCommand: CommandDefinition = {
   },
 };
 
-function isValidUrl(url: string) {
-  try {
-    return Boolean(new URL(url));
-  } catch (e) {
-    return false;
-  }
-}

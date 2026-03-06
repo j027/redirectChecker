@@ -3,6 +3,7 @@ import { CommandDefinition } from "./commands.js";
 import { RedirectType } from "../redirectType.js";
 import { handleRedirect } from "../services/redirectHandlerService.js";
 import { aiClassifierService } from "../services/aiClassifierService.js";
+import { isValidUrl } from "../utils/urlUtils.js";
 import pool from "../dbPool.js";
 
 export const addCommand: CommandDefinition = {
@@ -133,10 +134,3 @@ export const addCommand: CommandDefinition = {
   },
 };
 
-function isValidUrl(url: string) {
-  try {
-    return Boolean(new URL(url));
-  } catch (e) {
-    return false;
-  }
-}

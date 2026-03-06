@@ -107,8 +107,16 @@ function generateBrandData(version: string): Array<{brand: string, version: stri
   // Create placeholder for brands
   const brands = new Array(3);
   
+  // Greased brand string rotates based on major version (matches Chromium source)
+  // See: chromium/src/components/embedder_support/user_agent_utils.cc
+  const greasedBrands = [
+    "Not/A)Brand", "Not A;Brand", "Not.A/Brand",
+    "Not)A;Brand", "Not A Brand"
+  ];
+  const greasedVersions = ["8", "99.0.0.0"];
+  
   // Fill in the brands according to the calculated order
-  brands[order[0]] = { brand: "Not A Brand", version: "24" };
+  brands[order[0]] = { brand: greasedBrands[seed % 5], version: greasedVersions[seed % 2] };
   brands[order[1]] = { brand: "Chromium", version: majorVersion };
   brands[order[2]] = { brand: "Google Chrome", version: majorVersion };
   

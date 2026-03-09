@@ -10,6 +10,8 @@ import { reportCommand } from "./report.js";
 import { hunterLogsCommand } from "./hunterLogs.js";
 import { adsCommand } from "./ads.js";
 import { redirectLogsCommand } from "./redirectLogs.js";
+import { scamStatsDailyCommand } from "./scamStatsDaily.js";
+import { scamStatsMonthlyCommand } from "./scamStatsMonthly.js";
 
 export type CommandDefinition = {
   execute(interaction: ChatInputCommandInteraction): Promise<void>;
@@ -24,5 +26,7 @@ export const commands: CommandDefinition[] = [
   reportCommand,
   hunterLogsCommand,
   adsCommand,
-  redirectLogsCommand
+  redirectLogsCommand,
+  scamStatsDailyCommand,
+  scamStatsMonthlyCommand
 ];

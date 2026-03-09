@@ -144,7 +144,16 @@ CREATE TABLE IF NOT EXISTS redirect_events (
     created_at  TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Persistent append-only log of every scam detection (never pruned)
+CREATE TABLE IF NOT EXISTS scam_reports (
+    id          SERIAL PRIMARY KEY,
+    url         TEXT NOT NULL,
+    source_type VARCHAR(50) NOT NULL,  -- 'redirect', 'search', 'pornhub', 'typosquat', 'adspyglass'
+    detected_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes
+CREATE INDEX IF NOT EXISTS idx_scam_reports_detected ON scam_reports (detected_at);
 CREATE INDEX idx_ads_type ON ads (ad_type);
 CREATE INDEX idx_ads_scam ON ads (is_scam);
 CREATE INDEX idx_ads_last_seen ON ads (last_seen);

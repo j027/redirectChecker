@@ -6,6 +6,7 @@ import { initTakedownStatusForDestination } from "./takedownMonitorService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
 import { logRedirectEvent } from "./redirectEventLogger.js";
+import { logScamReport } from "./scamReportLogger.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();
@@ -153,6 +154,7 @@ async function processRedirectEntry(
 
       // If it's a scam site, report it with the screenshot and HTML
       if (isScam) {
+        await logScamReport(redirectDestination, "redirect");
         await logRedirectEvent("scam_found", `Scam detected: ${redirectDestination}`, sourceUrl, {
           destination: redirectDestination, confidence: confidenceScore
         });

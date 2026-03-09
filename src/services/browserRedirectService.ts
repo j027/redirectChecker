@@ -82,8 +82,30 @@ export class BrowserRedirectService {
     await blockGoogleAnalytics(page);
     await blockPageResources(page);
 
+    let loopDetected = false;
+
     try {
       const redirectTracker = await trackRedirectionPath(page, redirectUrl);
+
+      // Loop detection: track hostname frequency across navigations.
+      // If any hostname appears too many times, abort by closing the page.
+      const MAX_HOSTNAME_HITS = 4;
+      const hostnameHits = new Map<string, number>();
+
+      page.on("framenavigated", (frame) => {
+        if (frame !== page.mainFrame()) return;
+        try {
+          const hostname = new URL(frame.url()).hostname;
+          const count = (hostnameHits.get(hostname) ?? 0) + 1;
+          hostnameHits.set(hostname, count);
+          if (count >= MAX_HOSTNAME_HITS) {
+            loopDetected = true;
+            console.log(`Redirect loop detected: ${hostname} appeared ${count} times — aborting`);
+            page.close().catch(() => {});
+          }
+        } catch {}
+      });
+
       await page.goto(redirectUrl, { waitUntil: "commit", referer: referrer });
 
       // wait for the url to change
@@ -122,10 +144,14 @@ export class BrowserRedirectService {
       
       return destinationUrl != redirectUrl ? destinationUrl : null;
     } catch (error) {
-      console.log(`Error when handling redirect: ${error}`);
+      if (loopDetected) {
+        console.log(`Redirect loop aborted for ${redirectUrl}`);
+      } else {
+        console.log(`Error when handling redirect: ${error}`);
+      }
       return null;
     } finally {
-      await page.close();
+      await page.close().catch(() => {});
       await context.close();
     }
   }

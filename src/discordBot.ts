@@ -15,7 +15,9 @@ import {
   stopAdHunter,
   startRedirectPruner,
   stopRedirectPruner,
-  startEventLogPruner
+  startEventLogPruner,
+  startUrlscanHunter,
+  stopUrlscanHunter
 } from "./services/schedulerService.js";
 import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
@@ -65,11 +67,18 @@ async function initializeServices() {
   startAdHunter();
   startRedirectPruner();
   startEventLogPruner();
+
+  // Start URLScan hunter if enabled in config
+  const config = await readConfig();
+  if (config.urlscanHunterEnabled) {
+    startUrlscanHunter();
+  }
 }
 
 async function shutdownServices() {
   await stopBatchReportProcessor();
   stopAdHunter();
+  stopUrlscanHunter();
   stopRedirectChecker();
   stopTakedownMonitor();
   stopRedirectPruner();

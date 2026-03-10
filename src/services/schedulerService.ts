@@ -6,12 +6,14 @@ import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
 import { logHunterEvent, pruneHunterEvents } from "./hunterEventLogger.js";
 import { pruneRedirectEvents } from "./redirectEventLogger.js";
+import { urlscanHunter } from "./urlscanHunter.js";
 
 let checkInterval: NodeJS.Timeout | null = null;
 let batchInterval: NodeJS.Timeout | null = null;
 let takedownInterval: NodeJS.Timeout | null = null;
 let adHunterInterval: NodeJS.Timeout | null = null;
 let pruningInterval: NodeJS.Timeout | null = null;
+let urlscanInterval: NodeJS.Timeout | null = null;
 
 let redirectCheckerAbortController: AbortController | null = null;
 let adHunterAbortController: AbortController | null = null;
@@ -23,6 +25,7 @@ let isRunning = {
   takedownMonitor: false,
   adHunter: false,
   redirectPruner: false,
+  urlscanHunter: false,
 };
 
 function withTimeout<T>(
@@ -358,4 +361,35 @@ export function stopRedirectPruner(): void {
     clearTimeout(pruningInterval);
     pruningInterval = null;
   }
+}
+
+export function startUrlscanHunter(): void {
+  if (isRunning.urlscanHunter) return;
+  isRunning.urlscanHunter = true;
+  console.log("Starting URLScan hunter service");
+
+  async function runUrlscanCycle() {
+    if (!isRunning.urlscanHunter) return;
+
+    try {
+      await urlscanHunter.runCycle();
+    } catch (error) {
+      console.error("[urlscan-hunter] Scheduler error:", error);
+    }
+
+    if (isRunning.urlscanHunter) {
+      urlscanInterval = setTimeout(runUrlscanCycle, 10 * 1000);
+    }
+  }
+
+  runUrlscanCycle();
+}
+
+export function stopUrlscanHunter(): void {
+  isRunning.urlscanHunter = false;
+  if (urlscanInterval) {
+    clearTimeout(urlscanInterval);
+    urlscanInterval = null;
+  }
+  console.log("URLScan hunter service stopped");
 }

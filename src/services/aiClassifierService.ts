@@ -330,8 +330,10 @@ export class AiClassifierService {
     isScam: boolean,
     confidenceScore: number
   ): Promise<void> {
-    // Only save data when model is not confident - these are the edge cases we need to improve
-    if (confidenceScore >= CONFIDENCE_THRESHOLD) {
+    // Only save true edge cases where the model is near the decision boundary.
+    // Non-scam threshold is tighter since non-scams vastly outnumber scams.
+    const saveThreshold = isScam ? 0.70 : 0.60;
+    if (confidenceScore >= saveThreshold) {
       return;
     }
 

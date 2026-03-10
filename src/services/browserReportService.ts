@@ -28,7 +28,7 @@ export class BrowserReportService {
           await BrowserManagerService.closeBrowser(this.browser);
           
           // Create new browser
-          this.browser = await BrowserManagerService.createBrowser(true);
+          this.browser = await BrowserManagerService.createBrowser(false);
           console.log("Browser report service initialized new browser");
         } finally {
           this.browserInitializing = false;
@@ -65,6 +65,15 @@ export class BrowserReportService {
       await loginField.fill(microsoftUsername);
       await loginField.press("Enter");
 
+      // Microsoft may show sign-in method picker — click "Use your password" if it appears
+      try {
+        const usePasswordButton = page.getByRole("button", { name: "Use your password" });
+        await usePasswordButton.waitFor({ state: "visible", timeout: 3000 });
+        await usePasswordButton.click();
+      } catch {
+        // Password field shown directly — no method picker
+      }
+
       const activePasswordField = await Promise.any([
         page
           .getByRole('textbox', { name: 'Password' })
@@ -78,6 +87,24 @@ export class BrowserReportService {
 
       await activePasswordField.fill(microsoftPassword);
       await activePasswordField.press("Enter");
+
+      // Microsoft may fail to create a passkey and show an error dialog
+      try {
+        const cancelButton = page.getByRole("button", { name: "Cancel" });
+        await page.getByText("couldn't create a passkey").waitFor({ state: "visible", timeout: 3000 });
+        await cancelButton.click();
+      } catch {
+        // No passkey error prompt
+      }
+
+      // Microsoft may ask "Is your security info still accurate?"
+      try {
+        const looksGoodButton = page.getByRole("button", { name: "Looks good!" });
+        await looksGoodButton.waitFor({ state: "visible", timeout: 3000 });
+        await looksGoodButton.click();
+      } catch {
+        // No security info prompt
+      }
 
       await page.getByRole("button", { name: "Yes" }).click();
 

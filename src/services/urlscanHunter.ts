@@ -65,7 +65,7 @@ export class UrlscanHunter {
           await this.processResult(result);
         } catch (error) {
           console.error(
-            `[urlscan-hunter] Error processing ${result._id}: ${error}`
+            `[urlscan-hunter] Error processing ${result._id}: ${error}`,
           );
         }
       }
@@ -95,9 +95,7 @@ export class UrlscanHunter {
     });
 
     if (!response.ok) {
-      console.error(
-        `[urlscan-hunter] Feed returned ${response.status}`
-      );
+      console.error(`[urlscan-hunter] Feed returned ${response.status}`);
       return [];
     }
 
@@ -140,7 +138,8 @@ export class UrlscanHunter {
     const screenshotBuffer = await this.downloadScreenshot(result.screenshot);
     if (!screenshotBuffer) return;
 
-    const classification = await aiClassifierService.runInference(screenshotBuffer);
+    const classification =
+      await aiClassifierService.runInference(screenshotBuffer);
     const { isScam: rawIsScam, confidenceScore } = classification;
 
     if (!rawIsScam || confidenceScore < CONFIDENCE_THRESHOLD) return;
@@ -160,7 +159,7 @@ export class UrlscanHunter {
       }
     } catch (error) {
       console.error(
-        `[urlscan-hunter] Browser verification failed for ${url}: ${error}`
+        `[urlscan-hunter] Browser verification failed for ${url}: ${error}`,
       );
     }
 
@@ -174,19 +173,26 @@ export class UrlscanHunter {
       reportedSuccessfully = true;
     } catch (error) {
       console.error(
-        `[urlscan-hunter] Netcraft report failed for ${url}: ${error}`
+        `[urlscan-hunter] Netcraft report failed for ${url}: ${error}`,
       );
     }
 
     // Log to urlscan_reports table
-    await this.saveReport(uuid, url, confidenceScore, signals, reportedSuccessfully);
+    await this.saveReport(
+      uuid,
+      url,
+      confidenceScore,
+      signals,
+      reportedSuccessfully,
+    );
 
     // Log to scam_reports for cross-module dedup
     if (reportedSuccessfully) {
-      await logScamReport(url, "urlscan");
+      // not logging scam report here to prevent counting this
+      // wait to separate these stats from the main hunter
       await this.incrementReportedCount();
       console.log(
-        `[urlscan-hunter] Reported ${url} (confidence: ${(confidenceScore * 100).toFixed(1)}%)`
+        `[urlscan-hunter] Reported ${url} (confidence: ${(confidenceScore * 100).toFixed(1)}%)`,
       );
     }
   }
@@ -195,7 +201,7 @@ export class UrlscanHunter {
    * Downloads a screenshot PNG from urlscan.io.
    */
   private async downloadScreenshot(
-    screenshotUrl: string
+    screenshotUrl: string,
   ): Promise<Buffer | null> {
     try {
       const response = await fetch(screenshotUrl);
@@ -212,7 +218,7 @@ export class UrlscanHunter {
    * Browser is created and destroyed per-call for reliability.
    */
   private async browserVerify(
-    url: string
+    url: string,
   ): Promise<{ signals: DetectedSignals; screenshot: Buffer } | null> {
     let browser: Browser | null = null;
 
@@ -260,7 +266,7 @@ export class UrlscanHunter {
   private async isAlreadyProcessed(uuid: string): Promise<boolean> {
     const result = await pool.query(
       `SELECT 1 FROM urlscan_reports WHERE urlscan_uuid = $1 LIMIT 1`,
-      [uuid]
+      [uuid],
     );
     return (result.rowCount ?? 0) > 0;
   }
@@ -277,7 +283,7 @@ export class UrlscanHunter {
 
     const result = await pool.query(
       `SELECT 1 FROM scam_reports WHERE regexp_replace(url, '\\?.*$', '') = $1 LIMIT 1`,
-      [baseUrl]
+      [baseUrl],
     );
     return (result.rowCount ?? 0) > 0;
   }
@@ -287,14 +293,14 @@ export class UrlscanHunter {
     url: string,
     confidence: number,
     signals: DetectedSignals,
-    reportedToNetcraft: boolean
+    reportedToNetcraft: boolean,
   ): Promise<void> {
     try {
       await pool.query(
         `INSERT INTO urlscan_reports (urlscan_uuid, url, classifier_confidence, signals, reported_to_netcraft)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (urlscan_uuid) DO NOTHING`,
-        [uuid, url, confidence, JSON.stringify(signals), reportedToNetcraft]
+        [uuid, url, confidence, JSON.stringify(signals), reportedToNetcraft],
       );
     } catch (error) {
       console.error(`[urlscan-hunter] Failed to save report: ${error}`);
@@ -307,7 +313,7 @@ export class UrlscanHunter {
         `INSERT INTO urlscan_scan_stats (date, urls_scanned)
          VALUES (CURRENT_DATE, $1)
          ON CONFLICT (date) DO UPDATE SET urls_scanned = urlscan_scan_stats.urls_scanned + $1`,
-        [count]
+        [count],
       );
     } catch (error) {
       console.error(`[urlscan-hunter] Failed to update scan count: ${error}`);
@@ -319,11 +325,11 @@ export class UrlscanHunter {
       await pool.query(
         `INSERT INTO urlscan_scan_stats (date, urls_classified_scam)
          VALUES (CURRENT_DATE, 1)
-         ON CONFLICT (date) DO UPDATE SET urls_classified_scam = urlscan_scan_stats.urls_classified_scam + 1`
+         ON CONFLICT (date) DO UPDATE SET urls_classified_scam = urlscan_scan_stats.urls_classified_scam + 1`,
       );
     } catch (error) {
       console.error(
-        `[urlscan-hunter] Failed to update classified count: ${error}`
+        `[urlscan-hunter] Failed to update classified count: ${error}`,
       );
     }
   }
@@ -333,11 +339,11 @@ export class UrlscanHunter {
       await pool.query(
         `INSERT INTO urlscan_scan_stats (date, urls_reported)
          VALUES (CURRENT_DATE, 1)
-         ON CONFLICT (date) DO UPDATE SET urls_reported = urlscan_scan_stats.urls_reported + 1`
+         ON CONFLICT (date) DO UPDATE SET urls_reported = urlscan_scan_stats.urls_reported + 1`,
       );
     } catch (error) {
       console.error(
-        `[urlscan-hunter] Failed to update reported count: ${error}`
+        `[urlscan-hunter] Failed to update reported count: ${error}`,
       );
     }
   }

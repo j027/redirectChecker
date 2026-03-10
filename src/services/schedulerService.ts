@@ -378,7 +378,7 @@ export function startUrlscanHunter(): void {
     }
 
     if (isRunning.urlscanHunter) {
-      urlscanInterval = setTimeout(runUrlscanCycle, 10 * 1000);
+      urlscanInterval = setTimeout(runUrlscanCycle, 5 * 1000);
     }
   }
 

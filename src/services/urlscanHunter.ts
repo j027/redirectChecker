@@ -145,6 +145,11 @@ export class UrlscanHunter {
       );
     }
 
+    // Ignore third-party hosting signal for urlscan — too many false positives at this volume
+    if (signals) {
+      signals.isThirdPartyHosting = false;
+    }
+
     // Need both high confidence AND a weighted signal
     if (!signals || !hasWeightedSignal(signals)) return;
 

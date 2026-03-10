@@ -33,18 +33,15 @@ interface UrlscanLiveResult {
   };
   screenshot: string; // URL to screenshot PNG
   _id: string;
-  sort: [number, string];
 }
 
 interface UrlscanLiveResponse {
   results: UrlscanLiveResult[];
-  has_more: boolean;
 }
 
 // --- URLScan Hunter ---
 
 export class UrlscanHunter {
-  private lastSort: [number, string] | null = null;
   private processedUuids = new Set<string>();
   // Cap in-memory set to prevent unbounded growth
   private static readonly MAX_PROCESSED_CACHE = 50_000;
@@ -79,18 +76,10 @@ export class UrlscanHunter {
 
   /**
    * Fetches the latest results from urlscan.io live feed.
-   * Uses cursor-based pagination to avoid re-processing.
+   * Returns the most recent batch; deduplication is handled by UUID.
    */
   private async fetchLiveFeed(): Promise<UrlscanLiveResult[]> {
-    let url = "https://urlscan.io/json/live/";
-    if (this.lastSort) {
-      const params = new URLSearchParams({
-        search_after: JSON.stringify(this.lastSort),
-      });
-      url += `?${params}`;
-    }
-
-    const response = await fetch(url, {
+    const response = await fetch("https://urlscan.io/json/live/", {
       headers: { Accept: "application/json" },
     });
 
@@ -100,14 +89,7 @@ export class UrlscanHunter {
     }
 
     const data = (await response.json()) as UrlscanLiveResponse;
-    const results = data.results ?? [];
-
-    // Update cursor to the last result's sort value
-    if (results.length > 0) {
-      this.lastSort = results[results.length - 1].sort;
-    }
-
-    return results;
+    return data.results ?? [];
   }
 
   /**

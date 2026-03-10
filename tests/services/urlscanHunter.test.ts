@@ -95,7 +95,6 @@ function makeFeedResult(overrides: Record<string, unknown> = {}) {
     },
     screenshot: "https://urlscan.io/screenshots/test-uuid-001.png",
     _id: uuid,
-    sort: [1773104319461, uuid] as [number, string],
     ...overrides,
   };
 }

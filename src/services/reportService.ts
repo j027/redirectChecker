@@ -61,7 +61,7 @@ interface NetcraftApiResponse {
   uuid: string;
 }
 
-async function reportToNetcraft(site: string) {
+export async function reportToNetcraft(site: string) {
   const { netcraftReportEmail } = await readConfig();
 
   const response = await fetch("https://report.netcraft.com/api/v3/report/urls", {

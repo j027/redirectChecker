@@ -164,3 +164,25 @@ CREATE INDEX idx_hunter_events_event ON hunter_events (event_type);
 CREATE INDEX idx_hunter_events_created ON hunter_events (created_at DESC);
 CREATE INDEX idx_redirect_events_type ON redirect_events (event_type);
 CREATE INDEX idx_redirect_events_created ON redirect_events (created_at DESC);
+
+-- URLScan hunter: individual report log
+CREATE TABLE IF NOT EXISTS urlscan_reports (
+    id                      SERIAL PRIMARY KEY,
+    urlscan_uuid            TEXT NOT NULL UNIQUE,              -- urlscan result UUID (dedup key)
+    url                     TEXT NOT NULL,                     -- the scam URL
+    classifier_confidence   FLOAT NOT NULL,                   -- initial classifier score
+    signals                 JSONB,                            -- detected signals snapshot
+    reported_to_netcraft    BOOLEAN DEFAULT FALSE,            -- did netcraft report succeed?
+    created_at              TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_urlscan_reports_created ON urlscan_reports (created_at);
+CREATE INDEX IF NOT EXISTS idx_urlscan_reports_url ON urlscan_reports (url);
+
+-- URLScan hunter: daily scan statistics (one row per day, upserted)
+CREATE TABLE IF NOT EXISTS urlscan_scan_stats (
+    date                  DATE PRIMARY KEY DEFAULT CURRENT_DATE,
+    urls_scanned          INTEGER NOT NULL DEFAULT 0,         -- total results processed from feed
+    urls_classified_scam  INTEGER NOT NULL DEFAULT 0,         -- classifier >= 0.90 (before signal check)
+    urls_reported         INTEGER NOT NULL DEFAULT 0          -- successfully reported to Netcraft
+);

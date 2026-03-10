@@ -224,9 +224,6 @@ export class AiClassifierService {
     imageBuffer: Buffer
   ): Promise<{ isScam: boolean; confidenceScore: number }> {
     try {
-      // Log start of inference
-      console.log("Starting inference for image");
-
       // Preprocess the image
       const preprocessedImage = await this.preprocessImage(imageBuffer);
 
@@ -240,7 +237,6 @@ export class AiClassifierService {
 
       // Get dynamic input name
       const inputName = this.model!.inputNames[0];
-      console.log(`Using model input name: ${inputName}`);
 
       // Run inference
       const feeds = { [inputName]: inputTensor };
@@ -248,19 +244,15 @@ export class AiClassifierService {
 
       // Get dynamic output name
       const outputName = this.model!.outputNames[0];
-      console.log(`Using model output name: ${outputName}`);
 
       // Process output tensor
       const output = results[outputName].data as Float32Array;
-      console.log("Raw output (logits):", Array.from(output));
 
       // Apply softmax to convert logits to probabilities
       const maxLogit = Math.max(...Array.from(output));
       const expValues = Array.from(output).map(x => Math.exp(x - maxLogit));
       const sumExp = expValues.reduce((a, b) => a + b, 0);
       const probabilities = expValues.map(x => x / sumExp);
-      
-      console.log("Probabilities after softmax:", probabilities);
 
       // Find the class with highest probability
       let maxConfidenceIdx = 0;
@@ -276,10 +268,6 @@ export class AiClassifierService {
       // Map to class (0 = non_scam, 1 = scam)
       const isScam = maxConfidenceIdx === 1;
       const confidenceScore = maxConfidence;
-
-      console.log(
-        `Prediction: class=${maxConfidenceIdx} (${isScam ? "scam" : "non_scam"}), confidence=${confidenceScore}`
-      );
 
       return { isScam, confidenceScore };
     } catch (error) {
@@ -344,9 +332,6 @@ export class AiClassifierService {
   ): Promise<void> {
     // Only save data when model is not confident - these are the edge cases we need to improve
     if (confidenceScore >= CONFIDENCE_THRESHOLD) {
-      console.log(
-        `Skipping save for ${url} - confidence ${(confidenceScore * 100).toFixed(2)}% is above threshold`
-      );
       return;
     }
 

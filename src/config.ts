@@ -26,6 +26,8 @@ type Config = {
    *  Only needed if you are reporting to the web risk api (need special permission for this)
    */
   googleWebRiskApiProjectName: string;
+  /** Enable the URLScan firehose hunter (default false if absent) */
+  urlscanHunterEnabled?: boolean;
 };
 
 export async function readConfig(): Promise<Config> {

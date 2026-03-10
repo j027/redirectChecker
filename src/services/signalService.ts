@@ -57,6 +57,7 @@ const ADDITIONAL_THIRD_PARTY_HOSTING = [
   "surge.sh",
   "glitch.me",
   "b-cdn.net",
+  "azurecontainerapps.io",
 ];
 
 export class SignalService {

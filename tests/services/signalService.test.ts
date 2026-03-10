@@ -87,6 +87,8 @@ describe("SignalService", () => {
       // Additional list (not in PSL)
       expect(signalService.checkIsThirdPartyHosting("scam.surge.sh")).toBe(true);
       expect(signalService.checkIsThirdPartyHosting("bad.glitch.me")).toBe(true);
+      expect(signalService.checkIsThirdPartyHosting("example-app.uaenorth.azurecontainerapps.io")).toBe(true);
+      expect(signalService.checkIsThirdPartyHosting("sub.example.azurecontainerapps.io")).toBe(true);
       
       // Website builders (via PSL isPrivate)
       expect(signalService.checkIsThirdPartyHosting("phishing.blogspot.com")).toBe(true);

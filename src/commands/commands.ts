@@ -12,6 +12,7 @@ import { adsCommand } from "./ads.js";
 import { redirectLogsCommand } from "./redirectLogs.js";
 import { scamStatsDailyCommand } from "./scamStatsDaily.js";
 import { scamStatsMonthlyCommand } from "./scamStatsMonthly.js";
+import { urlscanStatsCommand } from "./urlscanStats.js";
 
 export type CommandDefinition = {
   execute(interaction: ChatInputCommandInteraction): Promise<void>;
@@ -28,5 +29,6 @@ export const commands: CommandDefinition[] = [
   adsCommand,
   redirectLogsCommand,
   scamStatsDailyCommand,
-  scamStatsMonthlyCommand
+  scamStatsMonthlyCommand,
+  urlscanStatsCommand
 ];

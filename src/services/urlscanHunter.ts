@@ -1,20 +1,6 @@
-import { Browser } from "patchright";
 import { fetch } from "undici";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { reportToNetcraft } from "./reportService.js";
-import { logScamReport } from "./scamReportLogger.js";
-import {
-  parseProxy,
-  blockGoogleAnalytics,
-  spoofWindowsChrome,
-  simulateRandomMouseMovements,
-} from "../utils/playwrightUtilities.js";
-import { BrowserManagerService } from "./browserManagerService.js";
-import {
-  createSignalService,
-  DetectedSignals,
-  hasWeightedSignal,
-} from "./signalService.js";
 import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
 import pool from "../dbPool.js";
 
@@ -129,31 +115,7 @@ export class UrlscanHunter {
     // Classifier says scam with high confidence — increment stat
     await this.incrementClassifiedCount();
 
-    // --- Stage 3: Browser verification ---
-    let signals: DetectedSignals | null = null;
-    let freshScreenshot: Buffer | null = null;
-
-    try {
-      const verification = await this.browserVerify(url);
-      if (verification) {
-        signals = verification.signals;
-        freshScreenshot = verification.screenshot;
-      }
-    } catch (error) {
-      console.error(
-        `[urlscan-hunter] Browser verification failed for ${url}: ${error}`,
-      );
-    }
-
-    // Ignore third-party hosting signal for urlscan — too many false positives at this volume
-    if (signals) {
-      signals.isThirdPartyHosting = false;
-    }
-
-    // Need both high confidence AND a weighted signal
-    if (!signals || !hasWeightedSignal(signals)) return;
-
-    // --- Stage 4: Report to Netcraft ---
+    // --- Stage 3: Report to Netcraft ---
     let reportedSuccessfully = false;
     try {
       await reportToNetcraft(url);
@@ -169,7 +131,6 @@ export class UrlscanHunter {
       uuid,
       url,
       confidenceScore,
-      signals,
       reportedSuccessfully,
     );
 
@@ -196,55 +157,6 @@ export class UrlscanHunter {
       return Buffer.from(await response.arrayBuffer());
     } catch {
       return null;
-    }
-  }
-
-  /**
-   * Opens the URL in a fresh browser context with hunter proxy,
-   * attaches signal listeners, takes a fresh screenshot, and collects signals.
-   * Browser is created and destroyed per-call for reliability.
-   */
-  private async browserVerify(
-    url: string,
-  ): Promise<{ signals: DetectedSignals; screenshot: Buffer } | null> {
-    let browser: Browser | null = null;
-
-    try {
-      browser = await BrowserManagerService.createBrowser(true);
-      const signalService = createSignalService();
-
-      const context = await browser.newContext({
-        proxy: await parseProxy(true),
-        viewport: null,
-      });
-
-      const page = await context.newPage();
-
-      try {
-        await spoofWindowsChrome(context, page);
-        await blockGoogleAnalytics(page);
-        await signalService.attachApiListeners(page);
-
-        await page.goto(url, { timeout: 30000 });
-        await simulateRandomMouseMovements(page);
-        await page.waitForTimeout(5000);
-
-        const screenshot = await page.screenshot();
-        await signalService.detectAllSignals(page, url);
-
-        return {
-          signals: signalService.getSignals(),
-          screenshot,
-        };
-      } finally {
-        await page.close();
-        await context.close();
-      }
-    } catch (error) {
-      console.error(`[urlscan-hunter] Browser verify error: ${error}`);
-      return null;
-    } finally {
-      await BrowserManagerService.closeBrowser(browser);
     }
   }
 
@@ -279,15 +191,14 @@ export class UrlscanHunter {
     uuid: string,
     url: string,
     confidence: number,
-    signals: DetectedSignals,
     reportedToNetcraft: boolean,
   ): Promise<void> {
     try {
       await pool.query(
-        `INSERT INTO urlscan_reports (urlscan_uuid, url, classifier_confidence, signals, reported_to_netcraft)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO urlscan_reports (urlscan_uuid, url, classifier_confidence, reported_to_netcraft)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (urlscan_uuid) DO NOTHING`,
-        [uuid, url, confidence, JSON.stringify(signals), reportedToNetcraft],
+        [uuid, url, confidence, reportedToNetcraft],
       );
     } catch (error) {
       console.error(`[urlscan-hunter] Failed to save report: ${error}`);

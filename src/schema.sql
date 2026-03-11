@@ -171,7 +171,6 @@ CREATE TABLE IF NOT EXISTS urlscan_reports (
     urlscan_uuid            TEXT NOT NULL UNIQUE,              -- urlscan result UUID (dedup key)
     url                     TEXT NOT NULL,                     -- the scam URL
     classifier_confidence   FLOAT NOT NULL,                   -- initial classifier score
-    signals                 JSONB,                            -- detected signals snapshot
     reported_to_netcraft    BOOLEAN DEFAULT FALSE,            -- did netcraft report succeed?
     created_at              TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

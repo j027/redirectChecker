@@ -17,67 +17,22 @@ vi.mock("../../src/services/reportService.js", () => ({
   reportToNetcraft: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../src/services/scamReportLogger.js", () => ({
-  logScamReport: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("../../src/dbPool.js", () => ({
   default: {
     query: vi.fn().mockResolvedValue({ rowCount: 0, rows: [] }),
   },
 }));
 
-vi.mock("../../src/services/browserManagerService.js", () => ({
-  BrowserManagerService: {
-    createBrowser: vi.fn(),
-    closeBrowser: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
-vi.mock("../../src/utils/playwrightUtilities.js", () => ({
-  parseProxy: vi.fn().mockResolvedValue(undefined),
-  blockGoogleAnalytics: vi.fn().mockResolvedValue(undefined),
-  spoofWindowsChrome: vi.fn().mockResolvedValue(undefined),
-  simulateRandomMouseMovements: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../../src/services/signalService.js", () => {
-  const createEmptySignals = () => ({
-    fullscreenRequested: false,
-    keyboardLockRequested: false,
-    pointerLockRequested: false,
-    isThirdPartyHosting: false,
-    isIpAddress: false,
-    pageLoadFrozen: false,
-    workerBombDetected: false,
-  });
-
-  return {
-    createSignalService: vi.fn().mockReturnValue({
-      attachApiListeners: vi.fn().mockResolvedValue(undefined),
-      detectAllSignals: vi.fn().mockResolvedValue(createEmptySignals()),
-      getSignals: vi.fn().mockReturnValue({
-        ...createEmptySignals(),
-        isThirdPartyHosting: true, // default: signal present
-      }),
-    }),
-    createEmptySignals,
-    hasWeightedSignal: vi.fn().mockReturnValue(true),
-  };
-});
-
 // Get mocked modules for assertions
 import { fetch } from "undici";
 import { aiClassifierService } from "../../src/services/aiClassifierService.js";
 import { reportToNetcraft } from "../../src/services/reportService.js";
-import { logScamReport } from "../../src/services/scamReportLogger.js";
 import pool from "../../src/dbPool.js";
 
 const mockFetch = vi.mocked(fetch);
 const mockRunInference = vi.mocked(aiClassifierService.runInference);
 const mockIsWhitelisted = vi.mocked(aiClassifierService.isWhitelisted);
 const mockReportToNetcraft = vi.mocked(reportToNetcraft);
-const mockLogScamReport = vi.mocked(logScamReport);
 const mockPoolQuery = vi.mocked(pool.query);
 
 function makeFeedResult(overrides: Record<string, unknown> = {}) {

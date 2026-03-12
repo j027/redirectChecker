@@ -170,8 +170,17 @@ CREATE TABLE IF NOT EXISTS urlscan_reports (
     id                      SERIAL PRIMARY KEY,
     urlscan_uuid            TEXT NOT NULL UNIQUE,              -- urlscan result UUID (dedup key)
     url                     TEXT NOT NULL,                     -- the scam URL
-    classifier_confidence   FLOAT NOT NULL,                   -- initial classifier score
+    classifier_confidence   FLOAT NOT NULL,                   -- classifier score from browser verification
     reported_to_netcraft    BOOLEAN DEFAULT FALSE,            -- did netcraft report succeed?
+    classifier_is_scam      BOOLEAN,                          -- did classifier flag as scam?
+    has_weighted_signal     BOOLEAN,                          -- did any weighted signal fire?
+    signal_fullscreen       BOOLEAN DEFAULT FALSE,
+    signal_keyboard_lock    BOOLEAN DEFAULT FALSE,
+    signal_pointer_lock     BOOLEAN DEFAULT FALSE,
+    signal_third_party_hosting BOOLEAN DEFAULT FALSE,
+    signal_ip_address       BOOLEAN DEFAULT FALSE,
+    signal_page_frozen      BOOLEAN DEFAULT FALSE,
+    signal_worker_bomb      BOOLEAN DEFAULT FALSE,
     created_at              TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 

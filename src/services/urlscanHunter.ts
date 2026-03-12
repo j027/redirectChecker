@@ -2,6 +2,7 @@ import { fetch } from "undici";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { reportToNetcraft } from "./reportService.js";
 import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
+import { DetectedSignals, hasWeightedSignal } from "./signalService.js";
 import pool from "../dbPool.js";
 
 // --- URLScan API types ---
@@ -81,9 +82,9 @@ export class UrlscanHunter {
   /**
    * Processes a single urlscan result through the pipeline:
    * 1. Dedup by UUID
-   * 2. Download & classify screenshot
+   * 2. Download & classify screenshot (quick pre-filter)
    * 3. If high confidence → browser verify + signal check
-   * 4. If confirmed scam → report to Netcraft
+   * 4. If confirmed scam with signals → report to Netcraft
    */
   private async processResult(result: UrlscanLiveResult): Promise<void> {
     const uuid = result._id;
@@ -102,18 +103,36 @@ export class UrlscanHunter {
     // Skip if already reported via any source
     if (await this.isAlreadyReported(url)) return;
 
-    // --- Stage 2: Download screenshot & classify ---
+    // --- Stage 1: Download screenshot & quick classify (pre-filter) ---
     const screenshotBuffer = await this.downloadScreenshot(result.screenshot);
     if (!screenshotBuffer) return;
 
-    const classification =
+    const quickClassification =
       await aiClassifierService.runInference(screenshotBuffer);
-    const { isScam: rawIsScam, confidenceScore } = classification;
+    if (!quickClassification.isScam || quickClassification.confidenceScore < CONFIDENCE_THRESHOLD) return;
 
-    if (!rawIsScam || confidenceScore < CONFIDENCE_THRESHOLD) return;
-
-    // Classifier says scam with high confidence — increment stat
+    // Quick filter says scam — increment classified stat
     await this.incrementClassifiedCount();
+
+    // --- Stage 2: Browser verification + signal collection ---
+    const verification = await aiClassifierService.classifyUrl(url);
+    if (!verification) {
+      // Browser verification failed — log but don't report
+      await this.saveReport(uuid, url, quickClassification.confidenceScore, false, false);
+      return;
+    }
+
+    const { isScam, confidenceScore, signals } = verification;
+    const passesSignalCheck = hasWeightedSignal(signals);
+
+    if (!isScam || confidenceScore < CONFIDENCE_THRESHOLD || !passesSignalCheck) {
+      // Browser verification didn't confirm — log result but don't report
+      await this.saveReport(uuid, url, confidenceScore, false, isScam, passesSignalCheck, signals);
+      console.log(
+        `[urlscan-hunter] Skipped ${url} — isScam=${isScam}, confidence=${(confidenceScore * 100).toFixed(1)}%, hasSignal=${passesSignalCheck}`,
+      );
+      return;
+    }
 
     // --- Stage 3: Report to Netcraft ---
     let reportedSuccessfully = false;
@@ -132,15 +151,15 @@ export class UrlscanHunter {
       url,
       confidenceScore,
       reportedSuccessfully,
+      isScam,
+      passesSignalCheck,
+      signals,
     );
 
-    // Log to scam_reports for cross-module dedup
     if (reportedSuccessfully) {
-      // not logging scam report here to prevent counting this
-      // wait to separate these stats from the main hunter
       await this.incrementReportedCount();
       console.log(
-        `[urlscan-hunter] Reported ${url} (confidence: ${(confidenceScore * 100).toFixed(1)}%)`,
+        `[urlscan-hunter] Reported ${url} (confidence: ${(confidenceScore * 100).toFixed(1)}%, signals: ${JSON.stringify(signals)})`,
       );
     }
   }
@@ -192,13 +211,31 @@ export class UrlscanHunter {
     url: string,
     confidence: number,
     reportedToNetcraft: boolean,
+    classifierIsScam?: boolean,
+    hasSignal?: boolean,
+    signals?: DetectedSignals,
   ): Promise<void> {
     try {
       await pool.query(
-        `INSERT INTO urlscan_reports (urlscan_uuid, url, classifier_confidence, reported_to_netcraft)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO urlscan_reports (
+           urlscan_uuid, url, classifier_confidence, reported_to_netcraft,
+           classifier_is_scam, has_weighted_signal,
+           signal_fullscreen, signal_keyboard_lock, signal_pointer_lock,
+           signal_third_party_hosting, signal_ip_address, signal_page_frozen, signal_worker_bomb
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          ON CONFLICT (urlscan_uuid) DO NOTHING`,
-        [uuid, url, confidence, reportedToNetcraft],
+        [
+          uuid, url, confidence, reportedToNetcraft,
+          classifierIsScam ?? null, hasSignal ?? null,
+          signals?.fullscreenRequested ?? false,
+          signals?.keyboardLockRequested ?? false,
+          signals?.pointerLockRequested ?? false,
+          signals?.isThirdPartyHosting ?? false,
+          signals?.isIpAddress ?? false,
+          signals?.pageLoadFrozen ?? false,
+          signals?.workerBombDetected ?? false,
+        ],
       );
     } catch (error) {
       console.error(`[urlscan-hunter] Failed to save report: ${error}`);

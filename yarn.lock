@@ -1595,7 +1595,7 @@ __metadata:
     discord.js: "npm:^14.25.1"
     dotenv: "npm:^17.3.1"
     onnxruntime-node: "npm:1.24.3"
-    patchright: "npm:^1.58.2"
+    patchright: "npm:^1.59.1"
     pg: "npm:^8.20.0"
     prettier: "npm:^3.8.1"
     protobufjs: "npm:^8.0.1"
@@ -2790,27 +2790,27 @@ __metadata:
   languageName: node
   linkType: hard
 
-"patchright-core@npm:1.58.2":
-  version: 1.58.2
-  resolution: "patchright-core@npm:1.58.2"
+"patchright-core@npm:1.59.1":
+  version: 1.59.1
+  resolution: "patchright-core@npm:1.59.1"
   bin:
     patchright-core: cli.js
-  checksum: 10c0/618269b366d647867cfaa7e8fde5cabcc1e7bacc049cee1d3c9752fd8c5c1ea13eb29079481094bc4f56cba1e42efd587c26b97e31486382a139d420b7bfbf5d
+  checksum: 10c0/38a24acaa4f0e707ed54f2ca2f24b28aac0945f137359eac122d2c9306a166798054dbb94b5cc3e0ca78158470f60eeab733ca7d4f10196826307a50b4ddeb50
   languageName: node
   linkType: hard
 
-"patchright@npm:^1.58.2":
-  version: 1.58.2
-  resolution: "patchright@npm:1.58.2"
+"patchright@npm:^1.59.1":
+  version: 1.59.1
+  resolution: "patchright@npm:1.59.1"
   dependencies:
     fsevents: "npm:2.3.2"
-    patchright-core: "npm:1.58.2"
+    patchright-core: "npm:1.59.1"
   dependenciesMeta:
     fsevents:
       optional: true
   bin:
     patchright: cli.js
-  checksum: 10c0/b587b2b1b88f2267d4eb0e9c0bca27478fa6f6029ed4673fec4f66bbdbd886ab0cba5f7bf0668f009f4efe2beecac1fe45fe6ea19c99fc8728ef21a1a0a93b46
+  checksum: 10c0/c3617a5f774d4329668cf4e6de117a5e9b6f27fa42183a4260129c023f7a1da8bbae6254a44655534ebb32e084a03456f850fb9a9ee2ebda9a9a9be5cb02f103
   languageName: node
   linkType: hard
 

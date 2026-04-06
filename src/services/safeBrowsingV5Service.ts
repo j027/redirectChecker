@@ -45,35 +45,54 @@ const proto = protobuf.Root.fromJSON({
         FRAME_ONLY: 2,
       },
     },
+    LikelySafeType: {
+      values: {
+        LIKELY_SAFE_TYPE_UNSPECIFIED: 0,
+        GENERAL_BROWSING: 1,
+        CSD: 2,
+        DOWNLOAD: 3,
+      },
+    },
+    HashLength: {
+      values: {
+        HASH_LENGTH_UNSPECIFIED: 0,
+        FOUR_BYTES: 2,
+        EIGHT_BYTES: 3,
+        SIXTEEN_BYTES: 4,
+        THIRTY_TWO_BYTES: 5,
+      },
+    },
     BatchGetHashListsResponse: {
       fields: {
         hashLists: { rule: "repeated", type: "HashList", id: 1 },
       },
     },
     HashList: {
+      oneofs: {
+        compressedAdditions: {
+          oneof: ["additionsFourBytes", "additionsEightBytes", "additionsSixteenBytes", "additionsThirtyTwoBytes"],
+        },
+      },
       fields: {
         name: { type: "string", id: 1 },
         version: { type: "bytes", id: 2 },
         partialUpdate: { type: "bool", id: 3 },
-        compressedRemovals: { type: "RiceDeltaEncoded32Bit", id: 4 },
-        compressedAdditions: { type: "RiceDeltaEncoded", id: 5 },
-        minimumWaitDuration: { type: "google.protobuf.Duration", id: 7 },
+        additionsFourBytes: { type: "RiceDeltaEncoded32Bit", id: 4 },
+        compressedRemovals: { type: "RiceDeltaEncoded32Bit", id: 5 },
+        minimumWaitDuration: { type: "google.protobuf.Duration", id: 6 },
+        sha256Checksum: { type: "bytes", id: 7 },
         metadata: { type: "HashListMetadata", id: 8 },
-        sha256Checksum: { type: "bytes", id: 9 },
+        additionsEightBytes: { type: "RiceDeltaEncoded64Bit", id: 9 },
+        additionsSixteenBytes: { type: "RiceDeltaEncoded128Bit", id: 10 },
+        additionsThirtyTwoBytes: { type: "RiceDeltaEncoded256Bit", id: 11 },
       },
     },
     HashListMetadata: {
       fields: {
         threatTypes: { rule: "repeated", type: "ThreatType", id: 1 },
-        hashLength: { type: "int32", id: 3 },
-      },
-    },
-    RiceDeltaEncoded: {
-      fields: {
-        firstValue: { type: "bytes", id: 1 },
-        riceParameter: { type: "int32", id: 2 },
-        entriesCount: { type: "int32", id: 3 },
-        encodedData: { type: "bytes", id: 4 },
+        likelySafeTypes: { rule: "repeated", type: "LikelySafeType", id: 2 },
+        description: { type: "string", id: 4 },
+        hashLength: { type: "HashLength", id: 6 },
       },
     },
     RiceDeltaEncoded32Bit: {
@@ -82,6 +101,34 @@ const proto = protobuf.Root.fromJSON({
         riceParameter: { type: "int32", id: 2 },
         entriesCount: { type: "int32", id: 3 },
         encodedData: { type: "bytes", id: 4 },
+      },
+    },
+    RiceDeltaEncoded64Bit: {
+      fields: {
+        firstValue: { type: "uint64", id: 1 },
+        riceParameter: { type: "int32", id: 2 },
+        entriesCount: { type: "int32", id: 3 },
+        encodedData: { type: "bytes", id: 4 },
+      },
+    },
+    RiceDeltaEncoded128Bit: {
+      fields: {
+        firstValueHi: { type: "uint64", id: 1 },
+        firstValueLo: { type: "fixed64", id: 2 },
+        riceParameter: { type: "int32", id: 3 },
+        entriesCount: { type: "int32", id: 4 },
+        encodedData: { type: "bytes", id: 5 },
+      },
+    },
+    RiceDeltaEncoded256Bit: {
+      fields: {
+        firstValueFirstPart: { type: "uint64", id: 1 },
+        firstValueSecondPart: { type: "fixed64", id: 2 },
+        firstValueThirdPart: { type: "fixed64", id: 3 },
+        firstValueFourthPart: { type: "fixed64", id: 4 },
+        riceParameter: { type: "int32", id: 5 },
+        entriesCount: { type: "int32", id: 6 },
+        encodedData: { type: "bytes", id: 7 },
       },
     },
     google: {
@@ -140,22 +187,50 @@ interface HashListResponse {
   hashLists: HashListEntry[];
 }
 
-interface HashListEntry {
-  name: string;
-  version: string; // base64
-  partialUpdate?: boolean;
-  compressedRemovals?: RiceDeltaEncoded;
-  compressedAdditions?: RiceDeltaEncoded;
-  metadata?: { hashLength?: number };
-  minimumWaitDuration?: string; // e.g. "300s"
-  sha256Checksum?: string; // base64
-}
-
-interface RiceDeltaEncoded {
-  firstValue?: string; // numeric string or base64 depending on context
+interface RiceDeltaEncoded32 {
+  firstValue?: number;
   riceParameter: number;
   entriesCount: number;
-  encodedData?: string; // base64
+  encodedData?: Buffer;
+}
+
+interface RiceDeltaEncoded64 {
+  firstValue?: string; // uint64 as string (longs: String)
+  riceParameter: number;
+  entriesCount: number;
+  encodedData?: Buffer;
+}
+
+interface RiceDeltaEncoded128 {
+  firstValueHi?: string; // uint64 as string
+  firstValueLo?: string; // fixed64 as string
+  riceParameter: number;
+  entriesCount: number;
+  encodedData?: Buffer;
+}
+
+interface RiceDeltaEncoded256 {
+  firstValueFirstPart?: string; // uint64 as string
+  firstValueSecondPart?: string; // fixed64 as string
+  firstValueThirdPart?: string; // fixed64 as string
+  firstValueFourthPart?: string; // fixed64 as string
+  riceParameter: number;
+  entriesCount: number;
+  encodedData?: Buffer;
+}
+
+interface HashListEntry {
+  name: string;
+  version: Buffer;
+  partialUpdate?: boolean;
+  compressedRemovals?: RiceDeltaEncoded32;
+  additionsFourBytes?: RiceDeltaEncoded32;
+  additionsEightBytes?: RiceDeltaEncoded64;
+  additionsSixteenBytes?: RiceDeltaEncoded128;
+  additionsThirtyTwoBytes?: RiceDeltaEncoded256;
+  metadata?: { hashLength?: number; threatTypes?: number[]; likelySafeTypes?: number[] };
+  minimumWaitDuration?: { seconds: number; nanos: number };
+  sha256Checksum?: Buffer;
 }
 
 type CheckResult = "SAFE" | "UNSAFE" | "UNSURE";
@@ -553,7 +628,7 @@ export async function syncHashLists(): Promise<void> {
 
   const url = `https://safebrowsing.googleapis.com/v5/hashLists:batchGet?${params.toString()}`;
 
-  let data: { hashLists: any[] };
+  let data: { hashLists: HashListEntry[] };
   try {
     const response = await fetch(url, {
       method: "GET",
@@ -569,7 +644,7 @@ export async function syncHashLists(): Promise<void> {
 
     const buf = Buffer.from(await response.arrayBuffer());
     const decoded = BatchGetHashListsResponseType.decode(buf);
-    data = BatchGetHashListsResponseType.toObject(decoded, { bytes: Buffer, longs: Number }) as typeof data;
+    data = BatchGetHashListsResponseType.toObject(decoded, { bytes: Buffer, longs: String }) as typeof data;
   } catch (error) {
     console.error("Error fetching hash lists:", error);
     return;
@@ -595,13 +670,12 @@ export async function syncHashLists(): Promise<void> {
   console.log(`SafeBrowsing v5: synced ${data.hashLists.length} hash lists`);
 }
 
-async function applyHashListUpdate(hashList: any): Promise<void> {
+async function applyHashListUpdate(hashList: HashListEntry): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
     const isFullUpdate = !hashList.partialUpdate;
-    const hashLength = hashList.name.endsWith("-32b") ? 32 : 4;
 
     if (isFullUpdate) {
       // Full update: clear all existing prefixes for this list
@@ -642,11 +716,19 @@ async function applyHashListUpdate(hashList: any): Promise<void> {
       }
     }
 
-    // Apply additions
-    if (hashList.compressedAdditions) {
-      const additions = decodeCompressedHashes(hashList.compressedAdditions, hashLength);
+    // Apply additions (oneof compressed_additions)
+    let additions: Buffer[] = [];
+    if (hashList.additionsFourBytes) {
+      additions = decodeAdditions32(hashList.additionsFourBytes);
+    } else if (hashList.additionsEightBytes) {
+      additions = decodeAdditions64(hashList.additionsEightBytes);
+    } else if (hashList.additionsSixteenBytes) {
+      additions = decodeAdditions128(hashList.additionsSixteenBytes);
+    } else if (hashList.additionsThirtyTwoBytes) {
+      additions = decodeAdditions256(hashList.additionsThirtyTwoBytes);
+    }
 
-      // Batch insert with ON CONFLICT to avoid duplicates
+    if (additions.length > 0) {
       for (let i = 0; i < additions.length; i += 500) {
         const batch = additions.slice(i, i + 500);
         const values: unknown[] = [];
@@ -723,36 +805,67 @@ async function applyHashListUpdate(hashList: any): Promise<void> {
   }
 }
 
-function decodeCompressedHashes(encoded: any, hashLength: number): Buffer[] {
-  if (encoded.entriesCount === 0 && !encoded.firstValue) return [];
-
-  // firstValue may be a Buffer (for hash additions) or a number (for 32-bit removal indices)
-  let firstValue: bigint;
-  if (Buffer.isBuffer(encoded.firstValue)) {
-    firstValue = bufferToBigInt(encoded.firstValue);
-  } else {
-    firstValue = BigInt(encoded.firstValue || "0");
-  }
-
-  const encodedData = encoded.encodedData
-    ? (Buffer.isBuffer(encoded.encodedData) ? encoded.encodedData : Buffer.from(encoded.encodedData, "base64"))
-    : Buffer.alloc(0);
-
-  return decodeGolombRice(
-    firstValue,
-    encoded.riceParameter,
-    encoded.entriesCount,
-    encodedData,
-    hashLength
-  );
-}
-
-function decodeRemovalIndices(encoded: any): number[] {
+function decodeAdditions32(encoded: RiceDeltaEncoded32): Buffer[] {
   if (encoded.entriesCount === 0 && !encoded.firstValue) return [];
 
   const firstValue = BigInt(encoded.firstValue || 0);
   const encodedData = encoded.encodedData
-    ? (Buffer.isBuffer(encoded.encodedData) ? encoded.encodedData : Buffer.from(encoded.encodedData, "base64"))
+    ? (Buffer.isBuffer(encoded.encodedData) ? encoded.encodedData : Buffer.from(encoded.encodedData as unknown as string, "base64"))
+    : Buffer.alloc(0);
+
+  return decodeGolombRice(firstValue, encoded.riceParameter, encoded.entriesCount, encodedData, 4);
+}
+
+function longToBigInt(val: string | number | undefined | null): bigint {
+  if (val === undefined || val === null) return 0n;
+  return BigInt(val);
+}
+
+function decodeAdditions64(encoded: RiceDeltaEncoded64): Buffer[] {
+  if (encoded.entriesCount === 0 && !encoded.firstValue) return [];
+
+  const firstValue = longToBigInt(encoded.firstValue);
+  const encodedData = encoded.encodedData
+    ? (Buffer.isBuffer(encoded.encodedData) ? encoded.encodedData : Buffer.from(encoded.encodedData as unknown as string, "base64"))
+    : Buffer.alloc(0);
+
+  return decodeGolombRice(firstValue, encoded.riceParameter, encoded.entriesCount, encodedData, 8);
+}
+
+function decodeAdditions128(encoded: RiceDeltaEncoded128): Buffer[] {
+  if (encoded.entriesCount === 0 && !encoded.firstValueHi && !encoded.firstValueLo) return [];
+
+  const hi = longToBigInt(encoded.firstValueHi);
+  const lo = longToBigInt(encoded.firstValueLo);
+  const firstValue = (hi << 64n) | lo;
+  const encodedData = encoded.encodedData
+    ? (Buffer.isBuffer(encoded.encodedData) ? encoded.encodedData : Buffer.from(encoded.encodedData as unknown as string, "base64"))
+    : Buffer.alloc(0);
+
+  return decodeGolombRice(firstValue, encoded.riceParameter, encoded.entriesCount, encodedData, 16);
+}
+
+function decodeAdditions256(encoded: RiceDeltaEncoded256): Buffer[] {
+  if (encoded.entriesCount === 0 && !encoded.firstValueFirstPart && !encoded.firstValueSecondPart && !encoded.firstValueThirdPart && !encoded.firstValueFourthPart) return [];
+
+  const p1 = longToBigInt(encoded.firstValueFirstPart);
+  const p2 = longToBigInt(encoded.firstValueSecondPart);
+  const p3 = longToBigInt(encoded.firstValueThirdPart);
+  const p4 = longToBigInt(encoded.firstValueFourthPart);
+  const firstValue = (p1 << 192n) | (p2 << 128n) | (p3 << 64n) | p4;
+  const encodedData = encoded.encodedData
+    ? (Buffer.isBuffer(encoded.encodedData) ? encoded.encodedData : Buffer.from(encoded.encodedData as unknown as string, "base64"))
+    : Buffer.alloc(0);
+
+  return decodeGolombRice(firstValue, encoded.riceParameter, encoded.entriesCount, encodedData, 32);
+}
+
+function decodeRemovalIndices(encoded: RiceDeltaEncoded32): number[] {
+  if (encoded.entriesCount === 0 && !encoded.firstValue) return [];
+
+  const firstValue = BigInt(encoded.firstValue || 0);
+  const encodedData = encoded.encodedData
+    ? (Buffer.isBuffer(encoded.encodedData) ? encoded.encodedData : Buffer.from(encoded.encodedData as unknown as string, "base64"))
     : Buffer.alloc(0);
 
   // Removal indices are 32-bit integers

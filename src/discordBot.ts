@@ -16,6 +16,7 @@ import {
   startRedirectPruner,
   stopRedirectPruner,
   startEventLogPruner,
+  stopEventLogPruner,
   startUrlscanHunter,
   stopUrlscanHunter,
   startHashListSync,
@@ -87,6 +88,7 @@ async function shutdownServices() {
   stopRedirectChecker();
   stopTakedownMonitor();
   stopRedirectPruner();
+  stopEventLogPruner();
   stopHashListSync();
 
   console.log("Waiting for operations to cancel...");
@@ -148,10 +150,13 @@ async function main() {
   });
 }
 
+let isShuttingDown = false;
+
 async function gracefulShutdown() {
-  if (isTestMode) {
+  if (isTestMode || isShuttingDown) {
     return;
   }
+  isShuttingDown = true;
   
   console.log("Shutting down gracefully...");
   await shutdownServices();

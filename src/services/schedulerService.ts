@@ -16,6 +16,7 @@ let adHunterInterval: NodeJS.Timeout | null = null;
 let pruningInterval: NodeJS.Timeout | null = null;
 let urlscanInterval: NodeJS.Timeout | null = null;
 let hashListSyncInterval: NodeJS.Timeout | null = null;
+let eventLogPrunerTimeout: NodeJS.Timeout | null = null;
 
 let redirectCheckerAbortController: AbortController | null = null;
 let adHunterAbortController: AbortController | null = null;
@@ -127,7 +128,9 @@ export function startBatchReportProcessor(): void {
     }
 
     // Schedule next run only after this one completes
-    batchInterval = setTimeout(runBatchProcess, 60 * 1000);
+    if (isRunning.batchProcessor) {
+      batchInterval = setTimeout(runBatchProcess, 60 * 1000);
+    }
   }
 
   // Start the first batch process immediately
@@ -151,6 +154,7 @@ export async function stopBatchReportProcessor(): Promise<void> {
 
 export function startTakedownMonitor(): void {
   isRunning.takedownMonitor = true;
+  takedownMonitorAbortController = new AbortController();
 
   async function runTakedownMonitor() {
     if (!isRunning.takedownMonitor) return;
@@ -332,7 +336,9 @@ export function startRedirectPruner(): void {
     }
 
     // Run pruning once per day (86400000 ms)
-    pruningInterval = setTimeout(runRedirectPruning, 24 * 60 * 60 * 1000);
+    if (isRunning.redirectPruner) {
+      pruningInterval = setTimeout(runRedirectPruning, 24 * 60 * 60 * 1000);
+    }
   }
 
   // Start the first pruning cycle immediately
@@ -352,10 +358,17 @@ export function startEventLogPruner(): void {
     }
 
     // Run pruning once per day
-    setTimeout(runEventPruning, 24 * 60 * 60 * 1000);
+    eventLogPrunerTimeout = setTimeout(runEventPruning, 24 * 60 * 60 * 1000);
   }
 
   runEventPruning();
+}
+
+export function stopEventLogPruner(): void {
+  if (eventLogPrunerTimeout) {
+    clearTimeout(eventLogPrunerTimeout);
+    eventLogPrunerTimeout = null;
+  }
 }
 
 export function stopRedirectPruner(): void {

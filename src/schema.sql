@@ -165,6 +165,35 @@ CREATE INDEX idx_hunter_events_created ON hunter_events (created_at DESC);
 CREATE INDEX idx_redirect_events_type ON redirect_events (event_type);
 CREATE INDEX idx_redirect_events_created ON redirect_events (created_at DESC);
 
+-- Safe Browsing v5: tracks metadata/version state for each hash list
+CREATE TABLE IF NOT EXISTS safebrowsing_hash_lists (
+    name         TEXT PRIMARY KEY,
+    version      BYTEA DEFAULT NULL,
+    last_updated TIMESTAMPTZ DEFAULT NULL,
+    next_update_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Safe Browsing v5: stores hash prefixes from downloaded threat/global-cache lists
+CREATE TABLE IF NOT EXISTS safebrowsing_hash_prefixes (
+    list_name    TEXT NOT NULL REFERENCES safebrowsing_hash_lists(name) ON DELETE CASCADE,
+    hash_prefix  BYTEA NOT NULL,
+    PRIMARY KEY (list_name, hash_prefix)
+);
+
+CREATE INDEX idx_safebrowsing_hash_prefixes_prefix ON safebrowsing_hash_prefixes (hash_prefix);
+
+-- Safe Browsing v5: local cache for hashes.search API responses
+CREATE TABLE IF NOT EXISTS safebrowsing_hash_cache (
+    hash_prefix  BYTEA NOT NULL,
+    full_hash    BYTEA NOT NULL,
+    threat_types TEXT[] NOT NULL,
+    expires_at   TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (hash_prefix, full_hash)
+);
+
+CREATE INDEX idx_safebrowsing_hash_cache_prefix ON safebrowsing_hash_cache (hash_prefix);
+CREATE INDEX idx_safebrowsing_hash_cache_expires ON safebrowsing_hash_cache (expires_at);
+
 -- URLScan hunter: individual report log
 CREATE TABLE IF NOT EXISTS urlscan_reports (
     id                      SERIAL PRIMARY KEY,

@@ -17,13 +17,16 @@ import {
   stopRedirectPruner,
   startEventLogPruner,
   startUrlscanHunter,
-  stopUrlscanHunter
+  stopUrlscanHunter,
+  startHashListSync,
+  stopHashListSync
 } from "./services/schedulerService.js";
 import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
 import { aiClassifierService } from "./services/aiClassifierService.js";
 import { hunterService } from "./services/hunterService.js";
 import { initializeGoogleWebRiskClient } from "./services/reportService.js";
+import { initSafeBrowsingV5 } from "./services/safeBrowsingV5Service.js";
 import { getLatestChromeVersion } from "./services/chromeUserAgentService.js";
 
 export const discordClient = new Client({
@@ -60,6 +63,7 @@ async function initializeServices() {
   await browserRedirectService.init();
   await hunterService.init();
   await initializeGoogleWebRiskClient();
+  await initSafeBrowsingV5();
   
   startRedirectChecker();
   startBatchReportProcessor();
@@ -67,6 +71,7 @@ async function initializeServices() {
   startAdHunter();
   startRedirectPruner();
   startEventLogPruner();
+  startHashListSync();
 
   // Start URLScan hunter if enabled in config
   const config = await readConfig();
@@ -82,6 +87,7 @@ async function shutdownServices() {
   stopRedirectChecker();
   stopTakedownMonitor();
   stopRedirectPruner();
+  stopHashListSync();
 
   console.log("Waiting for operations to cancel...");
   await setTimeout(5000); // wait for 5 seconds to allow operations to cancel

@@ -7,6 +7,7 @@ import { setTimeout } from 'timers/promises';
 import { userAgentService } from "./userAgentService.js";
 import { fetch, ProxyAgent } from "undici";
 import { PoolClient } from "pg";
+import { checkUrlsSafeBrowsingV5, type SafeBrowsingCheckResult } from "./safeBrowsingV5Service.js";
 
 // Configuration
 const SAFEBROWSING_BATCH_SIZE = 500; // Maximum URLs to check in one SafeBrowsing batch
@@ -66,18 +67,7 @@ interface SmartScreenResponse {
   allow: boolean;
 }
 
-interface SafeBrowsingResponse {
-  matches?: SafeBrowsingMatch[];
-}
 
-interface SafeBrowsingMatch {
-  threatType: string;      // e.g., "MALWARE", "SOCIAL_ENGINEERING"
-  platformType: string;    // e.g., "ANY_PLATFORM"
-  threatEntryType: string; // e.g., "URL"
-  threat: {
-    url: string;          // The flagged URL
-  };
-}
 
 export async function initTakedownStatusForDestination(
   destinationId: number,
@@ -181,91 +171,7 @@ export async function isSafeBrowsingBatchFlagged(urls: string[]): Promise<Map<st
   isFlagged: boolean;
   threatTypes?: string[];
 }>> {
-  try {
-    const {googleSafeBrowsingApiKey: apiKey} = await readConfig();
-
-    if (!apiKey) {
-      console.error('Missing SafeBrowsing API key in configuration');
-      return new Map();
-    }
-
-    // Initialize results map - all URLs start as not flagged
-    const results = new Map<string, { isFlagged: boolean; threatTypes?: string[] }>();
-    for (const url of urls) {
-      results.set(url, { isFlagged: false });
-    }
-
-    // Don't make an API call for an empty array
-    if (urls.length === 0) return results;
-
-    // Prepare the request body according to Safe Browsing API v4
-    const requestBody = {
-      client: {
-        clientId: 'redirectChecker',
-        clientVersion: '1.0'
-      },
-      threatInfo: {
-        threatTypes: [
-          'MALWARE',
-          'SOCIAL_ENGINEERING',
-          'UNWANTED_SOFTWARE',
-          'POTENTIALLY_HARMFUL_APPLICATION'
-        ],
-        platformTypes: ['ANY_PLATFORM'],
-        threatEntryTypes: ['URL'],
-        threatEntries: urls.map(url => ({ url }))
-      }
-    };
-
-    // Make the request to Google Safe Browsing API
-    const response = await fetch(
-        `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestBody)
-        }
-    );
-
-    if (!response.ok) {
-      console.log(`SafeBrowsing API error: ${response.status} ${response.statusText}`);
-      return results; // Return the default "not flagged" results
-    }
-
-    const data = await response.json() as SafeBrowsingResponse;
-
-    // Update results for flagged URLs
-    const matches = data.matches || [];
-    if (matches.length > 0) {
-      console.log(`SafeBrowsing flagged ${matches.length} URLs`);
-
-      // Group matches by URL
-      for (const match of matches) {
-        const url = match.threat.url;
-        const result = results.get(url);
-
-        if (result) {
-          result.isFlagged = true;
-          result.threatTypes = result.threatTypes || [];
-          result.threatTypes.push(match.threatType);
-        }
-      }
-
-      // Log flagged URLs
-      for (const [url, result] of results.entries()) {
-        if (result.isFlagged) {
-          console.log(`- ${url} (${result.threatTypes?.join(', ')})`);
-        }
-      }
-    }
-
-    return results;
-  } catch (error) {
-    console.error(`Error checking SafeBrowsing batch: ${error}`);
-    return new Map(); // Return empty results on error
-  }
+  return checkUrlsSafeBrowsingV5(urls);
 }
 
 async function checkSafeBrowsingBatch(urls: string[]): Promise<void> {

@@ -7,6 +7,7 @@ import { browserRedirectService } from "./browserRedirectService.js";
 import { logHunterEvent, pruneHunterEvents } from "./hunterEventLogger.js";
 import { pruneRedirectEvents } from "./redirectEventLogger.js";
 import { urlscanHunter } from "./urlscanHunter.js";
+import { syncHashLists } from "./safeBrowsingV5Service.js";
 
 let checkInterval: NodeJS.Timeout | null = null;
 let batchInterval: NodeJS.Timeout | null = null;
@@ -14,6 +15,7 @@ let takedownInterval: NodeJS.Timeout | null = null;
 let adHunterInterval: NodeJS.Timeout | null = null;
 let pruningInterval: NodeJS.Timeout | null = null;
 let urlscanInterval: NodeJS.Timeout | null = null;
+let hashListSyncInterval: NodeJS.Timeout | null = null;
 
 let redirectCheckerAbortController: AbortController | null = null;
 let adHunterAbortController: AbortController | null = null;
@@ -26,6 +28,7 @@ let isRunning = {
   adHunter: false,
   redirectPruner: false,
   urlscanHunter: false,
+  hashListSync: false,
 };
 
 function withTimeout<T>(
@@ -392,4 +395,33 @@ export function stopUrlscanHunter(): void {
     urlscanInterval = null;
   }
   console.log("URLScan hunter service stopped");
+}
+
+export function startHashListSync(): void {
+  isRunning.hashListSync = true;
+
+  async function runHashListSync() {
+    if (!isRunning.hashListSync) return;
+
+    try {
+      await syncHashLists();
+    } catch (error) {
+      console.error("Error syncing SafeBrowsing v5 hash lists:", error);
+    }
+
+    // Sync every 5 minutes (the service itself respects minimumWaitDuration per list)
+    if (isRunning.hashListSync) {
+      hashListSyncInterval = setTimeout(runHashListSync, 5 * 60 * 1000);
+    }
+  }
+
+  runHashListSync();
+}
+
+export function stopHashListSync(): void {
+  isRunning.hashListSync = false;
+  if (hashListSyncInterval) {
+    clearTimeout(hashListSyncInterval);
+    hashListSyncInterval = null;
+  }
 }

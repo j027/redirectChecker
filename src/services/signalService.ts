@@ -183,23 +183,37 @@ export class SignalService {
         // Ignore errors
       }
 
-      // Worker bomb detection threshold
-      const WORKER_BOMB_THRESHOLD = 5;
+      // Worker bomb detection: rate-based + threshold
+      // Scam pages spawn hundreds of workers in tight loops, often inside beforeunload/unload handlers.
+      // We track both total count and creation rate to distinguish from legitimate worker usage.
+      const WORKER_BOMB_THRESHOLD = 20;       // Total workers needed to flag
+      const WORKER_BOMB_RATE_LIMIT = 20;      // Workers within the rate window to flag
+      const WORKER_BOMB_RATE_WINDOW_MS = 1000; // 1 second window for rate detection
 
       // Hook Worker constructor to detect worker bombs
       try {
         const OriginalWorker = (window as any).Worker;
         if (typeof OriginalWorker === 'function') {
+          const workerTimestamps: number[] = [];
+
           (window as any).Worker = new Proxy(OriginalWorker, {
             construct(target, args, newTarget) {
-              // Count workers and check threshold
               try {
                 const el = getOrCreateSignalElement();
                 const currentCount = parseInt(el.getAttribute('data-worker-count') || '0', 10);
                 const newCount = currentCount + 1;
                 el.setAttribute('data-worker-count', String(newCount));
-                
-                if (newCount >= WORKER_BOMB_THRESHOLD) {
+
+                // Rate-based detection: check how many workers were created recently
+                const now = Date.now();
+                workerTimestamps.push(now);
+                // Trim old timestamps outside the rate window
+                while (workerTimestamps.length > 0 && (now - workerTimestamps[0]) > WORKER_BOMB_RATE_WINDOW_MS) {
+                  workerTimestamps.shift();
+                }
+
+                // Flag if total threshold exceeded OR burst rate exceeded
+                if (newCount >= WORKER_BOMB_THRESHOLD || workerTimestamps.length >= WORKER_BOMB_RATE_LIMIT) {
                   setSignal('worker-bomb');
                 }
               } catch {
@@ -209,6 +223,29 @@ export class SignalService {
             }
           });
         }
+      } catch {
+        // API not available
+      }
+
+      // Hook addEventListener to detect beforeunload/unload handlers that spawn workers.
+      // Scam pages register these to bomb the browser when the user tries to leave.
+      // We store the fact that such handlers exist so we can trigger them during detection.
+      try {
+        const originalAddEventListener = EventTarget.prototype.addEventListener;
+        EventTarget.prototype.addEventListener = new Proxy(originalAddEventListener, {
+          apply(target, ctx, args) {
+            const [eventType] = args;
+            if (ctx === window && (eventType === 'beforeunload' || eventType === 'unload')) {
+              try {
+                const el = getOrCreateSignalElement();
+                el.setAttribute('data-has-unload-handler', 'true');
+              } catch {
+                // Ignore errors
+              }
+            }
+            return Reflect.apply(target, ctx, args);
+          }
+        });
       } catch {
         // API not available
       }
@@ -289,7 +326,7 @@ export class SignalService {
       const signals = await page.evaluate((id: string) => {
         const el = document.getElementById(id);
         if (!el) {
-          return { fullscreen: false, keyboard: false, pointer: false, workerBomb: false, pageFrozen: false };
+          return { fullscreen: false, keyboard: false, pointer: false, workerBomb: false, pageFrozen: false, hasUnloadHandler: false };
         }
         return {
           fullscreen: el.getAttribute('data-fullscreen') === 'true',
@@ -297,6 +334,7 @@ export class SignalService {
           pointer: el.getAttribute('data-pointer') === 'true',
           workerBomb: el.getAttribute('data-worker-bomb') === 'true',
           pageFrozen: el.getAttribute('data-page-frozen') === 'true',
+          hasUnloadHandler: el.getAttribute('data-has-unload-handler') === 'true',
         };
       }, elementId);
 
@@ -307,6 +345,36 @@ export class SignalService {
       this.signals.pageLoadFrozen = signals.pageFrozen;
     } catch {
       // Ignore errors - element may not exist yet
+    }
+  }
+
+  /**
+   * Triggers beforeunload/unload events to flush out worker bombs hidden in navigation handlers.
+   * Scam pages commonly spawn worker bombs only when the user tries to leave.
+   * Call this after collectApiSignals if the page registered unload handlers.
+   * Uses a short timeout to avoid getting stuck if the bomb freezes the page.
+   */
+  public async triggerNavigationSignals(page: Page): Promise<void> {
+    try {
+      // Always dispatch beforeunload to flush out hidden worker bombs.
+      // We can't reliably detect onbeforeunload property assignment from page.evaluate
+      // due to Patchright's execution context isolation, so we just trigger the event
+      // unconditionally. The Worker proxy will count any workers spawned by the handler.
+      await Promise.race([
+        page.evaluate(() => {
+          window.dispatchEvent(new Event('beforeunload'));
+        }),
+        new Promise(resolve => setTimeout(resolve, 3000)),
+      ]);
+
+      // Brief pause for workers to be spawned
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Re-collect signals to pick up any workers spawned by the unload handlers
+      await this.collectApiSignals(page);
+    } catch {
+      // Page may have crashed or become unresponsive — that itself is suspicious
+      // but we don't flag it here since it could be a normal timeout
     }
   }
 
@@ -392,6 +460,11 @@ export class SignalService {
 
     // Collect API signals from the hidden DOM element
     await this.collectApiSignals(page);
+
+    // If the page registered unload handlers, trigger them to detect hidden worker bombs
+    if (!this.signals.workerBombDetected) {
+      await this.triggerNavigationSignals(page);
+    }
 
     return this.getSignals();
   }

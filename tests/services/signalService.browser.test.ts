@@ -111,7 +111,7 @@ describe("SignalService Browser Integration", () => {
     await browser.close();
   }, 30000);
 
-  it("should detect worker bomb when many workers are spawned", async () => {
+  it("should detect worker bomb when many workers are spawned in a burst", async () => {
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -120,14 +120,15 @@ describe("SignalService Browser Integration", () => {
     await signalService.attachApiListeners(page);
     await page.goto("https://example.com");
 
-    // Inject script via DOM to use the page's proxied Worker constructor
+    // Simulate a scam page spawning 25 workers in a tight loop (like the real obfuscated scam code)
     await page.evaluate(() => {
       const script = document.createElement('script');
       script.textContent = `
-        const workerCode = 'self.onmessage = function() {}';
+        // Scam pattern: create a blob with an infinite CPU-burning loop, then spawn many workers
+        const workerCode = 'let c = 0; while (true) { c++; Math.random() * Math.random(); }';
         const blob = new Blob([workerCode], { type: 'application/javascript' });
         const url = URL.createObjectURL(blob);
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 25; i++) {
           new Worker(url);
         }
       `;
@@ -143,7 +144,7 @@ describe("SignalService Browser Integration", () => {
     await browser.close();
   }, 30000);
 
-  it("should not detect worker bomb when few workers are spawned", async () => {
+  it("should not detect worker bomb when few workers are spawned (legitimate usage)", async () => {
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -152,14 +153,14 @@ describe("SignalService Browser Integration", () => {
     await signalService.attachApiListeners(page);
     await page.goto("https://example.com");
 
-    // Inject script via DOM to use the page's proxied Worker constructor
+    // Legitimate sites may use a handful of workers for tasks like analytics or image processing
     await page.evaluate(() => {
       const script = document.createElement('script');
       script.textContent = `
-        const workerCode = 'self.onmessage = function() {}';
+        const workerCode = 'self.onmessage = function(e) { postMessage(e.data * 2); }';
         const blob = new Blob([workerCode], { type: 'application/javascript' });
         const url = URL.createObjectURL(blob);
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 5; i++) {
           new Worker(url);
         }
       `;
@@ -170,6 +171,83 @@ describe("SignalService Browser Integration", () => {
     const signals = signalService.getSignals();
 
     expect(signals.workerBombDetected).toBe(false);
+
+    await browser.close();
+  }, 30000);
+
+  it("should detect worker bomb hidden in beforeunload handler via triggerNavigationSignals", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const signalService = createSignalService();
+
+    await signalService.attachApiListeners(page);
+    await page.goto("https://example.com");
+
+    // Simulate the real scam pattern: register a beforeunload handler that spawns a worker bomb.
+    // The bomb only fires when the user tries to leave the page.
+    await page.evaluate(() => {
+      const script = document.createElement('script');
+      script.textContent = `
+        window.addEventListener('beforeunload', function(e) {
+          const workerCode = 'let c = 0; while (true) { c++; Math.random() * Math.random(); }';
+          const blob = new Blob([workerCode], { type: 'application/javascript' });
+          const url = URL.createObjectURL(blob);
+          // Spawn a batch of workers to freeze the browser
+          for (let i = 0; i < 30; i++) {
+            new Worker(url);
+          }
+          e.returnValue = 'Do you want to leave?';
+        });
+      `;
+      document.head.appendChild(script);
+    });
+
+    // Initial collection should NOT detect the bomb (it hasn't fired yet)
+    await signalService.collectApiSignals(page);
+    expect(signalService.getSignals().workerBombDetected).toBe(false);
+
+    // triggerNavigationSignals dispatches beforeunload, which fires the bomb
+    await signalService.triggerNavigationSignals(page);
+    const signals = signalService.getSignals();
+
+    expect(signals.workerBombDetected).toBe(true);
+
+    await browser.close();
+  }, 30000);
+
+  it("should detect worker bomb hidden in onbeforeunload assignment via detectAllSignals", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const signalService = createSignalService();
+
+    await signalService.attachApiListeners(page);
+    await page.goto("https://example.com");
+
+    // Scam pages sometimes use direct property assignment instead of addEventListener.
+    // Must use script injection (not page.evaluate) so the handler and Workers run in the
+    // page world where the addInitScript Worker proxy is active.
+    await page.evaluate(() => {
+      const script = document.createElement('script');
+      script.textContent = `
+        window.onbeforeunload = function(e) {
+          var workerCode = 'while (true) { Math.random(); }';
+          var blob = new Blob([workerCode], { type: 'application/javascript' });
+          var url = URL.createObjectURL(blob);
+          for (var i = 0; i < 25; i++) {
+            new Worker(url);
+          }
+          return 'Are you sure?';
+        };
+      `;
+      document.head.appendChild(script);
+    });
+
+    // detectAllSignals should handle the full flow: collect + trigger navigation signals
+    const signals = await signalService.detectAllSignals(page, "https://example.com");
+
+    expect(signals.workerBombDetected).toBe(true);
 
     await browser.close();
   }, 30000);

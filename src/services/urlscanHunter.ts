@@ -127,6 +127,7 @@ export class UrlscanHunter {
     // disable signals that have too many false positives for this hunter
     signals.isThirdPartyHosting = false;
     signals.workerBombDetected = false;
+    signals.isIpAddress = false;
     const passesSignalCheck = hasWeightedSignal(signals);
 
     if (!isScam || confidenceScore < CONFIDENCE_THRESHOLD || !passesSignalCheck) {

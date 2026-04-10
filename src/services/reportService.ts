@@ -3,7 +3,6 @@ import { fetch } from "undici";
 import { discordClient } from "../discordBot.js";
 import { TextChannel, EmbedBuilder } from "discord.js";
 import { userAgentService } from "./userAgentService.js";
-import { enqueueReport } from "./batchReportService.js";
 import { browserReportService } from "./browserReportService.js";
 import pool from "../dbPool.js";
 import { WebRiskServiceClient } from '@google-cloud/web-risk';
@@ -318,6 +317,35 @@ async function reportToCloudflareUrlScanner(site: string) {
   }
 }
 
+interface CrdfLabsResponse {
+  error: boolean;
+  msg: string;
+  ref: string;
+}
+
+async function reportToCrdfLabs(site: string) {
+  const { crdfLabsApiKey } = await readConfig();
+
+  try {
+    const response = await fetch(
+      "https://threatcenter.crdf.fr/api/v0/submit_url.json",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: crdfLabsApiKey,
+          method: "submit_url",
+          urls: [site],
+        }),
+      },
+    );
+    const data = await response.json() as CrdfLabsResponse;
+    console.info(`CRDF Labs report: error=${data.error}, message=${data.msg}, reference=${data.ref}`);
+  } catch (error) {
+    console.error("CRDF Labs report failed", error);
+  }
+}
+
 export async function initializeGoogleWebRiskClient() {
   try {
     webRiskClient = new WebRiskServiceClient();
@@ -446,7 +474,7 @@ export async function reportSite(
   options?: ReportOptions
 ) {
   // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
-  // checkphish, hybrid analysis, urlscan, and cloudflare url scanner
+  // checkphish, hybrid analysis, urlscan, cloudflare url scanner, and crdf labs
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site, screenshot, html));
@@ -458,15 +486,13 @@ export async function reportSite(
   reports.push(reportToHybridAnalysis(site));
   reports.push(reportToUrlscan(site));
   reports.push(reportToCloudflareUrlScanner(site));
+  reports.push(reportToCrdfLabs(site));
 
   // google web risk api (needs special permission to get access)
   reports.push(reportToGoogleWebRisk(site));
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect, options?.signals, options?.confidenceScore));
-
-  // crdf labs reports go into a queue that is reported every minute
-  enqueueReport(site);
 
   // wait for all the reports to finish
   await Promise.allSettled(reports);

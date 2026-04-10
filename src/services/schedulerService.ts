@@ -1,5 +1,4 @@
 import { checkRedirects } from "./redirectMonitorService.js";
-import { flushQueues } from "./batchReportService.js";
 import { monitorTakedownStatus } from "./takedownMonitorService.js";
 import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter } from "./hunterService.js";
 import { pruneOldRedirects } from "./redirectPruningService.js";
@@ -10,7 +9,6 @@ import { urlscanHunter } from "./urlscanHunter.js";
 import { syncHashLists } from "./safeBrowsingV5Service.js";
 
 let checkInterval: NodeJS.Timeout | null = null;
-let batchInterval: NodeJS.Timeout | null = null;
 let takedownInterval: NodeJS.Timeout | null = null;
 let adHunterInterval: NodeJS.Timeout | null = null;
 let pruningInterval: NodeJS.Timeout | null = null;
@@ -24,7 +22,6 @@ let takedownMonitorAbortController: AbortController | null = null;
 
 let isRunning = {
   redirectChecker: false,
-  batchProcessor: false,
   takedownMonitor: false,
   adHunter: false,
   redirectPruner: false,
@@ -145,43 +142,6 @@ export function stopRedirectChecker() {
   if (checkInterval) {
     clearTimeout(checkInterval);
     checkInterval = null;
-  }
-}
-
-export function startBatchReportProcessor(): void {
-  isRunning.batchProcessor = true;
-
-  async function runBatchProcess() {
-    if (!isRunning.batchProcessor) return;
-
-    try {
-      await flushQueues();
-    } catch (error) {
-      console.error("Error flushing queues:", error);
-    }
-
-    // Schedule next run only after this one completes
-    if (isRunning.batchProcessor) {
-      batchInterval = setTimeout(runBatchProcess, 60 * 1000);
-    }
-  }
-
-  // Start the first batch process immediately
-  runBatchProcess();
-}
-
-export async function stopBatchReportProcessor(): Promise<void> {
-  isRunning.batchProcessor = false;
-  if (batchInterval) {
-    clearTimeout(batchInterval);
-    batchInterval = null;
-  }
-
-  try {
-    await flushQueues();
-    console.info("Batch queues flushed successfully during shutdown.");
-  } catch (error) {
-    console.error("Error while flushing batch queues during shutdown:", error);
   }
 }
 

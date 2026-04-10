@@ -7,8 +7,6 @@ import { closePool } from "./dbPool.js";
 import {
   startRedirectChecker,
   stopRedirectChecker,
-  startBatchReportProcessor,
-  stopBatchReportProcessor,
   startTakedownMonitor,
   stopTakedownMonitor,
   startAdHunter,
@@ -67,7 +65,6 @@ async function initializeServices() {
   await initSafeBrowsingV5();
   
   startRedirectChecker();
-  startBatchReportProcessor();
   startTakedownMonitor();
   startAdHunter();
   startRedirectPruner();
@@ -82,7 +79,6 @@ async function initializeServices() {
 }
 
 async function shutdownServices() {
-  await stopBatchReportProcessor();
   stopAdHunter();
   stopUrlscanHunter();
   stopRedirectChecker();

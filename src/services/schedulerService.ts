@@ -67,8 +67,23 @@ export function startRedirectChecker() {
   isRunning.redirectChecker = true;
   redirectCheckerAbortController = new AbortController();
 
+  let isRedirectCheckInProgress = false;
+
   async function runRedirectCheck() {
-    if (!isRunning.redirectChecker) return;
+    if (!isRunning.redirectChecker) {
+      console.log("Redirect checker no longer running, stopping scheduler");
+      return;
+    }
+
+    // Wait if previous cycle is still running
+    if (isRedirectCheckInProgress) {
+      console.log("Previous redirect check cycle still in progress, waiting...");
+      checkInterval = setTimeout(runRedirectCheck, 10 * 1000);
+      return;
+    }
+
+    isRedirectCheckInProgress = true;
+    const cycleStartTime = Date.now();
 
     try {
       redirectCheckerAbortController?.signal.throwIfAborted();
@@ -76,27 +91,45 @@ export function startRedirectChecker() {
       // Restart browser before each run to clear lingering state
       console.log("Restarting redirect checker browser before cycle...");
       try {
-        await browserRedirectService.restartBrowser();
+        await withTimeout(
+          browserRedirectService.restartBrowser(),
+          30000,
+          "Redirect checker browser restart"
+        );
       } catch (error) {
         console.error("Error restarting redirect checker browser:", error);
       }
       
-      await withAbort(checkRedirects(), redirectCheckerAbortController?.signal);
+      const REDIRECT_CHECK_TIMEOUT_MS = 180000; // 3 minutes
+      await withAbort(
+        withTimeout(checkRedirects(), REDIRECT_CHECK_TIMEOUT_MS, "Redirect check cycle"),
+        redirectCheckerAbortController?.signal
+      );
+
+      const cycleDurationMs = Date.now() - cycleStartTime;
+      console.log(`Completed redirect check cycle in ${(cycleDurationMs / 1000).toFixed(1)}s`);
     } catch (error) {
       if (error instanceof Error && error.message === "AbortError") {
         console.log("Redirect checking was cancelled");
+        isRedirectCheckInProgress = false;
         return; // Don't schedule next run
       }
-      console.error("Error checking redirects:", error);
-    }
-
-    // Only schedule next run if not aborted
-    if (isRunning.redirectChecker) {
-      checkInterval = setTimeout(runRedirectCheck, 60 * 1000);
+      const cycleDurationMs = Date.now() - cycleStartTime;
+      console.error(`Error checking redirects after ${(cycleDurationMs / 1000).toFixed(1)}s:`, error);
+    } finally {
+      isRedirectCheckInProgress = false;
+      // ALWAYS schedule the next run, regardless of success or failure
+      if (isRunning.redirectChecker) {
+        console.log("Scheduling next redirect check in 60 seconds");
+        checkInterval = setTimeout(runRedirectCheck, 60 * 1000);
+      } else {
+        console.log("Redirect checker marked as stopped, not scheduling next run");
+      }
     }
   }
 
   // Start the first check immediately
+  console.log("Running initial redirect check cycle");
   runRedirectCheck();
 }
 

@@ -28,6 +28,18 @@ type Config = {
   googleWebRiskApiProjectName: string;
   /** Enable the URLScan firehose hunter (default false if absent) */
   urlscanHunterEnabled?: boolean;
+  // MSRC abuse reporting
+  msrcReporterName: string;
+  msrcReporterEmail: string;
+  msrcReporterOrg?: string;
+  // XARF email reporting
+  xarfReporterOrg: string;
+  xarfReporterContact: string;
+  xarfReporterDomain: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
 };
 
 export async function readConfig(): Promise<Config> {

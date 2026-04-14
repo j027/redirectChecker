@@ -988,6 +988,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/nodemailer@npm:^8.0.0":
+  version: 8.0.0
+  resolution: "@types/nodemailer@npm:8.0.0"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/e5031df5d6557f4cdb9a0dbe1a96f3f54dc59c23d47477103fd42b5c9bc925ea1b4e51be560af5620b4d0c66fcfb015ce5ca8f914ed2f3a3086be6149d5932da
+  languageName: node
+  linkType: hard
+
 "@types/pg@npm:^8.20.0":
   version: 8.20.0
   resolution: "@types/pg@npm:8.20.0"
@@ -1451,9 +1460,11 @@ __metadata:
   dependencies:
     "@google-cloud/web-risk": "npm:^5.3.1"
     "@types/node": "npm:^24.12.2"
+    "@types/nodemailer": "npm:^8.0.0"
     "@types/pg": "npm:^8.20.0"
     discord.js: "npm:^14.26.2"
     dotenv: "npm:^17.4.1"
+    nodemailer: "npm:^8.0.5"
     onnxruntime-node: "npm:1.24.3"
     patchright: "npm:^1.59.4"
     pg: "npm:^8.20.0"
@@ -2611,6 +2622,13 @@ __metadata:
   bin:
     node-gyp: bin/node-gyp.js
   checksum: 10c0/c38977ce502f1ea41ba2b8721bd5b49bc3d5b3f813eabfac8414082faf0620ccb5211e15c4daecc23ed9f5e3e9cc4da00e575a0bcfc2a95a069294f2afa1e0cd
+  languageName: node
+  linkType: hard
+
+"nodemailer@npm:^8.0.5":
+  version: 8.0.5
+  resolution: "nodemailer@npm:8.0.5"
+  checksum: 10c0/5e8450499bd059c56d74ba96fa5f9928de2ecdae0d53c083dba5661d797114c1f9524d30f992d0263cc5a7dcf5a54b9c1d92dc1f766da150c9d0bde7d3798431
   languageName: node
   linkType: hard
 

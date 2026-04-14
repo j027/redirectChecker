@@ -8,6 +8,9 @@ import pool from "../dbPool.js";
 import { WebRiskServiceClient } from '@google-cloud/web-risk';
 import { DetectedSignals } from './signalService.js';
 import { formatSignals, formatConfidence, SignalData } from '../utils/discordFormatting.js';
+import { isMicrosoftHosted } from '../utils/hostingDetection.js';
+import { reportToMsrc } from './msrcReportService.js';
+import { getMatchingXarfProvider, sendXarfReport } from './xarfReportService.js';
 
 let webRiskClient: WebRiskServiceClient|null = null; 
 
@@ -493,6 +496,22 @@ export async function reportSite(
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect, options?.signals, options?.confidenceScore));
+
+  // MSRC reporting for Microsoft-hosted scam URLs
+  try {
+    const siteHostname = new URL(site).hostname;
+    if (isMicrosoftHosted(siteHostname)) {
+      reports.push(reportToMsrc(site, redirect, screenshot));
+    }
+
+    // XARF reporting for matching hosting providers
+    const xarfProvider = getMatchingXarfProvider(siteHostname);
+    if (xarfProvider) {
+      reports.push(sendXarfReport(site, redirect, screenshot, options?.confidenceScore, xarfProvider));
+    }
+  } catch {
+    // URL parsing failed — skip hosting-based reports
+  }
 
   // wait for all the reports to finish
   await Promise.allSettled(reports);

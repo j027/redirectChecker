@@ -1,0 +1,130 @@
+import { fetch } from "undici";
+import { readConfig } from "../config.js";
+import pool from "../dbPool.js";
+
+const MSRC_API_BASE = "https://api.msrc.microsoft.com/report/v3.0";
+
+interface MsrcAbuseReport {
+  date: string;
+  time: string;
+  timeZone: string;
+  threatType: "URL";
+  incidentType: "Phishing";
+  reporterName: string;
+  reporterEmail: string;
+  reporterOrg?: string;
+  reportNotes: string;
+  source: "ReportApi";
+  severity: "High" | "Medium" | "Low";
+  sourceUrl?: string;
+  destinationUrl: string;
+  attachmentId?: string;
+  attachmentFileName?: string;
+  testSubmission?: boolean;
+}
+
+async function hasAlreadyReported(provider: string, scamUrl: string): Promise<boolean> {
+  const result = await pool.query(
+    "SELECT 1 FROM abuse_reports WHERE provider = $1 AND scam_url = $2 LIMIT 1",
+    [provider, scamUrl]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+async function logAbuseReport(
+  provider: string,
+  reportType: string,
+  scamUrl: string,
+  sourceUrl: string | null,
+  reportPayload: object,
+  responseStatus: string,
+  responseBody: string
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO abuse_reports (provider, report_type, scam_url, source_url, report_payload, response_status, response_body)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [provider, reportType, scamUrl, sourceUrl, JSON.stringify(reportPayload), responseStatus, responseBody]
+  );
+}
+
+async function uploadScreenshot(screenshot: Buffer): Promise<string | null> {
+  try {
+    const response = await fetch(`${MSRC_API_BASE}/File/abuse/File.Attach`, {
+      method: "POST",
+      headers: { "Content-Type": "image/png" },
+      body: screenshot,
+    });
+
+    if (response.ok) {
+      const text = await response.text();
+      return text || null;
+    }
+
+    console.error(`MSRC screenshot upload failed: ${response.status}`);
+    return null;
+  } catch (err) {
+    console.error(`Error uploading screenshot to MSRC: ${err}`);
+    return null;
+  }
+}
+
+export async function reportToMsrc(
+  scamUrl: string,
+  sourceUrl?: string,
+  screenshot?: Buffer | null
+): Promise<void> {
+  if (await hasAlreadyReported("msrc", scamUrl)) {
+    console.info(`MSRC: already reported ${scamUrl}, skipping`);
+    return;
+  }
+
+  const config = await readConfig();
+  const now = new Date();
+
+  let attachmentId: string | null = null;
+  if (screenshot) {
+    attachmentId = await uploadScreenshot(screenshot);
+  }
+
+  const report: MsrcAbuseReport = {
+    date: now.toISOString().slice(0, 10),
+    time: now.toISOString().slice(11, 19),
+    timeZone: "UTC",
+    threatType: "URL",
+    incidentType: "Phishing",
+    reporterName: config.msrcReporterName,
+    reporterEmail: config.msrcReporterEmail,
+    reportNotes: `Automated detection of a tech support scam page hosted on Microsoft infrastructure. This page impersonates a security warning and uses browser-locking techniques (such as fullscreen, keyboard lock, and/or fake error dialogs) to coerce victims into calling a fraudulent support number.`,
+    source: "ReportApi",
+    severity: "High",
+    destinationUrl: scamUrl,
+    ...(sourceUrl && { sourceUrl }),
+    ...(attachmentId && {
+      attachmentId,
+      attachmentFileName: "screenshot.png",
+    }),
+    ...(config.msrcReporterOrg && { reporterOrg: config.msrcReporterOrg }),
+  };
+
+  try {
+    const response = await fetch(`${MSRC_API_BASE}/Abuse/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(report),
+    });
+
+    const responseBody = await response.text();
+    const status = response.ok ? "success" : `error_${response.status}`;
+
+    await logAbuseReport("msrc", "msrc_api", scamUrl, sourceUrl ?? null, report, status, responseBody);
+
+    if (response.ok) {
+      console.info(`Successfully reported to MSRC: ${scamUrl}`);
+    } else {
+      console.error(`MSRC report failed for ${scamUrl}: ${response.status} - ${responseBody}`);
+    }
+  } catch (err) {
+    await logAbuseReport("msrc", "msrc_api", scamUrl, sourceUrl ?? null, report, "error", String(err));
+    console.error(`Error reporting to MSRC: ${err}`);
+  }
+}

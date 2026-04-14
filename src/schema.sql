@@ -223,3 +223,20 @@ CREATE TABLE IF NOT EXISTS urlscan_scan_stats (
     urls_classified_scam  INTEGER NOT NULL DEFAULT 0,         -- classifier >= 0.90 (before signal check)
     urls_reported         INTEGER NOT NULL DEFAULT 0          -- successfully reported to Netcraft
 );
+
+-- Abuse reports audit log - tracks MSRC and XARF reports sent to hosting providers (never pruned)
+CREATE TABLE IF NOT EXISTS abuse_reports (
+    id              SERIAL PRIMARY KEY,
+    provider        TEXT NOT NULL,              -- 'msrc', 'laravel-forge', etc.
+    report_type     TEXT NOT NULL,              -- 'msrc_api', 'xarf_email'
+    scam_url        TEXT NOT NULL,              -- the reported scam URL
+    source_url      TEXT,                       -- the ad/redirect source URL (if available)
+    report_payload  JSONB,                      -- full report body sent (MSRC JSON or XARF JSON)
+    response_status TEXT,                       -- HTTP status or email send status
+    response_body   TEXT,                       -- API response or SMTP response
+    reported_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_abuse_reports_provider ON abuse_reports(provider);
+CREATE INDEX IF NOT EXISTS idx_abuse_reports_reported_at ON abuse_reports(reported_at);
+CREATE INDEX IF NOT EXISTS idx_abuse_reports_dedup ON abuse_reports(provider, scam_url);

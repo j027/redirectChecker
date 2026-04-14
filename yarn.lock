@@ -1463,7 +1463,7 @@ __metadata:
     "@types/nodemailer": "npm:^8.0.0"
     "@types/pg": "npm:^8.20.0"
     discord.js: "npm:^14.26.2"
-    dotenv: "npm:^17.4.1"
+    dotenv: "npm:^17.4.2"
     nodemailer: "npm:^8.0.5"
     onnxruntime-node: "npm:1.24.3"
     patchright: "npm:^1.59.4"
@@ -1474,16 +1474,16 @@ __metadata:
     tldts: "npm:^7.0.28"
     tsx: "npm:^4.21.0"
     typescript: "npm:^6.0.2"
-    undici: "npm:^8.0.2"
+    undici: "npm:^8.1.0"
     uuid: "npm:^13.0.0"
     vitest: "npm:^4.1.4"
   languageName: unknown
   linkType: soft
 
-"dotenv@npm:^17.4.1":
-  version: 17.4.1
-  resolution: "dotenv@npm:17.4.1"
-  checksum: 10c0/eb6ae592ee1e8f6b7f62e0f0c2827c4f27bbe9e00abe9d7910e06456e63dccd42f011de94da9450a63c07ccc52c318f527c1b56ad8e2c81a1a16314b53d4fd99
+"dotenv@npm:^17.4.2":
+  version: 17.4.2
+  resolution: "dotenv@npm:17.4.2"
+  checksum: 10c0/164f8e77a646c8446867d5b588d26ea6005c8ea7c5eb41cf926f6113d23f2191355f6e0cfd95ea9bab98394a5b0a3f1e51a8399711b666fe55cc7b0bd745f942
   languageName: node
   linkType: hard
 
@@ -3598,10 +3598,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici@npm:^8.0.2":
-  version: 8.0.2
-  resolution: "undici@npm:8.0.2"
-  checksum: 10c0/4f833ab3a154ea11e2c53b272592f62269ecc7040a8bae5147c56ec1ccf67ccdf50d93abb84a48f0ba29947cca78d99d8ca873cacf53924c4b884c7d9bf783f9
+"undici@npm:^8.1.0":
+  version: 8.1.0
+  resolution: "undici@npm:8.1.0"
+  checksum: 10c0/c55ad57f10efb9b55ab683104dde1c6f620496b9facde640ba26cffdc53a53694c12a8c3f7196069017c5c1b5031ef0843e232d9c04dcc834b3baa046d3ea678
   languageName: node
   linkType: hard
 

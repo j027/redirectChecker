@@ -105,17 +105,21 @@ export class AdSpyGlassHunter {
 
                 // setup the popup listener before we do any clicking
                 context.on("page", async (p: Page) => {
-                    if (p.url() !== fullVideoUrl) {
-                        popupPromises.push(this.handleAdClick(p, userAgent));
-                        return;
+                    try {
+                        if (p.url() !== fullVideoUrl) {
+                            popupPromises.push(this.handleAdClick(p, userAgent));
+                            return;
+                        }
+
+                        popupPromises.push(this.handleAdClick(page, userAgent));
+                        page = p;
+
+                        // spoof the new video page
+                        await spoofWindowsChrome(context, page);
+                        await blockGoogleAnalytics(page);
+                    } catch (error) {
+                        console.error("Error handling AdSpyGlass ad popup:", error);
                     }
-
-                    popupPromises.push(this.handleAdClick(page, userAgent));
-                    page = p;
-
-                    // spoof the new video page
-                    await spoofWindowsChrome(context, page);
-                    await blockGoogleAnalytics(page);
                 });
                 
                 // Click multiple times with delays to trigger ads

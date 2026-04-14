@@ -181,22 +181,27 @@ export async function spoofWindowsChrome(context: BrowserContext, page: Page, pr
   // Extract Chrome version from the user agent
   const chromeVersion = getChromeVersion(userAgent, browser);
   const brands = generateBrandData(chromeVersion);
-  const cdpSession = await context.newCDPSession(page);
-  
-  await cdpSession.send('Network.setUserAgentOverride', {
-    userAgent,
-    platform: "Win32",
-    acceptLanguage: 'en-US,en',
-    userAgentMetadata: {
-      brands: brands,
-      fullVersion: chromeVersion,
-      platform: "Windows",
-      platformVersion: "15.0.0",
-      architecture: "x86",
-      model: "",
-      mobile: false
-    }
-  });
+
+  try {
+    const cdpSession = await context.newCDPSession(page);
+    
+    await cdpSession.send('Network.setUserAgentOverride', {
+      userAgent,
+      platform: "Win32",
+      acceptLanguage: 'en-US,en',
+      userAgentMetadata: {
+        brands: brands,
+        fullVersion: chromeVersion,
+        platform: "Windows",
+        platformVersion: "15.0.0",
+        architecture: "x86",
+        model: "",
+        mobile: false
+      }
+    });
+  } catch (error) {
+    console.error("Failed to set user agent override via CDP:", error);
+  }
   
   // Add WebGL spoofing with a random Windows-compatible configuration
   await spoofWebGL(page);

@@ -160,4 +160,8 @@ async function gracefulShutdown() {
 process.on("SIGINT", gracefulShutdown);
 process.on("SIGTERM", gracefulShutdown);
 
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection (not crashing):", reason);
+});
+
 void main();

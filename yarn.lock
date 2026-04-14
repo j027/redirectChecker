@@ -1466,7 +1466,7 @@ __metadata:
     dotenv: "npm:^17.4.2"
     nodemailer: "npm:^8.0.5"
     onnxruntime-node: "npm:1.24.3"
-    patchright: "npm:^1.59.4"
+    patchright: "npm:1.59.1"
     pg: "npm:^8.20.0"
     prettier: "npm:^3.8.2"
     protobufjs: "npm:^8.0.1"
@@ -2706,27 +2706,27 @@ __metadata:
   languageName: node
   linkType: hard
 
-"patchright-core@npm:v1.59.4":
-  version: 1.59.4
-  resolution: "patchright-core@npm:1.59.4"
+"patchright-core@npm:1.59.1":
+  version: 1.59.1
+  resolution: "patchright-core@npm:1.59.1"
   bin:
     patchright-core: cli.js
-  checksum: 10c0/62921f5cbec4be38f85d65b23469ae2539fd499470a21f202f5d954cc7669b6823e34709c340f6f0b334b17d218202c43db39eb10e01e2fde53b021373c17c25
+  checksum: 10c0/38a24acaa4f0e707ed54f2ca2f24b28aac0945f137359eac122d2c9306a166798054dbb94b5cc3e0ca78158470f60eeab733ca7d4f10196826307a50b4ddeb50
   languageName: node
   linkType: hard
 
-"patchright@npm:^1.59.4":
-  version: 1.59.4
-  resolution: "patchright@npm:1.59.4"
+"patchright@npm:1.59.1":
+  version: 1.59.1
+  resolution: "patchright@npm:1.59.1"
   dependencies:
     fsevents: "npm:2.3.2"
-    patchright-core: "npm:v1.59.4"
+    patchright-core: "npm:1.59.1"
   dependenciesMeta:
     fsevents:
       optional: true
   bin:
     patchright: cli.js
-  checksum: 10c0/a9496f086fe42cfd20597b38c73df4cf9b16046bf1cff65f8dbfdf8e2f60bdd510caba0656ae5db7bc8e1ea348c076c6cb059436c86f1d318b9705bc5b1f8059
+  checksum: 10c0/c3617a5f774d4329668cf4e6de117a5e9b6f27fa42183a4260129c023f7a1da8bbae6254a44655534ebb32e084a03456f850fb9a9ee2ebda9a9a9be5cb02f103
   languageName: node
   linkType: hard
 

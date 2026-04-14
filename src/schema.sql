@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS takedown_status
 );
 
 -- Index for efficient lookup of active checks
-CREATE INDEX idx_takedown_status_active ON takedown_status (check_active);
+CREATE INDEX IF NOT EXISTS idx_takedown_status_active ON takedown_status (check_active);
 
 -- Table for storing and caching user agents
 CREATE TABLE IF NOT EXISTS user_agents
@@ -154,16 +154,16 @@ CREATE TABLE IF NOT EXISTS scam_reports (
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_scam_reports_detected ON scam_reports (detected_at);
-CREATE INDEX idx_ads_type ON ads (ad_type);
-CREATE INDEX idx_ads_scam ON ads (is_scam);
-CREATE INDEX idx_ads_last_seen ON ads (last_seen);
-CREATE INDEX idx_search_ads_search_url ON search_ads (search_url);
-CREATE INDEX idx_redirect_destinations_hostname ON redirect_destinations (hostname);
-CREATE INDEX idx_hunter_events_type ON hunter_events (hunter_type);
-CREATE INDEX idx_hunter_events_event ON hunter_events (event_type);
-CREATE INDEX idx_hunter_events_created ON hunter_events (created_at DESC);
-CREATE INDEX idx_redirect_events_type ON redirect_events (event_type);
-CREATE INDEX idx_redirect_events_created ON redirect_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ads_type ON ads (ad_type);
+CREATE INDEX IF NOT EXISTS idx_ads_scam ON ads (is_scam);
+CREATE INDEX IF NOT EXISTS idx_ads_last_seen ON ads (last_seen);
+CREATE INDEX IF NOT EXISTS idx_search_ads_search_url ON search_ads (search_url);
+CREATE INDEX IF NOT EXISTS idx_redirect_destinations_hostname ON redirect_destinations (hostname);
+CREATE INDEX IF NOT EXISTS idx_hunter_events_type ON hunter_events (hunter_type);
+CREATE INDEX IF NOT EXISTS idx_hunter_events_event ON hunter_events (event_type);
+CREATE INDEX IF NOT EXISTS idx_hunter_events_created ON hunter_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_redirect_events_type ON redirect_events (event_type);
+CREATE INDEX IF NOT EXISTS idx_redirect_events_created ON redirect_events (created_at DESC);
 
 -- Safe Browsing v5: tracks metadata/version state for each hash list
 CREATE TABLE IF NOT EXISTS safebrowsing_hash_lists (
@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS safebrowsing_hash_prefixes (
     PRIMARY KEY (list_name, hash_prefix)
 );
 
-CREATE INDEX idx_safebrowsing_hash_prefixes_prefix ON safebrowsing_hash_prefixes (hash_prefix);
+CREATE INDEX IF NOT EXISTS idx_safebrowsing_hash_prefixes_prefix ON safebrowsing_hash_prefixes (hash_prefix);
 
 -- Safe Browsing v5: local cache for hashes.search API responses
 CREATE TABLE IF NOT EXISTS safebrowsing_hash_cache (
@@ -191,8 +191,8 @@ CREATE TABLE IF NOT EXISTS safebrowsing_hash_cache (
     PRIMARY KEY (hash_prefix, full_hash)
 );
 
-CREATE INDEX idx_safebrowsing_hash_cache_prefix ON safebrowsing_hash_cache (hash_prefix);
-CREATE INDEX idx_safebrowsing_hash_cache_expires ON safebrowsing_hash_cache (expires_at);
+CREATE INDEX IF NOT EXISTS idx_safebrowsing_hash_cache_prefix ON safebrowsing_hash_cache (hash_prefix);
+CREATE INDEX IF NOT EXISTS idx_safebrowsing_hash_cache_expires ON safebrowsing_hash_cache (expires_at);
 
 -- URLScan hunter: individual report log
 CREATE TABLE IF NOT EXISTS urlscan_reports (

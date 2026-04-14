@@ -16,6 +16,7 @@ interface MsrcAbuseReport {
   reportNotes: string;
   source: "ReportApi";
   severity: "High" | "Medium" | "Low";
+  anonymizeReport: boolean;
   sourceUrl?: string;
   destinationUrl: string;
   attachmentId?: string;
@@ -97,6 +98,7 @@ export async function reportToMsrc(
     reportNotes: `Automated detection of a tech support scam page hosted on Microsoft infrastructure. This page impersonates a security warning and uses browser-locking techniques (such as fullscreen, keyboard lock, and/or fake error dialogs) to coerce victims into calling a fraudulent support number.`,
     source: "ReportApi",
     severity: "High",
+    anonymizeReport: true,
     destinationUrl: scamUrl,
     ...(sourceUrl && { sourceUrl }),
     ...(attachmentId && {

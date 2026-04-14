@@ -1,9 +1,10 @@
-import { Client, Events, GatewayIntentBits } from "discord.js";
+import { Events } from "discord.js";
 import { setTimeout } from "timers/promises";
 import { chromium } from "patchright";
 import { readConfig } from "./config.js";
 import { commands } from "./commands/commands.js";
 import { closePool } from "./dbPool.js";
+import { discordClient } from "./discordClient.js";
 import {
   startRedirectChecker,
   stopRedirectChecker,
@@ -27,10 +28,6 @@ import { hunterService } from "./services/hunterService.js";
 import { initializeGoogleWebRiskClient } from "./services/reportService.js";
 import { initSafeBrowsingV5 } from "./services/safeBrowsingV5Service.js";
 import { getLatestChromeVersion } from "./services/chromeUserAgentService.js";
-
-export const discordClient = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
-});
 
 /**
  * Compares bundled Chromium version against latest stable Chrome.

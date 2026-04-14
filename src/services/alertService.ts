@@ -1,6 +1,6 @@
 import { EmbedBuilder, TextChannel } from "discord.js";
 import { readConfig } from "../config.js";
-import { discordClient } from "../discordBot.js";
+import { discordClient } from "../discordClient.js";
 
 // Add pornhubAd and adspyglass as new alert types
 export type AlertType = "adScam" | "typosquat" | "pornhubAd" | "adspyglass";

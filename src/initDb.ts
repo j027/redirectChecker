@@ -12,7 +12,7 @@ async function initializeDatabase() {
 
     try {
         await client.connect();
-        const schemaPath = path.join(__dirname, 'schema.sql');
+        const schemaPath = path.join(import.meta.dirname, 'schema.sql');
         const schema = readFileSync(schemaPath, 'utf-8');
         await client.query(schema);
         console.log('Database initialized successfully.');

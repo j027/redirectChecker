@@ -1,6 +1,6 @@
 import { readConfig } from "../config.js";
 import { fetch } from "undici";
-import { discordClient } from "../discordBot.js";
+import { discordClient } from "../discordClient.js";
 import { TextChannel, EmbedBuilder } from "discord.js";
 import { userAgentService } from "./userAgentService.js";
 import { browserReportService } from "./browserReportService.js";

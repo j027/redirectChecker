@@ -1,4 +1,5 @@
 import { Browser } from "patchright";
+import { setTimeout as setTimeoutPromise } from "timers/promises";
 import { hunterService, CONFIDENCE_THRESHOLD } from "./hunterService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { parseProxy, spoofWindowsChrome } from "../utils/playwrightUtilities.js";
@@ -70,6 +71,7 @@ export class PornhubAdHunter {
       if (adUrl != null) {
         break;
       }
+      await setTimeoutPromise(2000);
     }
 
     if (adUrl == null) {

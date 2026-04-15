@@ -170,6 +170,13 @@ export class AdSpyGlassHunter {
   }
 
   private async handleAdClick(page: Page, userAgent: string): Promise<void> {
+    // Capture the popup's initial URL immediately before any async work,
+    // since the page may already be navigating through its redirect chain
+    const initialPopupUrl = page.url();
+
+    // Start redirect tracking FIRST so we capture early redirects
+    const redirectTracker = await trackRedirectionPath(page, initialPopupUrl);
+
     await spoofWindowsChrome(page.context(), page, userAgent);
     await blockGoogleAnalytics(page);
 
@@ -184,9 +191,6 @@ export class AdSpyGlassHunter {
     try {
       // Attach signal listeners
       await signalService.attachApiListeners(page);
-      
-      // Set up redirect tracking for this popup page
-      const redirectTracker = await trackRedirectionPath(page, page.url());
       
       // Wait for page to load and simulate some interaction
       await page.waitForLoadState("load");
@@ -207,11 +211,14 @@ export class AdSpyGlassHunter {
         console.log(`🚨 Weighted signals detected for AdSpyGlass popup:`, signals);
       }
       
-      console.log(`AdSpyGlass popup captured: ${page.url()}`);
+      // Use redirect_path[0] as the canonical initial URL (most reliable),
+      // falling back to the captured initial URL
+      const adUrl = redirectionPath[0] || initialPopupUrl;
+      console.log(`AdSpyGlass popup captured: ${adUrl} -> ${page.url()}`);
       console.log(`Redirect path: ${redirectionPath}`);
 
       // Process this ad popup
-      await this.handleAdSpyGlassAd(page.url(), screenshot, html, redirectionPath, signals);
+      await this.handleAdSpyGlassAd(adUrl, screenshot, html, redirectionPath, signals);
       
     } catch (error) {
       console.log(`Error handling AdSpyGlass ad popup: ${error}`);

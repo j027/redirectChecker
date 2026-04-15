@@ -5,6 +5,7 @@ import { reportSite } from "./reportService.js";
 import { initTakedownStatusForDestination } from "./takedownMonitorService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
+import { hasWeightedSignal } from "./signalService.js";
 import { logRedirectEvent } from "./redirectEventLogger.js";
 import { logScamReport } from "./scamReportLogger.js";
 
@@ -105,13 +106,13 @@ async function processRedirectEntry(
         return;
       }
 
-      // Apply confidence threshold for effective scam decision (signals tracked but not required)
+      // Apply confidence threshold + signal check for effective scam decision
       const classifierIsScam = classificationResult.isScam;
       const confidenceScore = classificationResult.confidenceScore;
       const signals = classificationResult.signals;
       
-      // Scam = classifier says scam AND confidence >= threshold
-      const isScam = classifierIsScam && confidenceScore >= CONFIDENCE_THRESHOLD;
+      // Scam = classifier says scam AND confidence >= threshold AND at least one weighted signal
+      const isScam = classifierIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasWeightedSignal(signals);
 
       await logRedirectEvent("classification", `Classified ${redirectDestination}: ${isScam ? "SCAM" : "clean"}`, sourceUrl, {
         destination: redirectDestination,

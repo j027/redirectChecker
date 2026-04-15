@@ -18,7 +18,7 @@ import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
 import { createSignalService, DetectedSignals, createEmptySignals } from "./signalService.js";
 
 // Given a detected scam, confidence level above this will be treated as one
-export const CONFIDENCE_THRESHOLD = 0.90;
+export const CONFIDENCE_THRESHOLD = 0.80;
 
 interface AddToRedirectCheckerResult {
   added: boolean;

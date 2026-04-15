@@ -3,11 +3,13 @@ import { readConfig } from "../config.js";
 import pool from "../dbPool.js";
 
 const MSRC_API_BASE = "https://api.msrc.microsoft.com/report/v3.0";
+const MSRC_ABUSE_ENDPOINT = `${MSRC_API_BASE}/abuse`;
+const MSRC_FILE_ENDPOINT = `${MSRC_API_BASE}/file`;
 
 interface MsrcAbuseReport {
   date: string;
   time: string;
-  timeZone: string;
+  timeZone: string; // format: "+0000" or "-0000"
   threatType: "URL";
   incidentType: "Phishing";
   reporterName: string;
@@ -17,7 +19,7 @@ interface MsrcAbuseReport {
   source: "ReportApi";
   severity: "High" | "Medium" | "Low";
   anonymizeReport: boolean;
-  sourceUrl?: string;
+  sourceUrl: string;
   destinationUrl: string;
   attachmentId?: string;
   attachmentFileName?: string;
@@ -50,7 +52,7 @@ async function logAbuseReport(
 
 async function uploadScreenshot(screenshot: Buffer): Promise<string | null> {
   try {
-    const response = await fetch(`${MSRC_API_BASE}/File/abuse/File.Attach`, {
+    const response = await fetch(MSRC_FILE_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "image/png" },
       body: screenshot,
@@ -71,7 +73,7 @@ async function uploadScreenshot(screenshot: Buffer): Promise<string | null> {
 
 export async function reportToMsrc(
   scamUrl: string,
-  sourceUrl?: string,
+  sourceUrl: string,
   screenshot?: Buffer | null
 ): Promise<void> {
   if (await hasAlreadyReported("msrc", scamUrl)) {
@@ -90,7 +92,7 @@ export async function reportToMsrc(
   const report: MsrcAbuseReport = {
     date: now.toISOString().slice(0, 10),
     time: now.toISOString().slice(11, 19),
-    timeZone: "UTC",
+    timeZone: "+0000",
     threatType: "URL",
     incidentType: "Phishing",
     reporterName: config.msrcReporterName,
@@ -100,7 +102,7 @@ export async function reportToMsrc(
     severity: "High",
     anonymizeReport: true,
     destinationUrl: scamUrl,
-    ...(sourceUrl && { sourceUrl }),
+    sourceUrl,
     ...(attachmentId && {
       attachmentId,
       attachmentFileName: "screenshot.png",
@@ -109,7 +111,7 @@ export async function reportToMsrc(
   };
 
   try {
-    const response = await fetch(`${MSRC_API_BASE}/Abuse/report`, {
+    const response = await fetch(MSRC_ABUSE_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(report),
@@ -118,7 +120,7 @@ export async function reportToMsrc(
     const responseBody = await response.text();
     const status = response.ok ? "success" : `error_${response.status}`;
 
-    await logAbuseReport("msrc", "msrc_api", scamUrl, sourceUrl ?? null, report, status, responseBody);
+    await logAbuseReport("msrc", "msrc_api", scamUrl, sourceUrl, report, status, responseBody);
 
     if (response.ok) {
       console.info(`Successfully reported to MSRC: ${scamUrl}`);
@@ -126,7 +128,8 @@ export async function reportToMsrc(
       console.error(`MSRC report failed for ${scamUrl}: ${response.status} - ${responseBody}`);
     }
   } catch (err) {
-    await logAbuseReport("msrc", "msrc_api", scamUrl, sourceUrl ?? null, report, "error", String(err));
-    console.error(`Error reporting to MSRC: ${err}`);
+    const errMsg = err instanceof Error ? `${err.message}${err.cause ? ` (cause: ${err.cause})` : ""}` : String(err);
+    await logAbuseReport("msrc", "msrc_api", scamUrl, sourceUrl, report, "error", errMsg);
+    console.error(`Error reporting to MSRC: ${errMsg}`);
   }
 }

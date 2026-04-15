@@ -244,10 +244,10 @@ export class TyposquatHunter {
           });
 
           if (cloakerCandidate != null) {
-            const addedToChecker =
+            const { added: addedToChecker, strategy } =
               await hunterService.tryAddToRedirectChecker(cloakerCandidate);
             if (addedToChecker) {
-              await sendCloakerAddedAlert(cloakerCandidate, "Typosquat");
+              await sendCloakerAddedAlert(cloakerCandidate, "Typosquat", strategy);
               console.log(
                 `Added cloaker to redirect checker: ${cloakerCandidate}`
               );

@@ -221,7 +221,8 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
  */
 export async function sendCloakerAddedAlert(
   cloakerUrl: string,
-  huntType: string
+  huntType: string,
+  strategy?: string | null
 ): Promise<void> {
   try {
     const { channelId } = await readConfig();
@@ -232,10 +233,20 @@ export async function sendCloakerAddedAlert(
       return;
     }
 
-    // Simple confirmation message
-    const messageText = `✅ Added to redirect checker: \`${cloakerUrl}\` (from ${huntType} hunter)`;
+    const embed = new EmbedBuilder()
+      .setTitle("✅ Added to Redirect Checker")
+      .setColor(0x00cc00) // Green
+      .setTimestamp()
+      .addFields(
+        { name: "URL", value: truncate(cloakerUrl, EMBED_FIELD_VALUE_LIMIT), inline: false },
+        { name: "Source", value: huntType, inline: true }
+      );
 
-    await channel.send(messageText);
+    if (strategy) {
+      embed.addFields({ name: "Strategy", value: strategy, inline: true });
+    }
+
+    await channel.send({ embeds: [embed] });
     console.log(`Redirect checker addition confirmation sent for: ${cloakerUrl}`);
   } catch (error) {
     console.error(`Error sending Discord notification: ${error}`);

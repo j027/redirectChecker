@@ -370,10 +370,10 @@ export class AdSpyGlassHunter {
           });
 
           if (cloakerCandidate != null) {
-            const addedToChecker =
+            const { added: addedToChecker, strategy } =
               await hunterService.tryAddToRedirectChecker(cloakerCandidate);
             if (addedToChecker) {
-              await sendCloakerAddedAlert(cloakerCandidate, "AdSpyGlass");
+              await sendCloakerAddedAlert(cloakerCandidate, "AdSpyGlass", strategy);
               console.log(
                 `Added cloaker to redirect checker: ${cloakerCandidate}`
               );

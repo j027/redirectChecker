@@ -412,10 +412,10 @@ export class SearchAdHunter {
                 cloakerCandidate: adDestination,
               });
 
-              const addedToRedirectChecker =
+              const { added: addedToRedirectChecker, strategy } =
                 await hunterService.tryAddToRedirectChecker(adDestination);
               if (addedToRedirectChecker) {
-                await sendCloakerAddedAlert(adDestination, "Search Ad");
+                await sendCloakerAddedAlert(adDestination, "Search Ad", strategy);
               }
               console.log(
                 `Auto-add to redirect checker for changed status: ${addedToRedirectChecker ? "Success" : "Failed"}`
@@ -478,10 +478,10 @@ export class SearchAdHunter {
               cloakerCandidate: adDestination,
             });
 
-            const addedToRedirectChecker =
+            const { added: addedToRedirectChecker, strategy: newStrategy } =
               await hunterService.tryAddToRedirectChecker(adDestination);
             if (addedToRedirectChecker) {
-              await sendCloakerAddedAlert(adDestination, "Search Ad");
+              await sendCloakerAddedAlert(adDestination, "Search Ad", newStrategy);
             }
             console.log(
               `Auto-add to redirect checker for new scam: ${addedToRedirectChecker ? "Success" : "Failed"}`

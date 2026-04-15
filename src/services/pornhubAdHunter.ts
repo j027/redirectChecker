@@ -244,10 +244,10 @@ export class PornhubAdHunter {
                 cloakerCandidate: adDestination,
               });
 
-              const addedToRedirectChecker = 
+              const { added: addedToRedirectChecker, strategy } = 
                 await hunterService.tryAddToRedirectChecker(adDestination);
               if (addedToRedirectChecker) {
-                await sendCloakerAddedAlert(adDestination, "Pornhub Ad");
+                await sendCloakerAddedAlert(adDestination, "Pornhub Ad", strategy);
               } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {
                 // Cloaking scam detected - force report even though redirect checker failed
                 console.log(`⚠️ Cloaking scam detected - forcing direct report for: ${finalUrl}`);
@@ -306,10 +306,10 @@ export class PornhubAdHunter {
               cloakerCandidate: adDestination,
             });
 
-            const addedToRedirectChecker = 
+            const { added: addedToRedirectChecker, strategy: newStrategy } = 
               await hunterService.tryAddToRedirectChecker(adDestination);
             if (addedToRedirectChecker) {
-              await sendCloakerAddedAlert(adDestination, "Pornhub Ad");
+              await sendCloakerAddedAlert(adDestination, "Pornhub Ad", newStrategy);
             } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {
               // Cloaking scam detected - force report even though redirect checker failed
               console.log(`⚠️ Cloaking scam detected - forcing direct report for: ${finalUrl}`);

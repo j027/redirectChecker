@@ -20,6 +20,11 @@ import { createSignalService, DetectedSignals, createEmptySignals } from "./sign
 // Given a detected scam, confidence level above this will be treated as one
 export const CONFIDENCE_THRESHOLD = 0.90;
 
+interface AddToRedirectCheckerResult {
+  added: boolean;
+  strategy: string | null;
+}
+
 interface ProcessAdResult {
   screenshot: Buffer;
   html: string;
@@ -176,7 +181,7 @@ export class HunterService {
    * @param url The URL to add to the redirect checker
    * @returns True if successfully added, false if all strategies failed
    */
-  public async tryAddToRedirectChecker(url: string): Promise<boolean> {
+  public async tryAddToRedirectChecker(url: string): Promise<AddToRedirectCheckerResult> {
     console.log(`Attempting to add ${url} to redirect checker automatically`);
 
     // Extract domain from the incoming URL
@@ -204,7 +209,7 @@ export class HunterService {
         await checkClient.query(updateQuery, [url, result.rows[0].id]);
         
         console.log(`Updated redirect for ${domain} from ${result.rows[0].source_url} to ${url}`);
-        return true;
+        return { added: true, strategy: "existing" };
       }
     } finally {
       checkClient.release();
@@ -256,7 +261,7 @@ export class HunterService {
               console.log(
                 `Successfully added ${url} to redirect checker as ${redirectType}`
               );
-              return true;
+              return { added: true, strategy: redirectType };
             } finally {
               client.release();
             }
@@ -274,7 +279,7 @@ export class HunterService {
     console.log(
       `All redirect strategies failed or destinations were not classified as scams for ${url}`
     );
-    return false;
+    return { added: false, strategy: null };
   }
 
   public pgArray(values: string[]): string {

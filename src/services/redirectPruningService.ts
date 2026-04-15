@@ -54,23 +54,26 @@ async function pruneNonResolvingRedirects(): Promise<void> {
 }
 
 /**
- * Removes redirects that haven't led to a scam in the last 5 days
+ * Removes redirects that haven't led to a scam in the last 5 days.
+ * Skips redirects created less than 1 day ago to give them time to be classified.
  */
 async function pruneInactiveScamRedirects(): Promise<void> {
   const client = await pool.connect();
   
   try {
-    // Find redirects that haven't led to a scam in the last 5 days
+    // Find redirects that haven't led to a scam in the last 5 days,
+    // but only if the redirect itself is older than 1 day
     const result = await client.query(`
       SELECT r.id 
       FROM redirects r
-      WHERE NOT EXISTS (
-        SELECT 1 
-        FROM redirect_destinations rd
-        WHERE rd.redirect_id = r.id
-          AND rd.is_scam = true
-          AND rd.last_seen > NOW() - INTERVAL '5 days'
-      )
+      WHERE r.created_at < NOW() - INTERVAL '1 day'
+        AND NOT EXISTS (
+          SELECT 1 
+          FROM redirect_destinations rd
+          WHERE rd.redirect_id = r.id
+            AND rd.is_scam = true
+            AND rd.last_seen > NOW() - INTERVAL '5 days'
+        )
     `);
     
     if (result.rows.length > 0) {

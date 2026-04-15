@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS redirects
 (
     id         SERIAL PRIMARY KEY,
     source_url TEXT NOT NULL, -- The URL that triggers a redirect
-    type       TEXT NOT NULL  -- The type of redirect, stored as a string.
+    type       TEXT NOT NULL, -- The type of redirect, stored as a string.
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table for storing where the redirect actually goes,

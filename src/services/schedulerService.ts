@@ -5,6 +5,7 @@ import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
 import { logHunterEvent, pruneHunterEvents } from "./hunterEventLogger.js";
 import { pruneRedirectEvents } from "./redirectEventLogger.js";
+import { logProxyEvent, pruneProxyEvents } from "./proxyEventLogger.js";
 import { urlscanHunter } from "./urlscanHunter.js";
 import { syncHashLists } from "./safeBrowsingV5Service.js";
 import { readConfig } from "../config.js";
@@ -56,7 +57,7 @@ async function logHunterProxyIp(): Promise<void> {
     });
     const data = await response.json() as { ip: string };
     console.log(`Hunter proxy IP: ${data.ip}`);
-    await logHunterEvent("scheduler", "proxy_ip", `Hunter proxy IP: ${data.ip}`, { ip: data.ip });
+    await logProxyEvent("ip_check", `Hunter proxy IP: ${data.ip}`, { ipAddress: data.ip });
   } catch (error) {
     console.error(`Failed to log hunter proxy IP: ${error}`);
   }
@@ -72,9 +73,10 @@ async function rotateHunterProxyIp(): Promise<void> {
       signal: AbortSignal.timeout(10000),
     });
     console.log(`Hunter proxy rotation triggered: ${response.status}`);
-    await logHunterEvent("scheduler", "proxy_rotation", `Proxy rotation triggered`, { status: response.status });
+    await logProxyEvent("rotation", `Proxy rotation triggered`, { statusCode: response.status });
   } catch (error) {
     console.error(`Failed to rotate hunter proxy IP: ${error}`);
+    await logProxyEvent("error", `Proxy rotation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -376,8 +378,9 @@ export function startEventLogPruner(): void {
     try {
       const hunterPruned = await pruneHunterEvents(7);
       const redirectPruned = await pruneRedirectEvents(7);
-      if (hunterPruned > 0 || redirectPruned > 0) {
-        console.log(`Pruned ${hunterPruned} hunter events and ${redirectPruned} redirect events`);
+      const proxyPruned = await pruneProxyEvents(365);
+      if (hunterPruned > 0 || redirectPruned > 0 || proxyPruned > 0) {
+        console.log(`Pruned ${hunterPruned} hunter events, ${redirectPruned} redirect events, and ${proxyPruned} proxy events`);
       }
     } catch (error) {
       console.error("Error during event log pruning:", error);

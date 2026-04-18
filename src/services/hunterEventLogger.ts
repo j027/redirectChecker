@@ -15,9 +15,7 @@ export type HunterEventType =
   | "status_changed"
   | "error"
   | "timeout"
-  | "whitelisted"
-  | "proxy_ip"
-  | "proxy_rotation";
+  | "whitelisted";
 
 /**
  * Logs a hunter event to the database for debugging and monitoring.

@@ -241,3 +241,16 @@ CREATE TABLE IF NOT EXISTS abuse_reports (
 CREATE INDEX IF NOT EXISTS idx_abuse_reports_provider ON abuse_reports(provider);
 CREATE INDEX IF NOT EXISTS idx_abuse_reports_reported_at ON abuse_reports(reported_at);
 CREATE INDEX IF NOT EXISTS idx_abuse_reports_dedup ON abuse_reports(provider, scam_url);
+
+-- Proxy event logs - tracks proxy IP checks and rotations
+CREATE TABLE IF NOT EXISTS proxy_events (
+    id          SERIAL PRIMARY KEY,
+    event_type  VARCHAR(50) NOT NULL,   -- 'ip_check', 'rotation', 'error'
+    ip_address  TEXT,                   -- populated on ip_check events
+    status_code INTEGER,               -- HTTP response status from rotation
+    message     TEXT        NOT NULL,   -- Human-readable log message
+    created_at  TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_proxy_events_type ON proxy_events (event_type);
+CREATE INDEX IF NOT EXISTS idx_proxy_events_created ON proxy_events (created_at DESC);

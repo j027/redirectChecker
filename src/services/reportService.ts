@@ -322,8 +322,12 @@ async function reportToCloudflareUrlScanner(site: string) {
 
 interface CrdfLabsResponse {
   error: boolean;
-  msg: string;
-  ref: string;
+  error_code: string | null;
+  message: string | null;
+  data: {
+    msg: string;
+    ref: string;
+  } | null;
 }
 
 async function reportToCrdfLabs(site: string) {
@@ -331,19 +335,25 @@ async function reportToCrdfLabs(site: string) {
 
   try {
     const response = await fetch(
-      "https://threatcenter.crdf.fr/api/v0/submit_url.json",
+      "https://threatcenter.crdf.fr/api/v1/submit_url.json",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${crdfLabsApiKey}`,
+        },
         body: JSON.stringify({
-          token: crdfLabsApiKey,
           method: "submit_url",
           urls: [site],
         }),
       },
     );
     const data = await response.json() as CrdfLabsResponse;
-    console.info(`CRDF Labs report: error=${data.error}, message=${data.msg}, reference=${data.ref}`);
+    if (data.error) {
+      console.error(`CRDF Labs report error: code=${data.error_code}, message=${data.message}`);
+    } else {
+      console.info(`CRDF Labs report: message=${data.data?.msg}, reference=${data.data?.ref}`);
+    }
   } catch (error) {
     console.error("CRDF Labs report failed", error);
   }

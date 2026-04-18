@@ -52,15 +52,24 @@ async function logAbuseReport(
 
 async function uploadScreenshot(screenshot: Buffer): Promise<string | null> {
   try {
+    const boundary = "----FormBoundary" + Math.random().toString(36).slice(2);
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\n`),
+      Buffer.from(`Content-Disposition: form-data; name="file"; filename="screenshot.png"\r\n`),
+      Buffer.from(`Content-Type: image/png\r\n\r\n`),
+      screenshot,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+
     const response = await fetch(MSRC_FILE_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "image/png" },
-      body: screenshot,
+      headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+      body,
     });
 
     if (response.ok) {
-      const text = await response.text();
-      return text || null;
+      const json = await response.json() as { name: string; id: string }[];
+      return json?.[0]?.id || null;
     }
 
     console.error(`MSRC screenshot upload failed: ${response.status}`);

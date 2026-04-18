@@ -7,6 +7,9 @@ import { logHunterEvent, pruneHunterEvents } from "./hunterEventLogger.js";
 import { pruneRedirectEvents } from "./redirectEventLogger.js";
 import { urlscanHunter } from "./urlscanHunter.js";
 import { syncHashLists } from "./safeBrowsingV5Service.js";
+import { readConfig } from "../config.js";
+import { fetch } from "undici";
+import { ProxyAgent } from "undici";
 
 let checkInterval: NodeJS.Timeout | null = null;
 let takedownInterval: NodeJS.Timeout | null = null;
@@ -28,6 +31,52 @@ let isRunning = {
   urlscanHunter: false,
   hashListSync: false,
 };
+
+/** Returns a random delay between min and max milliseconds */
+function randomDelay(minMs: number, maxMs: number): Promise<void> {
+  const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+/** Logs the current IP seen through the hunter proxy */
+async function logHunterProxyIp(): Promise<void> {
+  try {
+    const config = await readConfig();
+    const proxyUrl = new URL(config.hunterProxy);
+    const proxyAgent = new ProxyAgent({
+      uri: `${proxyUrl.protocol}//${proxyUrl.host}`,
+      token: proxyUrl.username && proxyUrl.password
+        ? `Basic ${Buffer.from(`${decodeURIComponent(proxyUrl.username)}:${decodeURIComponent(proxyUrl.password)}`).toString("base64")}`
+        : undefined,
+    });
+
+    const response = await fetch("https://api.ipify.org?format=json", {
+      dispatcher: proxyAgent,
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await response.json() as { ip: string };
+    console.log(`Hunter proxy IP: ${data.ip}`);
+    await logHunterEvent("scheduler", "proxy_ip", `Hunter proxy IP: ${data.ip}`, { ip: data.ip });
+  } catch (error) {
+    console.error(`Failed to log hunter proxy IP: ${error}`);
+  }
+}
+
+/** Triggers proxy IP rotation if a rotation URL is configured */
+async function rotateHunterProxyIp(): Promise<void> {
+  try {
+    const config = await readConfig();
+    if (!config.hunterProxyRotationUrl) return;
+
+    const response = await fetch(config.hunterProxyRotationUrl, {
+      signal: AbortSignal.timeout(10000),
+    });
+    console.log(`Hunter proxy rotation triggered: ${response.status}`);
+    await logHunterEvent("scheduler", "proxy_rotation", `Proxy rotation triggered`, { status: response.status });
+  } catch (error) {
+    console.error(`Failed to rotate hunter proxy IP: ${error}`);
+  }
+}
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -224,52 +273,34 @@ export function startAdHunter(): void {
       const TIMEOUT_MS = 120000; // 2 minutes
       const cycleStartTime = Date.now();
 
-      // Run all hunt operations in parallel with timeouts - each with their own browser
-      const huntPromises = [
-        withTimeout(
-          searchAdHunter.huntSearchAds(),
-          TIMEOUT_MS,
-          "Search ad hunting"
-        ).catch((error) => {
-          console.error(`Error during search ad hunting: ${error.message}`);
-          logHunterEvent("search", "error", `Hunt failed: ${error.message}`);
-          return null;
-        }),
-        withTimeout(
-          typosquatHunter.huntTyposquat(),
-          TIMEOUT_MS,
-          "Typosquat hunting"
-        ).catch((error) => {
-          console.error(`Error during typosquat hunting: ${error.message}`);
-          logHunterEvent("typosquat", "error", `Hunt failed: ${error.message}`);
-          return null;
-        }),
-        withTimeout(
-          pornhubAdHunter.huntPornhubAds(),
-          TIMEOUT_MS,
-          "Pornhub ad hunting"
-        ).catch((error) => {
-          console.error(`Error during pornhub ad hunting: ${error.message}`);
-          logHunterEvent("pornhub", "error", `Hunt failed: ${error.message}`);
-          return null;
-        }),
-        withTimeout(
-          adSpyGlassHunter.huntAdSpyGlassAds(),
-          TIMEOUT_MS,
-          "AdSpyGlass ad hunting"
-        ).catch((error) => {
-          console.error(`Error during AdSpyGlass ad hunting: ${error.message}`);
-          logHunterEvent("adspyglass", "error", `Hunt failed: ${error.message}`);
-          return null;
-        }),
-        // Future hunt types can be added here
+      // Log current hunter proxy IP at the start of each cycle
+      await logHunterProxyIp();
+
+      // Run hunt operations sequentially with staggered delays (2-8s between each)
+      // This looks more realistic than parallel requests from the same IP
+      const hunters = [
+        { name: "Search ad hunting", type: "search" as const, fn: () => searchAdHunter.huntSearchAds() },
+        { name: "Typosquat hunting", type: "typosquat" as const, fn: () => typosquatHunter.huntTyposquat() },
+        { name: "Pornhub ad hunting", type: "pornhub" as const, fn: () => pornhubAdHunter.huntPornhubAds() },
+        { name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: () => adSpyGlassHunter.huntAdSpyGlassAds() },
       ];
 
-      // Race all hunt operations against abort signal
-      await withAbort(
-        Promise.allSettled(huntPromises),
-        adHunterAbortController?.signal
-      );
+      for (let i = 0; i < hunters.length; i++) {
+        const hunter = hunters[i];
+        try {
+          adHunterAbortController?.signal.throwIfAborted();
+          await withTimeout(hunter.fn(), TIMEOUT_MS, hunter.name);
+        } catch (error) {
+          if (error instanceof Error && error.message === "AbortError") throw error;
+          console.error(`Error during ${hunter.name}: ${(error as Error).message}`);
+          logHunterEvent(hunter.type, "error", `Hunt failed: ${(error as Error).message}`);
+        }
+
+        // Stagger between hunters (skip delay after the last one)
+        if (i < hunters.length - 1) {
+          await randomDelay(2000, 8000);
+        }
+      }
 
       const cycleDurationMs = Date.now() - cycleStartTime;
       console.log("Completed ad hunting cycle");
@@ -287,6 +318,8 @@ export function startAdHunter(): void {
       // ALWAYS schedule the next run, regardless of success or failure
       // This ensures the scheduler keeps running even if something fails
       if (isRunning.adHunter) {
+        // Trigger proxy rotation between cycles if configured
+        await rotateHunterProxyIp();
         console.log("Scheduling next ad hunter run in 60 seconds");
         adHunterInterval = setTimeout(runAdHunter, 60 * 1000);
       } else {

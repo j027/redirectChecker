@@ -28,6 +28,8 @@ type Config = {
   googleWebRiskApiProjectName: string;
   /** Enable the URLScan firehose hunter (default false if absent) */
   urlscanHunterEnabled?: boolean;
+  /** URL to GET to trigger hunter proxy IP rotation (optional) */
+  hunterProxyRotationUrl?: string;
   // MSRC abuse reporting
   msrcReporterName: string;
   msrcReporterEmail: string;

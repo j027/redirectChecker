@@ -53,7 +53,7 @@ async function logHunterProxyIp(): Promise<void> {
 
     const response = await fetch("https://api.ipify.org?format=json", {
       dispatcher: proxyAgent,
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(60000),
     });
     const data = await response.json() as { ip: string };
     console.log(`Hunter proxy IP: ${data.ip}`);
@@ -70,7 +70,7 @@ async function rotateHunterProxyIp(): Promise<void> {
     if (!config.hunterProxyRotationUrl) return;
 
     const response = await fetch(config.hunterProxyRotationUrl, {
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(60000),
     });
     console.log(`Hunter proxy rotation triggered: ${response.status}`);
     await logProxyEvent("rotation", `Proxy rotation triggered`, { statusCode: response.status });

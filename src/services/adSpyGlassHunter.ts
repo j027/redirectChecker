@@ -1,6 +1,6 @@
 import { Browser, Page } from "patchright";
 import crypto, { randomBytes, randomInt } from "crypto";
-import { blockGoogleAnalytics, parseProxy, spoofWindowsChrome, trackRedirectionPath, simulateRandomMouseMovements } from "../utils/playwrightUtilities.js";
+import { blockGoogleAnalytics, blockMediaResources, parseProxy, spoofWindowsChrome, trackRedirectionPath, simulateRandomMouseMovements } from "../utils/playwrightUtilities.js";
 import { hunterService, CONFIDENCE_THRESHOLD } from "./hunterService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
@@ -180,7 +180,9 @@ export class AdSpyGlassHunter {
     await spoofWindowsChrome(page.context(), page, userAgent);
     await blockGoogleAnalytics(page);
 
-    // Create signal service for this popup
+    // Block video/audio to reduce proxy bandwidth; images and scripts are
+    // left intact so ad redirect chains still fire correctly.
+    await blockMediaResources(page);
     const signalService = createSignalService();
     
     let screenshot: Buffer | null = null;

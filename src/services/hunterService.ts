@@ -4,7 +4,8 @@ import {
   parseProxy,
   spoofWindowsChrome,
   simulateRandomMouseMovements,
-  trackRedirectionPath
+  trackRedirectionPath,
+  redactIpAddressesFromPage,
 } from "../utils/playwrightUtilities.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
@@ -150,6 +151,9 @@ export class HunterService {
       await simulateRandomMouseMovements(page);
       await page.waitForTimeout(5000);
       await page.mouse.click(0, 0);
+
+      // Redact server IPs from the rendered page before capturing
+      await redactIpAddressesFromPage(page);
 
       screenshot = await page.screenshot();
       html = await page.content();

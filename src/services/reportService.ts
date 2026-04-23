@@ -11,6 +11,7 @@ import { formatSignals, formatConfidence, SignalData } from '../utils/discordFor
 import { isMicrosoftHosted } from '../utils/hostingDetection.js';
 import { reportToMsrc } from './msrcReportService.js';
 import { getMatchingXarfProvider, sendXarfReport } from './xarfReportService.js';
+import { redactIpFromUrl } from '../utils/urlUtils.js';
 
 let webRiskClient: WebRiskServiceClient|null = null; 
 
@@ -486,6 +487,12 @@ export async function reportSite(
   html: string | null,
   options?: ReportOptions
 ) {
+  // Redact any IP addresses leaked in query parameter values before forwarding
+  // to external reporters. Hostnames are intentionally left unchanged so scam
+  // destinations remain identifiable.
+  site = redactIpFromUrl(site);
+  redirect = redactIpFromUrl(redirect);
+
   // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
   // checkphish, hybrid analysis, urlscan, cloudflare url scanner, and crdf labs
   const reports = [];

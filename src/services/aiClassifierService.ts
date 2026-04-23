@@ -7,6 +7,7 @@ import {
   spoofWindowsChrome,
   blockGoogleAnalytics,
   parseProxy,
+  redactIpAddressesFromPage,
 } from "../utils/playwrightUtilities.js";
 import crypto from "crypto";
 import sharp from "sharp";
@@ -149,6 +150,9 @@ export class AiClassifierService {
       await loadMonitorPromise;
 
       await page.mouse.click(0, 0);
+
+      // Redact server IPs from the rendered page before capturing
+      await redactIpAddressesFromPage(page);
 
       // Capture screenshot and HTML
       const screenshot = await page.screenshot();

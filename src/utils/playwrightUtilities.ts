@@ -365,3 +365,36 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
     getPath: () => Array.from(redirectionPath),
   };
 }
+
+/**
+ * Walks every text node in the live page DOM and replaces any IPv4 or IPv6
+ * addresses with "[redacted]" before a screenshot is taken.  This prevents
+ * server IP addresses rendered by hosting panels (e.g. Laravel Forge) from
+ * leaking in screenshots attached to abuse reports.
+ *
+ * Errors are silently swallowed so the screenshot flow is never interrupted.
+ */
+export async function redactIpAddressesFromPage(page: Page): Promise<void> {
+  try {
+    await page.evaluate(() => {
+      // Matches IPv4 addresses (strict 0-255 per octet)
+      const ipv4 = /\b(?:(?:25[0-5]|2[0-4]\d|1\d{2}|\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|\d{1,2})\b/g;
+      // Matches IPv6: full, compressed (::1), and bracket-wrapped ([::1]) forms
+      const ipv6 = /\[?(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\]?/g;
+
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let node: Node | null;
+      while ((node = walker.nextNode()) !== null) {
+        const text = node.textContent;
+        if (text) {
+          const redacted = text.replace(ipv4, "[redacted]").replace(ipv6, "[redacted]");
+          if (redacted !== text) {
+            node.textContent = redacted;
+          }
+        }
+      }
+    });
+  } catch {
+    // Never interrupt the screenshot flow
+  }
+}

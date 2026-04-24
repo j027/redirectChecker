@@ -49,26 +49,6 @@ export async function blockPageResources(page: Page) {
   }
 }
 
-/**
- * Blocks only video/audio (media) resources on the page.
- * Lighter than blockPageResources — images, scripts, and stylesheets are left
- * intact so ad redirect chains and screenshot quality are unaffected.
- * Use this for ad-hunting pages where full resource blocking may break detection.
- */
-export async function blockMediaResources(page: Page): Promise<void> {
-  try {
-    await page.route("**/*", (route) => {
-      if (route.request().resourceType() === "media") {
-        route.abort();
-      } else {
-        route.continue();
-      }
-    });
-  } catch (error) {
-    console.error(`Failed to set up media blocking: ${error}`);
-  }
-}
-
 export async function parseProxy(isHunterProxy = false): Promise<{server: string, username?: string, password?: string}> {
   const config = await readConfig();
   const proxy = isHunterProxy ? config.hunterProxy : config.proxy;

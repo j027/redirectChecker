@@ -3,6 +3,22 @@ import { readConfig } from "../config.js";
 import crypto from 'crypto';
 import { WebGLConfig, getRandomWebGLConfig } from './webglConfigs.js';
 
+export async function blockMailtoLinks(page: Page) {
+  await page.addInitScript(() => {
+    document.addEventListener(
+      'click',
+      (e) => {
+        const a = (e.target as Element).closest('a');
+        if (a?.getAttribute('href')?.startsWith('mailto:')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      },
+      true
+    );
+  });
+}
+
 export async function blockGoogleAnalytics(page: Page) {
   await page.route("https://www.google-analytics.com/g/collect*", (route) => {
     route.fulfill({

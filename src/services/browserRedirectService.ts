@@ -1,6 +1,7 @@
 import { Browser } from "patchright";
 import {
   blockGoogleAnalytics,
+  blockMailtoLinks,
   blockPageResources,
   spoofWindowsChrome,
   parseProxy,
@@ -80,6 +81,7 @@ export class BrowserRedirectService {
     const page = await context.newPage();
     await spoofWindowsChrome(context, page);
     await blockGoogleAnalytics(page);
+    await blockMailtoLinks(page);
     await blockPageResources(page);
 
     let loopDetected = false;

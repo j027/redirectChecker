@@ -1,6 +1,6 @@
 import { Browser, Page } from "patchright";
 import crypto, { randomBytes, randomInt } from "crypto";
-import { blockGoogleAnalytics, blockMediaResources, parseProxy, spoofWindowsChrome, trackRedirectionPath, simulateRandomMouseMovements } from "../utils/playwrightUtilities.js";
+import { blockGoogleAnalytics, blockMailtoLinks, blockMediaResources, parseProxy, spoofWindowsChrome, trackRedirectionPath, simulateRandomMouseMovements } from "../utils/playwrightUtilities.js";
 import { hunterService, CONFIDENCE_THRESHOLD } from "./hunterService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
@@ -75,6 +75,7 @@ export class AdSpyGlassHunter {
     try {
         await spoofWindowsChrome(context, page);
         await blockGoogleAnalytics(page);
+        await blockMailtoLinks(page);
 
         await page.goto(site, {
             waitUntil: "load",
@@ -117,6 +118,7 @@ export class AdSpyGlassHunter {
                         // spoof the new video page
                         await spoofWindowsChrome(context, page);
                         await blockGoogleAnalytics(page);
+                        await blockMailtoLinks(page);
                     } catch (error) {
                         console.error("Error handling AdSpyGlass ad popup:", error);
                     }
@@ -179,6 +181,7 @@ export class AdSpyGlassHunter {
 
     await spoofWindowsChrome(page.context(), page, userAgent);
     await blockGoogleAnalytics(page);
+    await blockMailtoLinks(page);
 
     // Block video/audio to reduce proxy bandwidth; images and scripts are
     // left intact so ad redirect chains still fire correctly.

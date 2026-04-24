@@ -1,6 +1,7 @@
 import { Browser } from "patchright";
 import {
   blockGoogleAnalytics,
+  blockMailtoLinks,
   parseProxy,
   spoofWindowsChrome,
   simulateRandomMouseMovements,
@@ -141,6 +142,7 @@ export class HunterService {
     try {
       await spoofWindowsChrome(context, page);
       await blockGoogleAnalytics(page);
+      await blockMailtoLinks(page);
       
       // Attach signal listeners before navigation
       await signalService.attachApiListeners(page);

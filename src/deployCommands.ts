@@ -8,7 +8,7 @@ import {
 import { readConfig } from "./config.js";
 import { commands } from "./commands/commands.js";
 
-async function main() {
+export async function deployCommands() {
   const { token, guildId, clientId } = await readConfig();
   const rest = new REST({ version: "10" }).setToken(token);
 
@@ -23,5 +23,3 @@ async function main() {
 
   console.log(`Successfully reloaded ${data.length} application (/) commands.`);
 }
-
-main();

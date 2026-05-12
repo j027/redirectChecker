@@ -5,6 +5,7 @@ import { readConfig } from "./config.js";
 import { commands } from "./commands/commands.js";
 import { closePool } from "./dbPool.js";
 import { discordClient } from "./discordClient.js";
+import { deployCommands } from "./deployCommands.js";
 import {
   startRedirectChecker,
   stopRedirectChecker,
@@ -110,6 +111,7 @@ async function main() {
   const { token } = await readConfig();
   await initializeServices();
   await checkChromiumVersionDrift();
+  await deployCommands();
 
   // Log in to Discord with your client's token
   console.log("Logging into discord");

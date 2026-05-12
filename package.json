@@ -6,8 +6,6 @@
     "build": "tsc",
     "start:dev": "tsx src/discordBot.ts",
     "start": "node dist/discordBot.js",
-    "deploy:dev": "tsx src/deployCommands.ts",
-    "deploy": "node dist/deployCommands.js",
     "init-db:dev": "tsx src/initDb.ts",
     "init-db": "node dist/initDb.js",
     "reset-training-data:dev": "tsx src/resetTrainingDataset.ts",

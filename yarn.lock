@@ -1472,6 +1472,7 @@ __metadata:
     protobufjs: "npm:^8.0.1"
     sharp: "npm:^0.34.5"
     tldts: "npm:^7.0.28"
+    tlsh: "npm:^1.0.8"
     tsx: "npm:^4.21.0"
     typescript: "npm:^6.0.2"
     undici: "npm:^8.1.0"
@@ -3503,6 +3504,13 @@ __metadata:
   bin:
     tldts: bin/cli.js
   checksum: 10c0/37f92481bc7276f60f06d93d2671a67fd94dc8e245c232a50c69b8704d34c908658968f7298810e1b4df68a84be9ff6248867981d1cc7ddb08755565edd3f496
+  languageName: node
+  linkType: hard
+
+"tlsh@npm:^1.0.8":
+  version: 1.0.8
+  resolution: "tlsh@npm:1.0.8"
+  checksum: 10c0/164e8d94f5304fd2006eb9bef973c1aa18f57eff5273843b5d322f2e35e22a239edd199012148c4fa572bb4f9765779abe8eea36d02e797a6086982fb085f8cb
   languageName: node
   linkType: hard
 

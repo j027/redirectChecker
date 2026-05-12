@@ -14,6 +14,13 @@ import sharp from "sharp";
 import { BrowserManagerService } from './browserManagerService.js';
 import { URL } from 'url';
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from './signalService.js';
+import {
+  buildTrainingDataFingerprint,
+  decideTrainingDataSave,
+  ExistingTrainingFingerprint,
+  readTrainingDataDedupeConfig,
+  TrainingDataDedupeConfig,
+} from "../utils/trainingDataDedupe.js";
 
 // Constants for the model
 const INPUT_WIDTH = 224;
@@ -38,6 +45,7 @@ export class AiClassifierService {
   private browser: Browser | null = null;
   private browserInitializing: boolean = false;
   private whitelist: Set<string> = new Set();
+  private dedupeConfigPromise: Promise<TrainingDataDedupeConfig> | null = null;
 
   async init() {
     try {
@@ -356,6 +364,49 @@ export class AiClassifierService {
         return;
       }
 
+      const [dedupeConfig, fingerprint] = await Promise.all([
+        this.getTrainingDataDedupeConfig(),
+        buildTrainingDataFingerprint(html, screenshot),
+      ]);
+
+      const existingResult = await client.query<{
+        uuid: string;
+        html_sha256: string | null;
+        html_tlsh: string | null;
+        image_sha256: string | null;
+        image_dhash: string | null;
+      }>(
+        `SELECT uuid, html_sha256, html_tlsh, image_sha256, image_dhash
+         FROM url_training_dataset
+         WHERE is_scam = $1`,
+        [isScam]
+      );
+
+      const dedupeDecision = decideTrainingDataSave(
+        fingerprint,
+        existingResult.rows.map<ExistingTrainingFingerprint>((row) => ({
+          uuid: row.uuid,
+          htmlSha256: row.html_sha256,
+          htmlTlsh: row.html_tlsh,
+          imageSha256: row.image_sha256,
+          imageDhash: row.image_dhash,
+        })),
+        dedupeConfig
+      );
+
+      if (!dedupeDecision.shouldSave) {
+        const matchedDetails = dedupeDecision.matchedUuid
+          ? ` matched ${dedupeDecision.matchedUuid}`
+          : "";
+        const clusterDetails = dedupeDecision.clusterSize
+          ? ` (cluster size: ${dedupeDecision.clusterSize})`
+          : "";
+        console.log(
+          `Skipping training data for ${url}: ${dedupeDecision.reason}${matchedDetails}${clusterDetails}`
+        );
+        return;
+      }
+
       // Continue with saving new data
       const uuid = crypto.randomUUID();
 
@@ -378,8 +429,28 @@ export class AiClassifierService {
 
       // Insert into database
       await client.query(
-        "INSERT INTO url_training_dataset (uuid, url, is_scam, confidence_score) VALUES ($1, $2, $3, $4)",
-        [uuid, url, isScam, confidenceScore]
+        `INSERT INTO url_training_dataset (
+          uuid,
+          url,
+          is_scam,
+          confidence_score,
+          html_sha256,
+          html_tlsh,
+          image_sha256,
+          image_dhash,
+          dedupe_version
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          uuid,
+          url,
+          isScam,
+          confidenceScore,
+          fingerprint.htmlSha256,
+          fingerprint.htmlTlsh,
+          fingerprint.imageSha256,
+          fingerprint.imageDhash,
+          1,
+        ]
       );
 
       // Save to filesystem
@@ -394,6 +465,14 @@ export class AiClassifierService {
     } finally {
       client.release();
     }
+  }
+
+  private getTrainingDataDedupeConfig(): Promise<TrainingDataDedupeConfig> {
+    if (!this.dedupeConfigPromise) {
+      this.dedupeConfigPromise = readTrainingDataDedupeConfig();
+    }
+
+    return this.dedupeConfigPromise;
   }
 }
 

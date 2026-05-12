@@ -10,6 +10,8 @@
     "deploy": "node dist/deployCommands.js",
     "init-db:dev": "tsx src/initDb.ts",
     "init-db": "node dist/initDb.js",
+    "reset-training-data:dev": "tsx src/resetTrainingDataset.ts",
+    "reset-training-data": "node dist/resetTrainingDataset.js",
     "clean": "rm -rf dist",
     "prebuild": "yarn clean",
     "test": "vitest"
@@ -25,6 +27,7 @@
     "protobufjs": "^8.0.1",
     "sharp": "^0.34.5",
     "tldts": "^7.0.28",
+    "tlsh": "^1.0.8",
     "undici": "^8.1.0",
     "uuid": "^13.0.0"
   },

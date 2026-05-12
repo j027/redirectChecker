@@ -68,9 +68,18 @@ CREATE TABLE IF NOT EXISTS url_training_dataset
     url              TEXT UNIQUE NOT NULL,
     is_scam          BOOLEAN,
     confidence_score FLOAT,
-    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_updated     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    html_sha256      TEXT,
+    html_tlsh        TEXT,
+    image_sha256     TEXT,
+    image_dhash      TEXT,
+    dedupe_version   INTEGER     DEFAULT 1,
+    created_at       TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    last_updated     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_url_training_dataset_is_scam ON url_training_dataset (is_scam);
+CREATE INDEX IF NOT EXISTS idx_url_training_dataset_html_sha256 ON url_training_dataset (html_sha256);
+CREATE INDEX IF NOT EXISTS idx_url_training_dataset_image_sha256 ON url_training_dataset (image_sha256);
 
 -- Main ads table - generic for all ad types
 CREATE TABLE IF NOT EXISTS ads

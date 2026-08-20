@@ -334,6 +334,10 @@ interface CrdfLabsResponse {
 async function reportToCrdfLabs(site: string) {
   const { crdfLabsApiKey } = await readConfig();
 
+  if (!crdfLabsApiKey) {
+    return;
+  }
+
   try {
     const response = await fetch(
       "https://threatcenter.crdf.fr/api/v1/submit_url.json",

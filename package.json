@@ -15,28 +15,28 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@google-cloud/web-risk": "^5.3.1",
-    "discord.js": "^14.26.2",
+    "@google-cloud/web-risk": "^6.0.0",
+    "discord.js": "^14.27.0",
     "dotenv": "^17.4.2",
-    "nodemailer": "^8.0.5",
-    "onnxruntime-node": "1.24.3",
-    "patchright": "1.59.1",
-    "pg": "^8.20.0",
-    "protobufjs": "^8.0.1",
-    "sharp": "^0.34.5",
-    "tldts": "^7.0.28",
+    "nodemailer": "^9.0.5",
+    "onnxruntime-node": "1.27.0",
+    "patchright": "1.62.1",
+    "pg": "^8.23.0",
+    "protobufjs": "^8.7.2",
+    "sharp": "^0.35.3",
+    "tldts": "^7.4.10",
     "tlsh": "^1.0.8",
-    "undici": "^8.1.0",
-    "uuid": "^13.0.0"
+    "undici": "^8.10.0",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "@types/node": "^24.12.2",
-    "@types/nodemailer": "^8.0.0",
-    "@types/pg": "^8.20.0",
-    "prettier": "^3.8.2",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.2",
-    "vitest": "^4.1.4"
+    "@types/node": "^24.13.3",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.23.1",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
   },
-  "packageManager": "yarn@4.13.0"
+  "packageManager": "yarn@4.18.0"
 }

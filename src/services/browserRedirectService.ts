@@ -9,6 +9,7 @@ import {
   trackRedirectionPath
 } from "../utils/playwrightUtilities.js";
 import { BrowserManagerService } from './browserManagerService.js';
+import { attachRequestLogger, RequestLogger, CapturedRequest } from '../utils/requestLogger.js';
 export class BrowserRedirectService {
   private browser: Browser | null;
   private browserInitializing: boolean;
@@ -62,15 +63,16 @@ export class BrowserRedirectService {
   async handleRedirect(
     redirectUrl: string,
     referrer?: string,
-    useHunterProxy? : boolean
-  ): Promise<string | null> {
+    useHunterProxy? : boolean,
+    captureRequests: boolean = false
+  ): Promise<{ destination: string | null; requests: CapturedRequest[] }> {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {
       console.error(
         "Browser has not been initialized or has crashed - redirect handling failed"
       );
-      return null;
+      return { destination: null, requests: [] };
     }
 
     const context = await this.browser.newContext({
@@ -83,6 +85,10 @@ export class BrowserRedirectService {
     await blockGoogleAnalytics(page);
     await blockMailtoLinks(page);
     await blockPageResources(page);
+
+    const requestLogger: RequestLogger | null = captureRequests
+      ? await attachRequestLogger(page)
+      : null;
 
     let loopDetected = false;
 
@@ -144,15 +150,16 @@ export class BrowserRedirectService {
         destinationUrl = page.url();
       }
       
-      return destinationUrl != redirectUrl ? destinationUrl : null;
+      return { destination: destinationUrl != redirectUrl ? destinationUrl : null, requests: requestLogger?.entries ?? [] };
     } catch (error) {
       if (loopDetected) {
         console.log(`Redirect loop aborted for ${redirectUrl}`);
       } else {
         console.log(`Error when handling redirect: ${error}`);
       }
-      return null;
+      return { destination: null, requests: requestLogger?.entries ?? [] };
     } finally {
+      requestLogger?.detach();
       await page.close().catch(() => {});
       await context.close();
     }

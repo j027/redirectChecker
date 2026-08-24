@@ -47,7 +47,7 @@ async function processRedirectEntry(
   redirectId: number
 ): Promise<void> {
 
-  const redirectDestination = await handleRedirect(sourceUrl, redirectType);
+  const { location: redirectDestination } = await handleRedirect(sourceUrl, redirectType);
 
   // if we didn't redirect anywhere
   if (redirectDestination == null) {

@@ -3,12 +3,20 @@ import { readConfig } from "../config.js";
 import { RedirectType } from "../redirectType.js";
 import { userAgentService } from "./userAgentService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
+import { CapturedRequest } from "../utils/requestLogger.js";
+
+export interface RedirectResult {
+  location: string | null;
+  requests: CapturedRequest[];
+}
 
 export async function handleRedirect(
   redirectUrl: string,
   redirectType: RedirectType,
-): Promise<string | null> {
+  captureRequests: boolean = false,
+): Promise<RedirectResult> {
   let location: string | null = null;
+  let requests: CapturedRequest[] = [];
 
   // Step 1: Get the destination URL based on redirect type
   switch (redirectType) {
@@ -16,20 +24,23 @@ export async function handleRedirect(
       location = await httpRedirect(redirectUrl);
       break;
     case RedirectType.BrowserRedirect:
-      location = await browserRedirectService.handleRedirect(redirectUrl);
+      ({ destination: location, requests } =
+        await browserRedirectService.handleRedirect(redirectUrl, undefined, undefined, captureRequests));
       break;
     case RedirectType.BrowserRedirectPornhub:
-      location = await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/");
+      ({ destination: location, requests } =
+        await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/", undefined, captureRequests));
       break;
     case RedirectType.BrowserRedirectHunterProxy:
-      location = await browserRedirectService.handleRedirect(redirectUrl, undefined, true);
+      ({ destination: location, requests } =
+        await browserRedirectService.handleRedirect(redirectUrl, undefined, true, captureRequests));
       break;
     default:
       console.warn(`Redirect type ${redirectType} is not supported yet`);
       throw new Error("Redirect type not supported");
   }
 
-  return location;
+  return { location, requests };
 }
 
 async function httpRedirect(redirectUrl: string): Promise<string | null> {

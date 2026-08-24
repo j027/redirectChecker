@@ -235,7 +235,7 @@ export class HunterService {
     for (const redirectType of redirectTypesToTry) {
       try {
         console.log(`Trying ${redirectType} for ${url}`);
-        const redirectDestination = await handleRedirect(url, redirectType);
+        const { location: redirectDestination } = await handleRedirect(url, redirectType);
 
         if (redirectDestination) {
           console.log(`Got destination ${redirectDestination}, classifying...`);

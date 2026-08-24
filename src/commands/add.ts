@@ -1,9 +1,10 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import { AttachmentBuilder, ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import { CommandDefinition } from "./commands.js";
 import { RedirectType } from "../redirectType.js";
 import { handleRedirect } from "../services/redirectHandlerService.js";
 import { aiClassifierService } from "../services/aiClassifierService.js";
 import { isValidUrl } from "../utils/urlUtils.js";
+import { formatRequestLog, CapturedRequest } from "../utils/requestLogger.js";
 import pool from "../dbPool.js";
 
 export const addCommand: CommandDefinition = {
@@ -57,13 +58,17 @@ export const addCommand: CommandDefinition = {
     }
 
     let redirectDestination: string | null = null;
+    let redirectRequests: CapturedRequest[] = [];
 
     try {
       await interaction.editReply("Attempting to validate redirect...");
-      redirectDestination = await handleRedirect(
+      const redirectResult = await handleRedirect(
         url,
         redirectType,
+        true,
       );
+      redirectDestination = redirectResult.location;
+      redirectRequests = redirectResult.requests;
     } catch (error) {
       await interaction.editReply(
         "There was an error attempting to validate the redirect.",
@@ -73,9 +78,33 @@ export const addCommand: CommandDefinition = {
     }
 
     if (redirectDestination == null) {
-      await interaction.editReply(
-        "Redirect did not go anywhere, please provide a valid redirect or ensure the redirect type is correct.",
+      const requestLog = formatRequestLog(redirectRequests);
+
+      if (requestLog.length === 0) {
+        await interaction.editReply(
+          "Redirect did not go anywhere, please provide a valid redirect or ensure the redirect type is correct.",
+        );
+        return;
+      }
+
+      if (requestLog.length <= 1500) {
+        await interaction.editReply(
+          "Redirect did not go anywhere, please provide a valid redirect or ensure the redirect type is correct.\n\n**HTTP request log:**\n```\n" +
+            requestLog +
+            "\n```",
+        );
+        return;
+      }
+
+      const attachment = new AttachmentBuilder(
+        Buffer.from(requestLog, "utf-8"),
+        { name: `redirect-requests-${Date.now()}.txt` },
       );
+      await interaction.editReply({
+        content:
+          "Redirect did not go anywhere, please provide a valid redirect or ensure the redirect type is correct.\n\nFull HTTP request log attached below.",
+        files: [attachment],
+      });
       return;
     }
 

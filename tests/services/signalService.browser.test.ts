@@ -2,10 +2,14 @@ import { describe, it, expect } from "vitest";
 import { chromium } from "patchright";
 import { createSignalService } from "../../src/services/signalService.js";
 
+function launchSandboxedBrowser() {
+  return chromium.launch({ headless: true, chromiumSandbox: true });
+}
+
 describe("SignalService Browser Integration", () => {
   
   it("should detect fullscreen request on chrome.dev keyboard-lock demo", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -26,7 +30,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should detect keyboard lock request on chrome.dev keyboard-lock demo", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -50,7 +54,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should detect pointer lock request", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -72,7 +76,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should not detect signals on a clean page", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -91,7 +95,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should detect signals combined with URL analysis via detectAllSignals", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -112,7 +116,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should detect worker bomb when many workers are spawned in a burst", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -145,7 +149,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should not detect worker bomb when few workers are spawned (legitimate usage)", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -176,7 +180,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should detect worker bomb hidden in beforeunload handler via triggerNavigationSignals", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -217,7 +221,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should detect worker bomb hidden in onbeforeunload assignment via detectAllSignals", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -253,7 +257,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should detect page freeze via timer drift", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();
@@ -286,7 +290,7 @@ describe("SignalService Browser Integration", () => {
   }, 30000);
 
   it("should not detect page freeze on a responsive page", async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchSandboxedBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     const signalService = createSignalService();

@@ -36,7 +36,7 @@ import { getLatestChromeVersion } from "./services/chromeUserAgentService.js";
  */
 async function checkChromiumVersionDrift(): Promise<void> {
   try {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, chromiumSandbox: true });
     const bundledVersion = browser.version();
     await browser.close();
 

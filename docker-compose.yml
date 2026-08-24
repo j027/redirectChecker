@@ -29,6 +29,7 @@ services:
       PGPASSWORD: ${PGPASSWORD}
       PGDATABASE: redirectChecker
       DISPLAY: ":0"
+      TZ: America/New_York
     volumes:
       - .:/app
       - /app/node_modules

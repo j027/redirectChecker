@@ -1,0 +1,9 @@
+node_modules
+.git
+.idea
+dist
+.env
+config.json
+google_webrisk_service_account.json
+data
+tests

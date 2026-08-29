@@ -139,6 +139,7 @@ export class AiClassifierService {
 
     // Setup page and navigation
     const context = await this.browser.newContext({
+      proxy: await parseProxy(true),
       viewport: null,
     });
     const page = await context.newPage();

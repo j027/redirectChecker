@@ -1,4 +1,5 @@
-import { fetch } from "undici";
+import { fetch, ProxyAgent } from "undici";
+import { readConfig } from "../config.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { reportToNetcraft } from "./reportService.js";
 import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
@@ -66,8 +67,12 @@ export class UrlscanHunter {
    * Returns the most recent batch; deduplication is handled by UUID.
    */
   private async fetchLiveFeed(): Promise<UrlscanLiveResult[]> {
+    const { hunterProxy } = await readConfig();
+    const proxyAgent = new ProxyAgent(hunterProxy);
+
     const response = await fetch("https://urlscan.io/json/live/", {
       headers: { Accept: "application/json" },
+      dispatcher: proxyAgent,
     });
 
     if (!response.ok) {
@@ -176,7 +181,10 @@ export class UrlscanHunter {
     screenshotUrl: string,
   ): Promise<Buffer | null> {
     try {
-      const response = await fetch(screenshotUrl);
+      const { hunterProxy } = await readConfig();
+      const proxyAgent = new ProxyAgent(hunterProxy);
+
+      const response = await fetch(screenshotUrl, { dispatcher: proxyAgent });
       if (!response.ok) return null;
       return Buffer.from(await response.arrayBuffer());
     } catch {

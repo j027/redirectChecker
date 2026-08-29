@@ -4,6 +4,7 @@ import { UrlscanHunter } from "../../src/services/urlscanHunter.js";
 // Mock external dependencies
 vi.mock("undici", () => ({
   fetch: vi.fn(),
+  ProxyAgent: vi.fn(),
 }));
 
 vi.mock("../../src/services/aiClassifierService.js", () => ({

@@ -402,7 +402,7 @@ export class AdSpyGlassHunter {
   private getRandomWebsite(): string {
     const adSpyGlassWebsites = [
       "https://reallifecam.to/",
-      "https://camcaps.to/",
+      "https://camcaps.tv/",
     ];
 
     const randomWebsite = adSpyGlassWebsites[crypto.randomInt(adSpyGlassWebsites.length)];

@@ -385,7 +385,7 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
 /**
  * Walks every text node in the live page DOM and replaces any IPv4 or IPv6
  * addresses with "[redacted]" before a screenshot is taken.  This prevents
- * server IP addresses rendered by hosting panels (e.g. Laravel Forge) from
+ * server IP addresses rendered by tech support scams from
  * leaking in screenshots attached to abuse reports.
  *
  * Errors are silently swallowed so the screenshot flow is never interrupted.

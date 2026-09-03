@@ -68,7 +68,7 @@ export class BrowserReportService {
       // Microsoft may show sign-in method picker — click "Use your password" if it appears
       try {
         const usePasswordButton = page.getByRole("button", { name: "Use your password" });
-        await usePasswordButton.waitFor({ state: "visible", timeout: 3000 });
+        await usePasswordButton.waitFor({ state: "visible", timeout: 10000 });
         await usePasswordButton.click();
       } catch {
         // Password field shown directly — no method picker

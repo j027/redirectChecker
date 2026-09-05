@@ -29,6 +29,9 @@ RUN ARCH=$(dpkg --print-architecture) && \
     rm -f "./${CHROME_DEB}" && \
     rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p /etc/opt/chrome/policies/managed && \
+    printf '%s' '{"SafeBrowsingEnabled": false}' > /etc/opt/chrome/policies/managed/safe_browsing.json
+
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 
 USER node

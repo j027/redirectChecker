@@ -217,7 +217,7 @@ export async function spoofWindowsChrome(context: BrowserContext, page: Page, pr
         brands: brands,
         fullVersion: chromeVersion,
         platform: "Windows",
-        platformVersion: "15.0.0",
+        platformVersion: "19.0.0",
         architecture: "x86",
         model: "",
         mobile: false

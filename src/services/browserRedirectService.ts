@@ -81,18 +81,22 @@ export class BrowserRedirectService {
     });
 
     const page = await context.newPage();
-    await spoofWindowsChrome(context, page);
-    await blockGoogleAnalytics(page);
-    await blockMailtoLinks(page);
-    await blockPageResources(page);
-
-    const requestLogger: RequestLogger | null = captureRequests
-      ? await attachRequestLogger(page)
-      : null;
 
     let loopDetected = false;
+    let requestLogger: RequestLogger | null = null;
 
     try {
+      // Inside try so a spoof failure fails closed (and still hits
+      // the finally cleanup) like every other spoof call site.
+      await spoofWindowsChrome(context, page);
+      await blockGoogleAnalytics(page);
+      await blockMailtoLinks(page);
+      await blockPageResources(page);
+
+      if (captureRequests) {
+        requestLogger = await attachRequestLogger(page);
+      }
+
       const redirectTracker = await trackRedirectionPath(page, redirectUrl);
 
       // Loop detection: track hostname frequency across navigations.

@@ -100,11 +100,19 @@ function getChromeVersion(userAgent: string, browser: Browser): string {
   if (uaMatch && uaMatch[1]) {
     return uaMatch[1];
   }
-  
+
   // Fallback to browser version
   const version = browser.version();
   const versionMatch = version.match(/\/([\d|.]+)/);
-  return versionMatch && versionMatch[1] ? versionMatch[1] : '133.0.0.0';
+  if (versionMatch && versionMatch[1]) {
+    return versionMatch[1];
+  }
+
+  // Fail hard: stamping a stale hardcoded version into the fingerprint
+  // is worse than skipping the page (fail-closed upstream).
+  throw new Error(
+    `Could not determine Chrome version from user agent "${userAgent}" or browser version "${version}"`
+  );
 }
 
 function generateBrandData(version: string): Array<{brand: string, version: string}> {

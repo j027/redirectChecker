@@ -217,6 +217,7 @@ export async function spoofWindowsChrome(context: BrowserContext, page: Page, pr
         brands: brands,
         fullVersion: chromeVersion,
         platform: "Windows",
+        // from https://textslashplain.com/2021/09/21/determining-os-platform-version/#:~:text=19%2E0%2E0
         platformVersion: "19.0.0",
         architecture: "x86",
         model: "",

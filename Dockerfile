@@ -2,10 +2,8 @@ FROM node:24-bookworm
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      xvfb fluxbox x11vnc novnc websockify x11-utils && \
+      xvfb fluxbox x11vnc novnc websockify x11-utils curl && \
     rm -rf /var/lib/apt/lists/*
-
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 ENV TZ=America/New_York
 
@@ -20,7 +18,16 @@ RUN apt-get update && \
       libasound2 libgbm1 libatspi2.0-0 fonts-liberation tzdata && \
     rm -rf /var/lib/apt/lists/*
 
-RUN npx patchright install chromium
+# Google Chrome (rolling stable) for the image architecture.
+# The .deb name follows the target architecture so the same
+# Dockerfile builds on ARM and x86 machines.
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then CHROME_DEB="google-chrome-stable_current_arm64.deb"; else CHROME_DEB="google-chrome-stable_current_amd64.deb"; fi && \
+    curl -fsSLO "https://dl.google.com/linux/direct/${CHROME_DEB}" && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends "./${CHROME_DEB}" && \
+    rm -f "./${CHROME_DEB}" && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 

@@ -41,7 +41,8 @@ export class BrowserManagerService {
   static async createBrowser(isHeadless: boolean = false): Promise<Browser> {
     return await chromium.launch({
       headless: isHeadless,
-      chromiumSandbox: true
+      chromiumSandbox: true,
+      channel: "chrome",
     });
   }
 

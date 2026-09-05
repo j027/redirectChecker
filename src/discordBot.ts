@@ -31,26 +31,32 @@ import { initSafeBrowsingV5 } from "./services/safeBrowsingV5Service.js";
 import { getLatestChromeVersion } from "./services/chromeUserAgentService.js";
 
 /**
- * Compares bundled Chromium version against latest stable Chrome.
+ * Compares installed system Chrome version against latest stable Chrome.
  * Logs a warning if they differ by more than 1 major version.
  */
-async function checkChromiumVersionDrift(): Promise<void> {
+async function checkChromeVersionDrift(): Promise<void> {
   try {
-    const browser = await chromium.launch({ headless: true, chromiumSandbox: true });
-    const bundledVersion = browser.version();
+    const browser = await chromium.launch({ headless: true, chromiumSandbox: true, channel: "chrome" });
+    const systemVersion = browser.version();
     await browser.close();
 
-    const bundledMajor = parseInt(bundledVersion.split('.')[0]);
+    const majorMatch = systemVersion.match(/(\d+)\./);
+    const systemMajor = majorMatch ? parseInt(majorMatch[1]) : NaN;
+    if (Number.isNaN(systemMajor)) {
+      console.error(`Could not parse system Chrome version from "${systemVersion}"`);
+      return;
+    }
+
     const stableMajor = await getLatestChromeVersion();
-    const drift = stableMajor - bundledMajor;
+    const drift = stableMajor - systemMajor;
 
     if (drift > 1) {
-      console.warn(`⚠️  CHROMIUM VERSION DRIFT: bundled Chromium ${bundledMajor}, stable Chrome ${stableMajor} (${drift} versions behind). Update patchright to avoid bot detection.`);
+      console.warn(`⚠️  CHROME VERSION DRIFT: system Chrome ${systemMajor}, stable Chrome ${stableMajor} (${drift} versions behind). Rebuild the container image to avoid bot detection.`);
     } else {
-      console.log(`Chromium version check OK: bundled ${bundledMajor}, stable ${stableMajor}`);
+      console.log(`Chrome version check OK: system ${systemMajor}, stable ${stableMajor}`);
     }
   } catch (error) {
-    console.error("Failed to check Chromium version drift:", error);
+    console.error("Failed to check Chrome version drift:", error);
   }
 }
 
@@ -110,7 +116,7 @@ async function main() {
   console.log("Starting up...");
   const { token } = await readConfig();
   await initializeServices();
-  await checkChromiumVersionDrift();
+  await checkChromeVersionDrift();
   await deployCommands();
 
   // Log in to Discord with your client's token

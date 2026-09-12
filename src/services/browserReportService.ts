@@ -68,7 +68,7 @@ export class BrowserReportService {
       // Microsoft may show sign-in method picker — click "Use your password" if it appears
       try {
         const usePasswordButton = page.getByRole("button", { name: "Use your password" });
-        await usePasswordButton.waitFor({ state: "visible", timeout: 10000 });
+        await usePasswordButton.waitFor({ state: "visible", timeout: 20000 });
         await usePasswordButton.click();
       } catch {
         // Password field shown directly — no method picker
@@ -77,11 +77,11 @@ export class BrowserReportService {
       const activePasswordField = await Promise.any([
         page
           .getByRole('textbox', { name: 'Password' })
-          .waitFor({ state: "attached", timeout: 5000 })
+          .waitFor({ state: "attached", timeout: 10000 })
           .then(() => page.getByRole('textbox', { name: 'Password' })),
         page
           .getByPlaceholder("Password")
-          .waitFor({ state: "attached", timeout: 5000 })
+          .waitFor({ state: "attached", timeout: 10000 })
           .then(() => page.getByPlaceholder("Password")),
       ]);
 
@@ -91,7 +91,7 @@ export class BrowserReportService {
       // Microsoft may fail to create a passkey and show an error dialog
       try {
         const cancelButton = page.getByRole("button", { name: "Cancel" });
-        await page.getByText("couldn't create a passkey").waitFor({ state: "visible", timeout: 3000 });
+        await page.getByText("couldn't create a passkey").waitFor({ state: "visible", timeout: 6000 });
         await cancelButton.click();
       } catch {
         // No passkey error prompt
@@ -100,7 +100,7 @@ export class BrowserReportService {
       // Microsoft may ask "Is your security info still accurate?"
       try {
         const looksGoodButton = page.getByRole("button", { name: "Looks good!" });
-        await looksGoodButton.waitFor({ state: "visible", timeout: 3000 });
+        await looksGoodButton.waitFor({ state: "visible", timeout: 6000 });
         await looksGoodButton.click();
       } catch {
         // No security info prompt

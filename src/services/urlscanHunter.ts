@@ -4,6 +4,7 @@ import { aiClassifierService } from "./aiClassifierService.js";
 import { reportToNetcraft } from "./reportService.js";
 import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
 import { DetectedSignals, hasWeightedSignal } from "./signalService.js";
+import { hunterProxyService } from "./hunterProxyService.js";
 import pool from "../dbPool.js";
 
 // --- URLScan API types ---
@@ -70,10 +71,12 @@ export class UrlscanHunter {
     const { hunterProxy } = await readConfig();
     const proxyAgent = new ProxyAgent(hunterProxy);
 
-    const response = await fetch("https://urlscan.io/json/live/", {
-      headers: { Accept: "application/json" },
-      dispatcher: proxyAgent,
-    });
+    const response = await hunterProxyService.run("urlscan-feed", () =>
+      fetch("https://urlscan.io/json/live/", {
+        headers: { Accept: "application/json" },
+        dispatcher: proxyAgent,
+      })
+    );
 
     if (!response.ok) {
       console.error(`[urlscan-hunter] Feed returned ${response.status}`);
@@ -184,7 +187,9 @@ export class UrlscanHunter {
       const { hunterProxy } = await readConfig();
       const proxyAgent = new ProxyAgent(hunterProxy);
 
-      const response = await fetch(screenshotUrl, { dispatcher: proxyAgent });
+      const response = await hunterProxyService.run("urlscan-screenshot", () =>
+        fetch(screenshotUrl, { dispatcher: proxyAgent })
+      );
       if (!response.ok) return null;
       return Buffer.from(await response.arrayBuffer());
     } catch {

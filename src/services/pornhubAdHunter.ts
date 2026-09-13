@@ -10,6 +10,7 @@ import { BrowserManagerService } from "./browserManagerService.js";
 import { reportSite } from "./reportService.js";
 import { DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
+import { hunterProxyService } from "./hunterProxyService.js";
 
 export class PornhubAdHunter {
   private browser: Browser | null = null;
@@ -52,6 +53,10 @@ export class PornhubAdHunter {
   }
 
   async huntPornhubAds(): Promise<boolean> {
+    return hunterProxyService.run("pornhub-ad-hunt", () => this.huntPornhubAdsInternal());
+  }
+
+  private async huntPornhubAdsInternal(): Promise<boolean> {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {

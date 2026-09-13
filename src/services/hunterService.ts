@@ -17,7 +17,8 @@ import { SearchAdHunter } from "./searchAdHunter.js";
 import { TyposquatHunter } from "./typosquatHunter.js";
 import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
-import { createSignalService, DetectedSignals, createEmptySignals } from "./signalService.js";
+import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
+import { hunterProxyService } from "./hunterProxyService.js";
 
 // Given a detected scam, confidence level above this will be treated as one
 export const CONFIDENCE_THRESHOLD = 0.80;
@@ -113,6 +114,15 @@ export class HunterService {
   }
 
   public async processAd(
+    adDestination: string,
+    referer?: string
+  ): Promise<ProcessAdResult | null> {
+    return hunterProxyService.run("process-ad", () =>
+      this.processAdInternal(adDestination, referer)
+    );
+  }
+
+  private async processAdInternal(
     adDestination: string,
     referer?: string
   ): Promise<ProcessAdResult | null> {
@@ -249,7 +259,10 @@ export class HunterService {
               continue; // Try next redirect type
             }
 
-            const isScam = classificationResult.isScam;
+            const isScam =
+              classificationResult.isScam &&
+              classificationResult.confidenceScore >= CONFIDENCE_THRESHOLD &&
+              hasWeightedSignal(classificationResult.signals);
 
             if (!isScam) {
               console.log(

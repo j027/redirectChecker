@@ -5,12 +5,10 @@ import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
 import { logHunterEvent, pruneHunterEvents } from "./hunterEventLogger.js";
 import { pruneRedirectEvents } from "./redirectEventLogger.js";
-import { logProxyEvent, pruneProxyEvents } from "./proxyEventLogger.js";
+import { pruneProxyEvents } from "./proxyEventLogger.js";
 import { urlscanHunter } from "./urlscanHunter.js";
 import { syncHashLists } from "./safeBrowsingV5Service.js";
-import { readConfig } from "../config.js";
-import { fetch } from "undici";
-import { ProxyAgent } from "undici";
+import { hunterProxyService } from "./hunterProxyService.js";
 
 let checkInterval: NodeJS.Timeout | null = null;
 let takedownInterval: NodeJS.Timeout | null = null;
@@ -37,47 +35,6 @@ let isRunning = {
 function randomDelay(minMs: number, maxMs: number): Promise<void> {
   const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
   return new Promise(resolve => setTimeout(resolve, delay));
-}
-
-/** Logs the current IP seen through the hunter proxy */
-async function logHunterProxyIp(): Promise<void> {
-  try {
-    const config = await readConfig();
-    const proxyUrl = new URL(config.hunterProxy);
-    const proxyAgent = new ProxyAgent({
-      uri: `${proxyUrl.protocol}//${proxyUrl.host}`,
-      token: proxyUrl.username && proxyUrl.password
-        ? `Basic ${Buffer.from(`${decodeURIComponent(proxyUrl.username)}:${decodeURIComponent(proxyUrl.password)}`).toString("base64")}`
-        : undefined,
-    });
-
-    const response = await fetch("https://api.ipify.org?format=json", {
-      dispatcher: proxyAgent,
-      signal: AbortSignal.timeout(60000),
-    });
-    const data = await response.json() as { ip: string };
-    console.log(`Hunter proxy IP: ${data.ip}`);
-    await logProxyEvent("ip_check", `Hunter proxy IP: ${data.ip}`, { ipAddress: data.ip });
-  } catch (error) {
-    console.error(`Failed to log hunter proxy IP: ${error}`);
-  }
-}
-
-/** Triggers proxy IP rotation if a rotation URL is configured */
-async function rotateHunterProxyIp(): Promise<void> {
-  try {
-    const config = await readConfig();
-    if (!config.hunterProxyRotationUrl) return;
-
-    const response = await fetch(config.hunterProxyRotationUrl, {
-      signal: AbortSignal.timeout(60000),
-    });
-    console.log(`Hunter proxy rotation triggered: ${response.status}`);
-    await logProxyEvent("rotation", `Proxy rotation triggered`, { statusCode: response.status });
-  } catch (error) {
-    console.error(`Failed to rotate hunter proxy IP: ${error}`);
-    await logProxyEvent("error", `Proxy rotation failed: ${error instanceof Error ? error.message : String(error)}`);
-  }
 }
 
 function withTimeout<T>(
@@ -276,7 +233,7 @@ export function startAdHunter(): void {
       const cycleStartTime = Date.now();
 
       // Log current hunter proxy IP at the start of each cycle
-      await logHunterProxyIp();
+      await hunterProxyService.refreshIpAndLog();
 
       // Run hunt operations sequentially with staggered delays (2-8s between each)
       // This looks more realistic than parallel requests from the same IP
@@ -320,8 +277,7 @@ export function startAdHunter(): void {
       // ALWAYS schedule the next run, regardless of success or failure
       // This ensures the scheduler keeps running even if something fails
       if (isRunning.adHunter) {
-        // Trigger proxy rotation between cycles if configured
-        await rotateHunterProxyIp();
+        await hunterProxyService.rotate("ad hunter cycle complete");
         console.log("Scheduling next ad hunter run in 60 seconds");
         adHunterInterval = setTimeout(runAdHunter, 60 * 1000);
       } else {

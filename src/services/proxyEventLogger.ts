@@ -1,6 +1,14 @@
 import pool from "../dbPool.js";
 
-export type ProxyEventType = "ip_check" | "rotation" | "error";
+export type ProxyEventType =
+  | "ip_check"
+  | "rotation"
+  | "rotation_start"
+  | "rotation_complete"
+  | "rotation_failed"
+  | "rotation_recovered"
+  | "drain_timeout"
+  | "error";
 
 /**
  * Logs a proxy event to the database for monitoring proxy IP changes and rotations.

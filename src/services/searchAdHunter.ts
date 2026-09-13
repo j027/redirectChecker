@@ -11,6 +11,7 @@ import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { DetectedSignals, hasWeightedSignal } from "./signalService.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
+import { hunterProxyService } from "./hunterProxyService.js";
 
 export class SearchAdHunter {
   private browser: Browser | null = null;
@@ -53,6 +54,10 @@ export class SearchAdHunter {
   }
 
   async huntSearchAds() {
+    return hunterProxyService.run("search-ad-hunt", () => this.huntSearchAdsInternal());
+  }
+
+  private async huntSearchAdsInternal() {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {

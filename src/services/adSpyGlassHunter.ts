@@ -8,6 +8,7 @@ import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
+import { hunterProxyService } from "./hunterProxyService.js";
 
 export class AdSpyGlassHunter {
   private browser: Browser | null = null;
@@ -50,6 +51,10 @@ export class AdSpyGlassHunter {
   }
 
   async huntAdSpyGlassAds() {
+    return hunterProxyService.run("adspyglass-ad-hunt", () => this.huntAdSpyGlassAdsInternal());
+  }
+
+  private async huntAdSpyGlassAdsInternal() {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {

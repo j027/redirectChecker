@@ -12,6 +12,7 @@ import {
 import crypto from "crypto";
 import sharp from "sharp";
 import { BrowserManagerService } from './browserManagerService.js';
+import { hunterProxyService, HunterProxyRunContext } from './hunterProxyService.js';
 import { URL } from 'url';
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from './signalService.js';
 import {
@@ -127,6 +128,15 @@ export class AiClassifierService {
   }
 
   async classifyUrl(url: string): Promise<ClassificationResult | null> {
+    return hunterProxyService.run("classify-url", (ctx) =>
+      this.classifyUrlInternal(url, ctx)
+    );
+  }
+
+  private async classifyUrlInternal(
+    url: string,
+    proxyContext: HunterProxyRunContext
+  ): Promise<ClassificationResult | null> {
     await this.ensureBrowserIsHealthy();
 
     if (!this.browser || !this.model) {
@@ -154,9 +164,23 @@ export class AiClassifierService {
       // Navigate with timeout monitoring for frozen page detection
       const navigationPromise = page.goto(url);
       const loadMonitorPromise = signalService.monitorPageLoad(page, 30000);
-      
-      await navigationPromise;
+
+      const response = await navigationPromise;
       await loadMonitorPromise;
+
+      if (!response || response.status() >= 400) {
+        console.warn(
+          `Discarding classification for ${url}: navigation returned ${response ? response.status() : "no response"}`
+        );
+        return null;
+      }
+
+      if (!/^https?:/i.test(page.url())) {
+        console.warn(
+          `Discarding classification for ${url}: landed on non-http page ${page.url()}`
+        );
+        return null;
+      }
 
       await page.mouse.click(0, 0);
 
@@ -171,6 +195,13 @@ export class AiClassifierService {
       // Collect all signals
       await signalService.detectAllSignals(page, currentUrl);
       const signals = signalService.getSignals();
+
+      if (!proxyContext.isHealthy()) {
+        console.warn(
+          `Discarding classification for ${currentUrl}: hunter proxy is unhealthy`
+        );
+        return null;
+      }
 
       // Check if URL is whitelisted
       if (this.isWhitelisted(currentUrl)) {

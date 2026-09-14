@@ -18,7 +18,7 @@ import { TyposquatHunter } from "./typosquatHunter.js";
 import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
-import { hunterProxyService } from "./hunterProxyService.js";
+import { hunterProxyService, HunterProxyRunOptions } from "./hunterProxyService.js";
 import { HUNTER_NAMES, HunterName } from "../config.js";
 
 // Given a detected scam, confidence level above this will be treated as one
@@ -106,28 +106,31 @@ export class HunterService {
   }
 
   // Legacy methods that delegate to individual hunters (kept for backward compatibility)
-  public async huntSearchAds() {
-    return await searchAdHunter.huntSearchAds();
+  public async huntSearchAds(signal?: AbortSignal) {
+    return await searchAdHunter.huntSearchAds(signal);
   }
 
-  public async huntTyposquat() {
-    return await typosquatHunter.huntTyposquat();
+  public async huntTyposquat(signal?: AbortSignal) {
+    return await typosquatHunter.huntTyposquat(signal);
   }
 
-  public async huntPornhubAds() {
-    return await pornhubAdHunter.huntPornhubAds();
+  public async huntPornhubAds(signal?: AbortSignal) {
+    return await pornhubAdHunter.huntPornhubAds(signal);
   }
 
-  public async huntAdSpyGlassAds() {
-    return await adSpyGlassHunter.huntAdSpyGlassAds();
+  public async huntAdSpyGlassAds(signal?: AbortSignal) {
+    return await adSpyGlassHunter.huntAdSpyGlassAds(signal);
   }
 
   public async processAd(
     adDestination: string,
-    referer?: string
+    referer?: string,
+    options: HunterProxyRunOptions = {}
   ): Promise<ProcessAdResult | null> {
-    return hunterProxyService.run("process-ad", () =>
-      this.processAdInternal(adDestination, referer)
+    return hunterProxyService.run(
+      "process-ad",
+      () => this.processAdInternal(adDestination, referer),
+      options
     );
   }
 
@@ -206,7 +209,10 @@ export class HunterService {
    * @param url The URL to add to the redirect checker
    * @returns True if successfully added, false if all strategies failed
    */
-  public async tryAddToRedirectChecker(url: string): Promise<AddToRedirectCheckerResult> {
+  public async tryAddToRedirectChecker(
+    url: string,
+    options: HunterProxyRunOptions = {}
+  ): Promise<AddToRedirectCheckerResult> {
     console.log(`Attempting to add ${url} to redirect checker automatically`);
 
     // Extract domain from the incoming URL
@@ -254,7 +260,7 @@ export class HunterService {
     for (const redirectType of redirectTypesToTry) {
       try {
         console.log(`Trying ${redirectType} for ${url}`);
-        const { location: redirectDestination } = await handleRedirect(url, redirectType);
+        const { location: redirectDestination } = await handleRedirect(url, redirectType, false, options);
 
         if (redirectDestination) {
           console.log(`Got destination ${redirectDestination}, classifying...`);
@@ -262,7 +268,7 @@ export class HunterService {
           // Classify the destination URL
           try {
             const classificationResult =
-              await aiClassifierService.classifyUrl(redirectDestination);
+              await aiClassifierService.classifyUrl(redirectDestination, options);
             if (classificationResult == null) {
               console.log("Failed to get classification result");
               continue; // Try next redirect type

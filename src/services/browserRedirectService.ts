@@ -9,7 +9,7 @@ import {
   trackRedirectionPath
 } from "../utils/playwrightUtilities.js";
 import { BrowserManagerService } from './browserManagerService.js';
-import { hunterProxyService } from './hunterProxyService.js';
+import { hunterProxyService, HunterProxyRunOptions } from './hunterProxyService.js';
 import { attachRequestLogger, RequestLogger, CapturedRequest } from '../utils/requestLogger.js';
 export class BrowserRedirectService {
   private browser: Browser | null;
@@ -65,11 +65,14 @@ export class BrowserRedirectService {
     redirectUrl: string,
     referrer?: string,
     useHunterProxy? : boolean,
-    captureRequests: boolean = false
+    captureRequests: boolean = false,
+    options: HunterProxyRunOptions = {}
   ): Promise<{ destination: string | null; requests: CapturedRequest[] }> {
     if (useHunterProxy) {
-      return hunterProxyService.run("redirect-follow", () =>
-        this.handleRedirectInternal(redirectUrl, referrer, useHunterProxy, captureRequests)
+      return hunterProxyService.run(
+        "redirect-follow",
+        () => this.handleRedirectInternal(redirectUrl, referrer, useHunterProxy, captureRequests),
+        options
       );
     }
 

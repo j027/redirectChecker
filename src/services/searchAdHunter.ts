@@ -53,8 +53,8 @@ export class SearchAdHunter {
     this.browser = null;
   }
 
-  async huntSearchAds() {
-    return hunterProxyService.run("search-ad-hunt", () => this.huntSearchAdsInternal());
+  async huntSearchAds(signal?: AbortSignal) {
+    return hunterProxyService.run("search-ad-hunt", () => this.huntSearchAdsInternal(), { signal });
   }
 
   private async huntSearchAdsInternal() {

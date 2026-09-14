@@ -9,7 +9,7 @@ import { hasWeightedSignal } from "./signalService.js";
 import { logRedirectEvent } from "./redirectEventLogger.js";
 import { logScamReport } from "./scamReportLogger.js";
 
-export async function checkRedirects() {
+export async function checkRedirects(signal?: AbortSignal) {
   const client = await pool.connect();
   let redirects;
   try {
@@ -32,7 +32,7 @@ export async function checkRedirects() {
     const sourceUrl: string = row.source_url;
     const type = row.type as RedirectType;
     const redirectId = row.id as number;
-    redirectHandlers.push(processRedirectEntry(sourceUrl, type, redirectId));
+    redirectHandlers.push(processRedirectEntry(sourceUrl, type, redirectId, signal));
   });
 
   await Promise.allSettled(redirectHandlers);
@@ -44,10 +44,11 @@ export async function checkRedirects() {
 async function processRedirectEntry(
   sourceUrl: string,
   redirectType: RedirectType,
-  redirectId: number
+  redirectId: number,
+  signal?: AbortSignal
 ): Promise<void> {
 
-  const { location: redirectDestination } = await handleRedirect(sourceUrl, redirectType);
+  const { location: redirectDestination } = await handleRedirect(sourceUrl, redirectType, false, { signal });
 
   // if we didn't redirect anywhere
   if (redirectDestination == null) {
@@ -96,7 +97,7 @@ async function processRedirectEntry(
       await client.query('COMMIT');
     } else {
       // If not found, classify the redirect and handle appropriately
-      const classificationResult = await aiClassifierService.classifyUrl(redirectDestination);
+      const classificationResult = await aiClassifierService.classifyUrl(redirectDestination, { signal });
       if (classificationResult == null) {
         console.log("Could not get a classification result - giving up");
         await logRedirectEvent("error", `Classification failed`, sourceUrl, {

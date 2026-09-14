@@ -1,9 +1,12 @@
+import { AsyncLocalStorage } from "async_hooks";
 import { fetch, ProxyAgent } from "undici";
 import { setTimeout as sleep } from "timers/promises";
 import { readConfig } from "../config.js";
-import { logProxyEvent } from "./proxyEventLogger.js";
+import { logProxyEvent, ProxyEventType } from "./proxyEventLogger.js";
 
 type ProxyState = "ready" | "rotating";
+type Waiter = (woken: boolean) => void;
+type ProxyEventOptions = { ipAddress?: string; statusCode?: number };
 
 interface RotationResponse {
   ok?: boolean;
@@ -16,15 +19,26 @@ export interface HunterProxyRunContext {
   isHealthy: () => boolean;
 }
 
+export interface HunterProxyRunOptions {
+  signal?: AbortSignal;
+}
+
+function createAbortError(operationName: string): Error {
+  const error = new Error(`Operation "${operationName}" was cancelled`);
+  error.name = "AbortError";
+  return error;
+}
+
 export class HunterProxyService {
   private state: ProxyState = "ready";
   private healthy = true;
   private inFlight = 0;
-  private waiters = new Set<() => void>();
+  private waiters = new Set<Waiter>();
   private lastKnownIp: string | null = null;
   private lastRecoveryAttempt = 0;
   private recoveryProbe: Promise<boolean> | null = null;
   private generation = 0;
+  private operationContext = new AsyncLocalStorage<HunterProxyRunContext>();
 
   drainTimeoutMs = 120_000;
   rotationRequestTimeoutMs = 300_000;
@@ -32,6 +46,14 @@ export class HunterProxyService {
   recoveryProbeIntervalMs = 5_000;
   recoveryProbeTimeoutMs = 15_000;
   recoveryAttemptIntervalMs = 15_000;
+  /** Upper bound on how long a new operation waits for an in-progress rotation. */
+  acquireTimeoutMs = 600_000;
+  /** Upper bound on how long a concurrent rotate() call waits for the active one. */
+  rotationMaxWaitMs = 900_000;
+  /** Watchdog per gated operation. On expiry the slot is force-released. */
+  operationTimeoutMs = 300_000;
+  /** Upper bound on how long proxy event logging may hold up rotation. */
+  eventLogTimeoutMs = 5_000;
 
   isHealthy(): boolean {
     return this.state === "ready" && this.healthy;
@@ -43,49 +65,148 @@ export class HunterProxyService {
 
   async run<T>(
     operationName: string,
-    fn: (ctx: HunterProxyRunContext) => Promise<T>
+    fn: (ctx: HunterProxyRunContext) => Promise<T>,
+    options: HunterProxyRunOptions = {}
   ): Promise<T> {
-    await this.acquire(operationName);
+    // Nested calls are part of an operation that is already counted as in-flight.
+    // Blocking them behind a rotation would deadlock: drain waits for the outer
+    // operation, which in turn waits for the nested one, which waits for the
+    // rotation to finish. They must therefore proceed immediately.
+    const inheritedContext = this.operationContext.getStore();
+    if (inheritedContext) {
+      return fn(inheritedContext);
+    }
+
+    const { signal } = options;
+    if (signal?.aborted) {
+      throw createAbortError(operationName);
+    }
+
+    await this.acquire(operationName, signal);
+
     const generation = this.generation;
     const ctx: HunterProxyRunContext = {
       isHealthy: () => this.isHealthy() && this.generation === generation,
     };
 
+    let released = false;
+    let abandonReject: ((error: Error) => void) | null = null;
+    const abandoned = new Promise<never>((_, reject) => {
+      abandonReject = reject;
+    });
+
+    const release = (reason?: string) => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.inFlight = Math.max(0, this.inFlight - 1);
+
+      if (reason != null) {
+        this.healthy = false;
+        this.generation++;
+        console.error(
+          `Force-releasing hunter proxy operation "${operationName}": ${reason}`
+        );
+        void this.logEventSafe(
+          "operation_timeout",
+          `Force-released "${operationName}": ${reason}`
+        );
+      }
+
+      if (this.inFlight === 0) {
+        this.wakeWaiters();
+      }
+    };
+
+    const forceRelease = (reason: string, error: Error) => {
+      release(reason);
+      abandonReject?.(error);
+    };
+
+    const onAbort = () =>
+      forceRelease("cancelled by caller", createAbortError(operationName));
+
+    const watchdog = setTimeout(
+      () =>
+        forceRelease(
+          `exceeded ${this.operationTimeoutMs}ms`,
+          new Error(
+            `Operation "${operationName}" timed out after ${this.operationTimeoutMs}ms`
+          )
+        ),
+      this.operationTimeoutMs
+    );
+    watchdog.unref();
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+
     try {
-      return await fn(ctx);
+      return await Promise.race([
+        this.operationContext.run(ctx, () => fn(ctx)),
+        abandoned,
+      ]);
     } finally {
-      this.release();
+      signal?.removeEventListener("abort", onAbort);
+      clearTimeout(watchdog);
+      release();
     }
   }
 
-  private async acquire(operationName: string): Promise<void> {
+  private async acquire(operationName: string, signal?: AbortSignal): Promise<void> {
     if (!this.healthy && this.state === "ready") {
       await this.tryRecoverProxy(`before ${operationName}`);
     }
 
+    const start = Date.now();
     while (this.state !== "ready") {
-      await this.wait();
+      if (signal?.aborted) {
+        throw createAbortError(operationName);
+      }
+
+      const remaining = this.acquireTimeoutMs - (Date.now() - start);
+      if (remaining <= 0) {
+        console.error(
+          `Operation "${operationName}" waited ${this.acquireTimeoutMs}ms for hunter proxy rotation; proceeding with the current proxy`
+        );
+        await this.logEventSafe(
+          "acquire_timeout",
+          `"${operationName}" proceeded after waiting ${this.acquireTimeoutMs}ms for rotation`
+        );
+        break;
+      }
+
+      await this.wait(remaining);
     }
 
     this.inFlight++;
   }
 
-  private release(): void {
-    this.inFlight = Math.max(0, this.inFlight - 1);
-    if (this.inFlight === 0) {
-      this.wakeWaiters();
-    }
-  }
+  private wait(timeoutMs: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
 
-  private wait(): Promise<void> {
-    return new Promise((resolve) => this.waiters.add(resolve));
+      const finish = (woken: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        this.waiters.delete(finish);
+        resolve(woken);
+      };
+
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      timer.unref();
+      this.waiters.add(finish);
+    });
   }
 
   private wakeWaiters(): void {
     const waiters = Array.from(this.waiters);
     this.waiters.clear();
-    for (const resolve of waiters) {
-      resolve();
+    for (const waiter of waiters) {
+      waiter(true);
     }
   }
 
@@ -102,9 +223,11 @@ export class HunterProxyService {
         if (ip && !this.healthy) {
           this.healthy = true;
           console.log(`Hunter proxy reachable again at ${ip} (${reason})`);
-          await logProxyEvent("rotation_recovered", `Hunter proxy reachable again at ${ip} (${reason})`, {
-            ipAddress: ip,
-          });
+          await this.logEventSafe(
+            "rotation_recovered",
+            `Hunter proxy reachable again at ${ip} (${reason})`,
+            { ipAddress: ip }
+          );
         }
         return ip != null;
       })().finally(() => {
@@ -144,13 +267,15 @@ export class HunterProxyService {
 
     if (!ip) {
       console.error("Failed to log hunter proxy IP");
-      await logProxyEvent("error", "Failed to reach hunter proxy during IP check");
+      await this.logEventSafe("error", "Failed to reach hunter proxy during IP check");
       return;
     }
 
-    this.healthy = true;
+    if (this.state === "ready") {
+      this.healthy = true;
+    }
     console.log(`Hunter proxy IP: ${ip}`);
-    await logProxyEvent("ip_check", `Hunter proxy IP: ${ip}`, { ipAddress: ip });
+    await this.logEventSafe("ip_check", `Hunter proxy IP: ${ip}`, { ipAddress: ip });
   }
 
   async rotate(reason: string): Promise<boolean> {
@@ -160,15 +285,23 @@ export class HunterProxyService {
     }
 
     if (this.state === "rotating") {
+      const start = Date.now();
       while (this.state === "rotating") {
-        await this.wait();
+        const remaining = this.rotationMaxWaitMs - (Date.now() - start);
+        if (remaining <= 0) {
+          console.error(
+            `Rotation wait exceeded ${this.rotationMaxWaitMs}ms; returning current proxy health`
+          );
+          break;
+        }
+        await this.wait(remaining);
       }
       return this.healthy;
     }
 
     this.state = "rotating";
     console.log(`Starting hunter proxy rotation: ${reason}`);
-    await logProxyEvent("rotation_start", `Starting hunter proxy rotation: ${reason}`);
+    await this.logEventSafe("rotation_start", `Starting hunter proxy rotation: ${reason}`);
 
     let success = false;
     try {
@@ -191,17 +324,18 @@ export class HunterProxyService {
     const start = Date.now();
 
     while (this.inFlight > 0) {
-      if (Date.now() - start >= this.drainTimeoutMs) {
+      const remaining = this.drainTimeoutMs - (Date.now() - start);
+      if (remaining <= 0) {
         console.error(
           `Rotation proceeding with ${this.inFlight} in-flight hunter proxy operation(s) after drain timeout`
         );
-        await logProxyEvent(
+        await this.logEventSafe(
           "drain_timeout",
           `Rotation proceeding with ${this.inFlight} in-flight operation(s) after ${this.drainTimeoutMs}ms`
         );
         return;
       }
-      await this.wait();
+      await this.wait(remaining);
     }
   }
 
@@ -218,7 +352,7 @@ export class HunterProxyService {
 
       if (response.status === 429) {
         console.log("Hunter proxy rotation skipped: cooldown active");
-        await logProxyEvent("rotation", "Rotation skipped (cooldown active)", { statusCode: 429 });
+        await this.logEventSafe("rotation", "Rotation skipped (cooldown active)", { statusCode: 429 });
         return true;
       }
 
@@ -229,14 +363,14 @@ export class HunterProxyService {
           this.lastKnownIp = body.newIp;
         }
         console.log(`Hunter proxy rotated: ${oldIp} -> ${newIp}`);
-        await logProxyEvent("rotation_complete", `Rotation complete: ${oldIp} -> ${newIp}`, {
+        await this.logEventSafe("rotation_complete", `Rotation complete: ${oldIp} -> ${newIp}`, {
           ipAddress: body.newIp ?? undefined,
           statusCode: response.status,
         });
         return true;
       }
 
-      await logProxyEvent(
+      await this.logEventSafe(
         "rotation_failed",
         `Rotation failed: ${body.detail ?? `${response.status} ${response.statusText}`}`,
         { statusCode: response.status }
@@ -244,7 +378,7 @@ export class HunterProxyService {
       return false;
     } catch (error) {
       console.error(`Hunter proxy rotation request failed: ${error}`);
-      await logProxyEvent(
+      await this.logEventSafe(
         "rotation_failed",
         `Rotation request failed: ${error instanceof Error ? error.message : String(error)}`
       );
@@ -260,7 +394,7 @@ export class HunterProxyService {
       const ip = await this.probeIp();
       if (ip) {
         console.log(`Hunter proxy recovered at ${ip}`);
-        await logProxyEvent("rotation_recovered", `Hunter proxy reachable after rotation attempt at ${ip}`, {
+        await this.logEventSafe("rotation_recovered", `Hunter proxy reachable after rotation attempt at ${ip}`, {
           ipAddress: ip,
         });
         return true;
@@ -268,11 +402,30 @@ export class HunterProxyService {
     }
 
     console.error("Hunter proxy did not recover after rotation attempt");
-    await logProxyEvent(
+    await this.logEventSafe(
       "rotation_failed",
       `Hunter proxy unreachable ${this.recoveryTimeoutMs}ms after rotation attempt`
     );
     return false;
+  }
+
+  /**
+   * Bounded proxy event logging: a slow or wedged database must never hold the
+   * rotation lock (or any caller) hostage.
+   */
+  private async logEventSafe(
+    eventType: ProxyEventType,
+    message: string,
+    opts?: ProxyEventOptions
+  ): Promise<void> {
+    try {
+      await Promise.race([
+        logProxyEvent(eventType, message, opts),
+        sleep(this.eventLogTimeoutMs),
+      ]);
+    } catch (error) {
+      console.error(`Failed to log proxy event (${eventType}): ${error}`);
+    }
   }
 }
 

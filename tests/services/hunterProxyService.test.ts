@@ -165,4 +165,81 @@ describe("HunterProxyService", () => {
     await expect(service.rotate("test")).resolves.toBe(true);
     expect(trigger).not.toHaveBeenCalled();
   });
+
+  it("proceeds after the drain timeout when an operation never releases", async () => {
+    service.drainTimeoutMs = 30;
+    const trigger = vi
+      .spyOn(service as any, "triggerRotation")
+      .mockResolvedValue(true);
+
+    const never = deferred<void>();
+    const running = service.run("hung-op", async (ctx) => {
+      await never.promise;
+      return ctx.isHealthy();
+    });
+
+    await sleep(5);
+    const rotating = service.rotate("test");
+
+    await expect(rotating).resolves.toBe(true);
+    expect(trigger).toHaveBeenCalledTimes(1);
+
+    never.resolve();
+    await expect(running).resolves.toBe(false);
+  });
+
+  it("allows nested operations to finish while rotation is in progress", async () => {
+    const rotationGate = deferred<void>();
+    const events: string[] = [];
+
+    vi.spyOn(service as any, "triggerRotation").mockImplementation(async () => {
+      events.push("rotate-start");
+      await rotationGate.promise;
+      events.push("rotate-end");
+      return true;
+    });
+
+    const outer = service.run("outer", async () => {
+      events.push("outer-start");
+      await sleep(15);
+      const inner = await service.run("inner", async () => {
+        events.push("inner");
+        return "inner-result";
+      });
+      events.push("outer-end");
+      return inner;
+    });
+
+    await sleep(1);
+    const rotating = service.rotate("test");
+
+    await expect(outer).resolves.toBe("inner-result");
+    expect(events.slice(0, 3)).toEqual(["outer-start", "inner", "outer-end"]);
+    expect(events).toContain("rotate-start");
+    expect(events).not.toContain("rotate-end");
+
+    rotationGate.resolve();
+    await rotating;
+    expect(events[events.length - 1]).toBe("rotate-end");
+  });
+
+  it("force-releases operations that exceed the watchdog timeout", async () => {
+    service.operationTimeoutMs = 30;
+    vi.spyOn(service as any, "probeIp").mockResolvedValue(null);
+    vi.spyOn(service as any, "triggerRotation").mockResolvedValue(true);
+
+    const never = deferred<void>();
+    const hung = service.run("hung-op", async () => {
+      await never.promise;
+      return "late";
+    });
+
+    await expect(hung).rejects.toThrow(/timed out after 30ms/);
+    expect(service.isHealthy()).toBe(false);
+
+    const recovered = service.run("after-timeout", async () => "ok");
+    await expect(recovered).resolves.toBe("ok");
+
+    never.resolve();
+  });
 });

@@ -52,8 +52,8 @@ export class PornhubAdHunter {
     this.browser = null;
   }
 
-  async huntPornhubAds(): Promise<boolean> {
-    return hunterProxyService.run("pornhub-ad-hunt", () => this.huntPornhubAdsInternal());
+  async huntPornhubAds(signal?: AbortSignal): Promise<boolean> {
+    return hunterProxyService.run("pornhub-ad-hunt", () => this.huntPornhubAdsInternal(), { signal });
   }
 
   private async huntPornhubAdsInternal(): Promise<boolean> {

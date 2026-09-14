@@ -50,8 +50,8 @@ export class AdSpyGlassHunter {
     this.browser = null;
   }
 
-  async huntAdSpyGlassAds() {
-    return hunterProxyService.run("adspyglass-ad-hunt", () => this.huntAdSpyGlassAdsInternal());
+  async huntAdSpyGlassAds(signal?: AbortSignal) {
+    return hunterProxyService.run("adspyglass-ad-hunt", () => this.huntAdSpyGlassAdsInternal(), { signal });
   }
 
   private async huntAdSpyGlassAdsInternal() {

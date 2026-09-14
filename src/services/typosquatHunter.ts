@@ -9,6 +9,7 @@ import { hasWeightedSignal } from "./signalService.js";
 import fs from "fs/promises";
 import path from "path";
 import { logHunterEvent } from "./hunterEventLogger.js";
+import { hunterProxyService } from "./hunterProxyService.js";
 
 export class TyposquatHunter {
   private browser: Browser | null = null;
@@ -89,7 +90,11 @@ export class TyposquatHunter {
     return randomDomain;
   }
 
-  async huntTyposquat() {
+  async huntTyposquat(signal?: AbortSignal) {
+    return hunterProxyService.run("typosquat-ad-hunt", () => this.huntTyposquatInternal(), { signal });
+  }
+
+  private async huntTyposquatInternal() {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {

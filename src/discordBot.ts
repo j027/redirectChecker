@@ -145,11 +145,22 @@ async function main() {
       await command.execute(interaction);
     } catch (error) {
       console.error(error);
-      await interaction.reply({
-        content: "There was an error while executing this command!",
-        ephemeral: false,
-      });
+      try {
+        const content = "There was an error while executing this command!";
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp({ content, ephemeral: false });
+        } else {
+          await interaction.reply({ content, ephemeral: false });
+        }
+      } catch (replyError) {
+        console.error(`Failed to report command error to Discord: ${replyError}`);
+      }
     }
+  });
+
+  // Without a listener, an 'error' event on the client crashes the process.
+  discordClient.on(Events.Error, (error) => {
+    console.error(`Discord client error: ${error}`);
   });
 }
 

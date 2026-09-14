@@ -41,18 +41,23 @@ function randomDelay(minMs: number, maxMs: number): Promise<void> {
 function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  operationName: string
+  operationName: string,
+  abortController?: AbortController
 ): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
-      setTimeout(() => {
+      timer = setTimeout(() => {
+        abortController?.abort();
         reject(
           new Error(`Operation ${operationName} timed out after ${timeoutMs}ms`)
         );
       }, timeoutMs);
     }),
-  ]);
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 async function withAbort<T>(
@@ -108,7 +113,12 @@ export function startRedirectChecker() {
       
       const REDIRECT_CHECK_TIMEOUT_MS = 180000; // 3 minutes
       await withAbort(
-        withTimeout(checkRedirects(), REDIRECT_CHECK_TIMEOUT_MS, "Redirect check cycle"),
+        withTimeout(
+          checkRedirects(redirectCheckerAbortController?.signal),
+          REDIRECT_CHECK_TIMEOUT_MS,
+          "Redirect check cycle",
+          redirectCheckerAbortController ?? undefined
+        ),
         redirectCheckerAbortController?.signal
       );
 
@@ -247,18 +257,19 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
       // Run hunt operations sequentially with staggered delays (2-8s between each)
       // This looks more realistic than parallel requests from the same IP
       const allHunters = [
-        { hunterName: "search" as const, name: "Search ad hunting", type: "search" as const, fn: () => searchAdHunter.huntSearchAds() },
-        { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: () => typosquatHunter.huntTyposquat() },
-        { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: () => pornhubAdHunter.huntPornhubAds() },
-        { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: () => adSpyGlassHunter.huntAdSpyGlassAds() },
+        { hunterName: "search" as const, name: "Search ad hunting", type: "search" as const, fn: (signal: AbortSignal) => searchAdHunter.huntSearchAds(signal) },
+        { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: (signal: AbortSignal) => typosquatHunter.huntTyposquat(signal) },
+        { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: (signal: AbortSignal) => pornhubAdHunter.huntPornhubAds(signal) },
+        { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: (signal: AbortSignal) => adSpyGlassHunter.huntAdSpyGlassAds(signal) },
       ];
       const hunters = allHunters.filter(hunter => enabledHunters.includes(hunter.hunterName));
 
       for (let i = 0; i < hunters.length; i++) {
         const hunter = hunters[i];
+        const hunterAbortController = new AbortController();
         try {
           adHunterAbortController?.signal.throwIfAborted();
-          await withTimeout(hunter.fn(), TIMEOUT_MS, hunter.name);
+          await withTimeout(hunter.fn(hunterAbortController.signal), TIMEOUT_MS, hunter.name, hunterAbortController);
         } catch (error) {
           if (error instanceof Error && error.message === "AbortError") throw error;
           console.error(`Error during ${hunter.name}: ${(error as Error).message}`);

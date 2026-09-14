@@ -12,7 +12,7 @@ import {
 import crypto from "crypto";
 import sharp from "sharp";
 import { BrowserManagerService } from './browserManagerService.js';
-import { hunterProxyService, HunterProxyRunContext } from './hunterProxyService.js';
+import { hunterProxyService, HunterProxyRunContext, HunterProxyRunOptions } from './hunterProxyService.js';
 import { URL } from 'url';
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from './signalService.js';
 import {
@@ -127,9 +127,14 @@ export class AiClassifierService {
     );
   }
 
-  async classifyUrl(url: string): Promise<ClassificationResult | null> {
-    return hunterProxyService.run("classify-url", (ctx) =>
-      this.classifyUrlInternal(url, ctx)
+  async classifyUrl(
+    url: string,
+    options: HunterProxyRunOptions = {}
+  ): Promise<ClassificationResult | null> {
+    return hunterProxyService.run(
+      "classify-url",
+      (ctx) => this.classifyUrlInternal(url, ctx),
+      options
     );
   }
 

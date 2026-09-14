@@ -4,6 +4,7 @@ import { RedirectType } from "../redirectType.js";
 import { userAgentService } from "./userAgentService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
 import { CapturedRequest } from "../utils/requestLogger.js";
+import { HunterProxyRunOptions } from "./hunterProxyService.js";
 
 export interface RedirectResult {
   location: string | null;
@@ -14,6 +15,7 @@ export async function handleRedirect(
   redirectUrl: string,
   redirectType: RedirectType,
   captureRequests: boolean = false,
+  options: HunterProxyRunOptions = {},
 ): Promise<RedirectResult> {
   let location: string | null = null;
   let requests: CapturedRequest[] = [];
@@ -25,15 +27,15 @@ export async function handleRedirect(
       break;
     case RedirectType.BrowserRedirect:
       ({ destination: location, requests } =
-        await browserRedirectService.handleRedirect(redirectUrl, undefined, undefined, captureRequests));
+        await browserRedirectService.handleRedirect(redirectUrl, undefined, undefined, captureRequests, options));
       break;
     case RedirectType.BrowserRedirectPornhub:
       ({ destination: location, requests } =
-        await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/", undefined, captureRequests));
+        await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/", undefined, captureRequests, options));
       break;
     case RedirectType.BrowserRedirectHunterProxy:
       ({ destination: location, requests } =
-        await browserRedirectService.handleRedirect(redirectUrl, undefined, true, captureRequests));
+        await browserRedirectService.handleRedirect(redirectUrl, undefined, true, captureRequests, options));
       break;
     default:
       console.warn(`Redirect type ${redirectType} is not supported yet`);

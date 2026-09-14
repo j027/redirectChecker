@@ -8,6 +8,8 @@ export type ProxyEventType =
   | "rotation_failed"
   | "rotation_recovered"
   | "drain_timeout"
+  | "operation_timeout"
+  | "acquire_timeout"
   | "error";
 
 /**

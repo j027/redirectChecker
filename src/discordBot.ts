@@ -1,7 +1,7 @@
 import { Events } from "discord.js";
 import { setTimeout } from "timers/promises";
 import { chromium } from "patchright";
-import { readConfig } from "./config.js";
+import { HUNTER_NAMES, isHunterEnabled, readConfig } from "./config.js";
 import { commands } from "./commands/commands.js";
 import { closePool } from "./dbPool.js";
 import { discordClient } from "./discordClient.js";
@@ -61,22 +61,24 @@ async function checkChromeVersionDrift(): Promise<void> {
 }
 
 async function initializeServices() {
+  const config = await readConfig();
+  const enabledHunters = HUNTER_NAMES.filter((hunter) => isHunterEnabled(config, hunter));
+
   await aiClassifierService.init();
   await browserReportService.init();
   await browserRedirectService.init();
-  await hunterService.init();
+  await hunterService.init(false, enabledHunters);
   await initializeGoogleWebRiskClient();
   await initSafeBrowsingV5();
   
   startRedirectChecker();
   startTakedownMonitor();
-  startAdHunter();
+  startAdHunter(enabledHunters);
   startRedirectPruner();
   startEventLogPruner();
   startHashListSync();
 
   // Start URLScan hunter if enabled in config
-  const config = await readConfig();
   if (config.urlscanHunterEnabled) {
     startUrlscanHunter();
   }

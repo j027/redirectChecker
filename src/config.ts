@@ -1,5 +1,9 @@
 import {promises as fs} from "fs";
 
+export const HUNTER_NAMES = ["search", "typosquat", "pornhub", "adspyglass"] as const;
+
+export type HunterName = (typeof HUNTER_NAMES)[number];
+
 type Config = {
   token: string;
   guildId: string;
@@ -28,6 +32,11 @@ type Config = {
   googleWebRiskApiProjectName: string;
   /** Enable the URLScan firehose hunter (default false if absent) */
   urlscanHunterEnabled?: boolean;
+  /**
+   * Per-hunter enable flags for the ad hunter cycle. Absent hunters default
+   * to enabled, so omitting this object preserves the original behavior.
+   */
+  hunters?: Partial<Record<HunterName, boolean>>;
   /** URL to GET to trigger hunter proxy IP rotation (optional) */
   hunterProxyRotationUrl?: string;
   // MSRC abuse reporting
@@ -46,4 +55,9 @@ type Config = {
 
 export async function readConfig(): Promise<Config> {
     return JSON.parse(await fs.readFile("./config.json", {encoding: "utf-8"}));
+}
+
+/** A hunter is enabled unless explicitly disabled in config. */
+export function isHunterEnabled(config: Config, hunter: HunterName): boolean {
+  return config.hunters?.[hunter] ?? true;
 }

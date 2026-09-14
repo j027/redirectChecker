@@ -9,6 +9,7 @@ import { pruneProxyEvents } from "./proxyEventLogger.js";
 import { urlscanHunter } from "./urlscanHunter.js";
 import { syncHashLists } from "./safeBrowsingV5Service.js";
 import { hunterProxyService } from "./hunterProxyService.js";
+import { HUNTER_NAMES, HunterName } from "../config.js";
 
 let checkInterval: NodeJS.Timeout | null = null;
 let takedownInterval: NodeJS.Timeout | null = null;
@@ -188,11 +189,11 @@ export function stopTakedownMonitor(): void {
   }
 }
 
-export function startAdHunter(): void {
+export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]): void {
   if (isRunning.adHunter) return;
   isRunning.adHunter = true;
   adHunterAbortController = new AbortController();
-  console.log("Starting ad hunter service");
+  console.log(`Starting ad hunter service (enabled: ${enabledHunters.join(", ") || "none"})`);
 
   let isHuntingInProgress = false;
 
@@ -215,17 +216,25 @@ export function startAdHunter(): void {
     try {
       adHunterAbortController?.signal.throwIfAborted();
 
-      await logHunterEvent("scheduler", "cycle_start", "Starting hunting cycle");
+      await logHunterEvent("scheduler", "cycle_start", "Starting hunting cycle", { enabled_hunters: enabledHunters });
 
-      // Restart each hunter's browser before the cycle
-      console.log("Restarting all hunter browsers before cycle...");
-      await logHunterEvent("scheduler", "browser_restart", "Restarting all hunter browsers");
-      await Promise.allSettled([
-        searchAdHunter.restartBrowser().catch(e => console.error("Error restarting SearchAdHunter browser:", e)),
-        typosquatHunter.restartBrowser().catch(e => console.error("Error restarting TyposquatHunter browser:", e)),
-        pornhubAdHunter.restartBrowser().catch(e => console.error("Error restarting PornhubAdHunter browser:", e)),
-        adSpyGlassHunter.restartBrowser().catch(e => console.error("Error restarting AdSpyGlassHunter browser:", e)),
-      ]);
+      // Restart each enabled hunter's browser before the cycle
+      console.log("Restarting enabled hunter browsers before cycle...");
+      await logHunterEvent("scheduler", "browser_restart", "Restarting enabled hunter browsers", { enabled_hunters: enabledHunters });
+      const browserRestarts: Promise<unknown>[] = [];
+      if (enabledHunters.includes("search")) {
+        browserRestarts.push(searchAdHunter.restartBrowser().catch(e => console.error("Error restarting SearchAdHunter browser:", e)));
+      }
+      if (enabledHunters.includes("typosquat")) {
+        browserRestarts.push(typosquatHunter.restartBrowser().catch(e => console.error("Error restarting TyposquatHunter browser:", e)));
+      }
+      if (enabledHunters.includes("pornhub")) {
+        browserRestarts.push(pornhubAdHunter.restartBrowser().catch(e => console.error("Error restarting PornhubAdHunter browser:", e)));
+      }
+      if (enabledHunters.includes("adspyglass")) {
+        browserRestarts.push(adSpyGlassHunter.restartBrowser().catch(e => console.error("Error restarting AdSpyGlassHunter browser:", e)));
+      }
+      await Promise.allSettled(browserRestarts);
 
       console.log("Starting hunting cycle...");
 
@@ -237,12 +246,13 @@ export function startAdHunter(): void {
 
       // Run hunt operations sequentially with staggered delays (2-8s between each)
       // This looks more realistic than parallel requests from the same IP
-      const hunters = [
-        { name: "Search ad hunting", type: "search" as const, fn: () => searchAdHunter.huntSearchAds() },
-        { name: "Typosquat hunting", type: "typosquat" as const, fn: () => typosquatHunter.huntTyposquat() },
-        { name: "Pornhub ad hunting", type: "pornhub" as const, fn: () => pornhubAdHunter.huntPornhubAds() },
-        { name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: () => adSpyGlassHunter.huntAdSpyGlassAds() },
+      const allHunters = [
+        { hunterName: "search" as const, name: "Search ad hunting", type: "search" as const, fn: () => searchAdHunter.huntSearchAds() },
+        { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: () => typosquatHunter.huntTyposquat() },
+        { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: () => pornhubAdHunter.huntPornhubAds() },
+        { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: () => adSpyGlassHunter.huntAdSpyGlassAds() },
       ];
+      const hunters = allHunters.filter(hunter => enabledHunters.includes(hunter.hunterName));
 
       for (let i = 0; i < hunters.length; i++) {
         const hunter = hunters[i];

@@ -19,6 +19,7 @@ import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
 import { hunterProxyService } from "./hunterProxyService.js";
+import { HUNTER_NAMES, HunterName } from "../config.js";
 
 // Given a detected scam, confidence level above this will be treated as one
 export const CONFIDENCE_THRESHOLD = 0.80;
@@ -46,15 +47,23 @@ export class HunterService {
   private isHeadless: boolean = false;
   private browserInitializing: boolean = false;
 
-  async init(headless = false) {
+  async init(headless = false, huntersToInit: HunterName[] = [...HUNTER_NAMES]) {
     this.isHeadless = headless;
     await this.ensureBrowserIsHealthy();
     
-    // Initialize all individual hunters
-    await searchAdHunter.init();
-    await typosquatHunter.init();
-    await pornhubAdHunter.init();
-    await adSpyGlassHunter.init();
+    // Initialize only the requested hunters
+    if (huntersToInit.includes("search")) {
+      await searchAdHunter.init();
+    }
+    if (huntersToInit.includes("typosquat")) {
+      await typosquatHunter.init();
+    }
+    if (huntersToInit.includes("pornhub")) {
+      await pornhubAdHunter.init();
+    }
+    if (huntersToInit.includes("adspyglass")) {
+      await adSpyGlassHunter.init();
+    }
   }
 
   /**

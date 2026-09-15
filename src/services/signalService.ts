@@ -192,7 +192,22 @@ export class SignalService {
       const WORKER_BOMB_THRESHOLD = 20;        // Total workers needed to flag outside the guarded window
       const WORKER_BOMB_RATE_LIMIT = 20;       // Workers within the rate window to flag
       const WORKER_BOMB_RATE_WINDOW_MS = 1000; // 1 second window for rate detection
-      const MAX_REAL_WORKERS_PER_FRAME = 12;   // Hard cap: beyond this, construct inert stubs
+      const DEFAULT_MAX_REAL_WORKERS = 12;     // Hard cap: beyond this, construct inert stubs
+
+      // The cap can be lowered at runtime (e.g. to 0 while a page is being
+      // probed for leave-triggered bombs), which makes every construction a
+      // stub so no real worker target ever exists to execute or resume.
+      const getMaxRealWorkers = () => {
+        try {
+          const configured = (window as any).__sbMaxRealWorkers;
+          if (typeof configured === 'number' && configured >= 0) {
+            return configured;
+          }
+        } catch {
+          // Ignore errors
+        }
+        return DEFAULT_MAX_REAL_WORKERS;
+      };
 
       const createInertWorker = () => {
         const noop = () => {};
@@ -248,7 +263,7 @@ export class SignalService {
                   setSignal('worker-bomb');
                 }
 
-                overCap = newCount > MAX_REAL_WORKERS_PER_FRAME;
+                overCap = newCount > getMaxRealWorkers();
                 if (overCap) {
                   setSignal('worker-bomb');
                 }
@@ -360,6 +375,30 @@ export class SignalService {
     }, this.bindingName);
 
     this.apiCallListenerAttached = true;
+  }
+
+  /**
+   * Returns how many workers the page has attempted to construct so far, as
+   * counted by the injected hook. Null when the count cannot be read (frozen
+   * page / missing element).
+   */
+  public async getWorkerAttemptCount(page: Page): Promise<number | null> {
+    const elementId = this.bindingName;
+    if (!elementId) {
+      return null;
+    }
+
+    try {
+      return await page.evaluate((id: string) => {
+        const el = document.getElementById(id);
+        if (!el) {
+          return 0;
+        }
+        return parseInt(el.getAttribute('data-worker-count') || '0', 10);
+      }, elementId);
+    } catch {
+      return null;
+    }
   }
 
   /**

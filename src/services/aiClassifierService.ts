@@ -13,10 +13,10 @@ import crypto from "crypto";
 import sharp from "sharp";
 import { BrowserManagerService } from './browserManagerService.js';
 import { hunterProxyService, HunterProxyRunContext, HunterProxyRunOptions } from './hunterProxyService.js';
-import { BombGuard } from './bombGuard.js';
+import { BombGuard, BOMB_WORKER_THRESHOLD } from './bombGuard.js';
 import { logHunterEvent } from './hunterEventLogger.js';
 import { URL } from 'url';
-import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from './signalService.js';
+import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal, SignalService } from './signalService.js';
 import {
   buildTrainingDataFingerprint,
   decideTrainingDataSave,
@@ -49,6 +49,7 @@ export class AiClassifierService {
   private model: onnx.InferenceSession | null = null;
   private browser: Browser | null = null;
   private browserInitializing: boolean = false;
+  private classificationChain: Promise<unknown> = Promise.resolve();
   private whitelist: Set<string> = new Set();
   private dedupeConfigPromise: Promise<TrainingDataDedupeConfig> | null = null;
 
@@ -137,9 +138,22 @@ export class AiClassifierService {
   ): Promise<ClassificationResult | null> {
     return hunterProxyService.run(
       "classify-url",
-      (ctx) => this.classifyUrlInternal(url, ctx),
+      (ctx) =>
+        this.enqueueClassification(() => this.classifyUrlInternal(url, ctx)),
       options
     );
+  }
+
+  /**
+   * Serializes classifications. Only one classifier page exists at a time, so
+   * bomb teardown can safely retire the shared browser without disturbing
+   * another in-flight classification. The chain never rejects, so one failure
+   * cannot poison the queue; callers still see their own result/rejection.
+   */
+  private enqueueClassification<T>(fn: () => Promise<T>): Promise<T> {
+    const result = this.classificationChain.then(fn);
+    this.classificationChain = result.catch(() => undefined);
+    return result;
   }
 
   private async classifyUrlInternal(
@@ -167,6 +181,8 @@ export class AiClassifierService {
 
     // Attach signal listeners before navigation
     await signalService.attachApiListeners(page);
+
+    let bombDetected = false;
 
     try {
       await spoofWindowsChrome(context, page);
@@ -245,7 +261,13 @@ export class AiClassifierService {
       // Trigger the unload handlers with the bomb disarmed: new child targets are
       // frozen before they execute, worker floods are counted from Node, and the
       // page is CPU-throttled while this happens.
-      const bombDetected = await this.checkForBomb(page, context, bombGuard);
+      const bombDetectedOnPage = await this.checkForBomb(
+        page,
+        context,
+        bombGuard,
+        signalService
+      );
+      bombDetected = bombDetectedOnPage;
 
       if (bombDetected) {
         signals.workerBombDetected = true;
@@ -293,8 +315,47 @@ export class AiClassifierService {
       console.error(`Error classifying URL ${url}:`, error);
       return null;
     } finally {
-      await bombGuard.dispose();
-      await this.closePageAndContext(page, context);
+      if (bombDetected) {
+        // Frozen workers are killed by process death. Closing the context or
+        // detaching the CDP session first would resume them (and closing the
+        // targets can hang), so a bombed page is only ever retired.
+        await this.retireBrowser();
+      } else {
+        const contextClosedCleanly = await this.closePageAndContext(page, context);
+
+        if (contextClosedCleanly) {
+          await bombGuard.dispose();
+        } else {
+          await this.retireBrowser();
+        }
+      }
+    }
+  }
+
+  /**
+   * Drops the shared classifier browser so the next classification builds a
+   * fresh one. The old browser is closed (awaited with a ceiling; on timeout it
+   * keeps closing in the background), which also releases any CDP sends still
+   * stuck on a frozen target.
+   */
+  private async retireBrowser(): Promise<void> {
+    const oldBrowser = this.browser;
+    this.browser = null;
+
+    if (oldBrowser == null) {
+      return;
+    }
+
+    console.warn("[Classifier] Retiring classifier browser after bomb/teardown");
+    const closed = await BrowserManagerService.closeBrowserWithTimeout(
+      oldBrowser,
+      15000
+    );
+
+    if (!closed) {
+      console.warn(
+        "[Classifier] Browser close timed out; leaving it to finish in background"
+      );
     }
   }
 
@@ -305,11 +366,18 @@ export class AiClassifierService {
   private async checkForBomb(
     page: Page,
     context: BrowserContext,
-    bombGuard: BombGuard
+    bombGuard: BombGuard,
+    signalService: SignalService
   ): Promise<boolean> {
     try {
       await bombGuard.arm(context, page);
       await bombGuard.throttle(4);
+
+      // From here on every Worker construction is an inert stub, so a bomb
+      // cannot execute and cannot leave frozen targets behind at teardown.
+      await bombGuard.setWorkerCap(0);
+
+      const attemptsBefore = await this.readWorkerAttempts(page, signalService);
 
       const dispatch = bombGuard.dispatchUnloadEvent().catch(
         () => undefined
@@ -320,10 +388,36 @@ export class AiClassifierService {
         new Promise((resolve) => setTimeout(resolve, 3000)),
       ]);
 
-      return await bombGuard.waitForSettle();
+      const targetBomb = await bombGuard.waitForSettle();
+      const attemptsAfter = await this.readWorkerAttempts(page, signalService);
+      const attempted =
+        attemptsBefore != null && attemptsAfter != null
+          ? attemptsAfter - attemptsBefore
+          : 0;
+
+      return targetBomb || attempted >= BOMB_WORKER_THRESHOLD;
     } catch (error) {
       console.warn("[BombGuard] Bomb check failed:", error);
       return bombGuard.isBombDetected();
+    }
+  }
+
+  private async readWorkerAttempts(
+    page: Page,
+    signalService: SignalService
+  ): Promise<number | null> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        signalService.getWorkerAttemptCount(page),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), 3000);
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
     }
   }
 
@@ -334,7 +428,7 @@ export class AiClassifierService {
   private async closePageAndContext(
     page: Page,
     context: BrowserContext
-  ): Promise<void> {
+  ): Promise<boolean> {
     const withTimeout = async (promise: Promise<unknown>, label: string) => {
       try {
         await Promise.race([
@@ -343,13 +437,16 @@ export class AiClassifierService {
             setTimeout(() => reject(new Error(`${label} timed out`)), 5000)
           ),
         ]);
+        return true;
       } catch (error) {
         console.warn(`[Classifier] ${label} failed or timed out:`, error);
+        return false;
       }
     };
 
-    await withTimeout(page.close(), "page.close");
-    await withTimeout(context.close(), "context.close");
+    const pageClosed = await withTimeout(page.close(), "page.close");
+    const contextClosed = await withTimeout(context.close(), "context.close");
+    return pageClosed && contextClosed;
   }
 
   public async runInference(

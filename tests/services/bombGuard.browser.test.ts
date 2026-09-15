@@ -6,6 +6,7 @@ import {
 } from "../fixtures/bomb/serve.js";
 import { createSignalService } from "../../src/services/signalService.js";
 import { BombGuard } from "../../src/services/bombGuard.js";
+import { BrowserManagerService } from "../../src/services/browserManagerService.js";
 import { dispatchMainWorldEvent } from "../../src/utils/playwrightUtilities.js";
 
 const TEST_TIMEOUT = 45000;
@@ -118,8 +119,61 @@ describe("BombGuard browser integration", () => {
       expect(payloadTicks(from)).toBe(0);
       expect(await waitFor(() => context.pages().length === 1, 8000)).toBe(true);
 
+      const disposeStart = Date.now();
+      await guard.dispose();
+      expect(Date.now() - disposeStart).toBeLessThan(6000);
+      await context.close();
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "stub mode (classifier) detects the bomb with zero payload execution through teardown",
+    async () => {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      const signalService = createSignalService();
+      await signalService.attachApiListeners(page);
+      await page.goto(`${server.baseUrl}/unload-seed.html`);
+      const from = server.ticks.length;
+
+      const guard = new BombGuard();
+      await guard.arm(context, page);
+      await guard.throttle(4);
+      await guard.setWorkerCap(0);
+
+      const attemptsBefore = await signalService.getWorkerAttemptCount(page);
+      await guard.dispatchUnloadEvent().catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const attemptsAfter = await signalService.getWorkerAttemptCount(page);
+      const attempted = (attemptsAfter ?? 0) - (attemptsBefore ?? 0);
+
+      expect(attempted).toBeGreaterThanOrEqual(3);
+      expect(guard.getWorkerTargetCount()).toBe(0);
+      expect(payloadTicks(from)).toBe(0);
+
       await guard.dispose();
       await context.close();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      expect(payloadTicks(from)).toBe(0);
+      expect(tickCount(from, "child")).toBe(0);
+    },
+    TEST_TIMEOUT
+  );
+
+  it(
+    "closing a browser with the timeout helper resolves cleanly",
+    async () => {
+      const retireBrowser = await launchBrowser();
+
+      const start = Date.now();
+      const closed = await BrowserManagerService.closeBrowserWithTimeout(
+        retireBrowser,
+        15000
+      );
+
+      expect(closed).toBe(true);
+      expect(Date.now() - start).toBeLessThan(15000);
     },
     TEST_TIMEOUT
   );
@@ -232,4 +286,17 @@ describe("BombGuard browser integration", () => {
     },
     STRESS_TIMEOUT
   );
+});
+
+describe("BombGuard teardown timeouts", () => {
+  it("resolves dispose even when the CDP session never responds", async () => {
+    const guard = new BombGuard();
+    const never = () => new Promise(() => {});
+    (guard as any).session = { send: never, detach: never };
+    (guard as any).workerTargetIds = ["1", "2", "3", "4"];
+
+    const start = Date.now();
+    await guard.dispose();
+    expect(Date.now() - start).toBeLessThan(8000);
+  }, 15000);
 });

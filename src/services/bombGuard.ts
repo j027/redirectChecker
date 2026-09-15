@@ -181,6 +181,26 @@ export class BombGuard {
   }
 
   /**
+   * Lowers the page's worker construction cap through the injected hook. A cap
+   * of 0 turns every Worker construction into an inert stub, so a leave-bomb
+   * cannot execute or leave frozen targets behind at teardown.
+   */
+  async setWorkerCap(maxRealWorkers: number): Promise<void> {
+    if (this.session == null) {
+      return;
+    }
+    try {
+      await this.session.send("Runtime.evaluate", {
+        expression: `window.__sbMaxRealWorkers = ${maxRealWorkers};`,
+        awaitPromise: false,
+        returnByValue: true,
+      });
+    } catch (error) {
+      console.warn("[BombGuard] Failed to set worker cap:", error);
+    }
+  }
+
+  /**
    * Applies CPU throttling to the guarded page so a main-thread busy loop
    * cannot monopolise the machine while child targets are frozen.
    */
@@ -239,21 +259,50 @@ export class BombGuard {
       return;
     }
 
-    // Detaching the session releases waitForDebuggerOnStart, which would let
-    // every frozen target run its payload. Close them first so nothing executes.
+    // Detaching releases waitForDebuggerOnStart, which would let every frozen
+    // target run its payload, so the targets are closed first. Neither CDP call
+    // is allowed to be unbounded: a stalled send must not hold the operation
+    // open (the caller also retires the browser once teardown is done).
     const targetIds = [...this.workerTargetIds];
-    await Promise.allSettled(
-      targetIds.map((targetId) =>
-        session
-          .send("Target.closeTarget", { targetId })
-          .catch(() => undefined)
-      )
+    const targetsClosed = await this.raceWithTimeout(
+      Promise.allSettled(
+        targetIds.map((targetId) =>
+          session
+            .send("Target.closeTarget", { targetId })
+            .catch(() => undefined)
+        )
+      ),
+      3000
     );
 
+    if (!targetsClosed) {
+      console.warn(
+        "[BombGuard] Timed out closing frozen worker targets; detaching anyway"
+      );
+    }
+
+    await this.raceWithTimeout(
+      session.detach().catch(() => undefined),
+      2000
+    );
+  }
+
+  private async raceWithTimeout(
+    promise: Promise<unknown>,
+    ms: number
+  ): Promise<boolean> {
+    let timer: NodeJS.Timeout | undefined;
     try {
-      await session.detach();
-    } catch {
-      // Session may already be gone
+      return await Promise.race([
+        promise.then(() => true).catch(() => true),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
     }
   }
 }

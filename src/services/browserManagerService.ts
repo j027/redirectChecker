@@ -116,6 +116,34 @@ export class BrowserManagerService {
   }
 
   /**
+   * Closes a browser with a hard ceiling. Returns false when the close is still
+   * running after the timeout, in which case it is left to finish in the
+   * background (the caller has already dropped its reference).
+   */
+  static async closeBrowserWithTimeout(
+    browser: Browser | null,
+    timeoutMs: number
+  ): Promise<boolean> {
+    if (browser == null) {
+      return true;
+    }
+
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        BrowserManagerService.closeBrowser(browser).then(() => true),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  /**
    * Forcefully restarts a browser instance by closing it and creating a new one
    * This is useful for cleaning up any lingering tabs or browser state
    * @param browser Current browser instance

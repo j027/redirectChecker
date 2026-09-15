@@ -26,13 +26,13 @@ import {
 // Constants for the model
 const INPUT_WIDTH = 224;
 const INPUT_HEIGHT = 224;
-const CONFIDENCE_THRESHOLD = 0.80;
+export const CONFIDENCE_THRESHOLD = 0.80;
 
 // ImageNet normalization constants
 const IMAGENET_MEAN = [0.485, 0.456, 0.406];
 const IMAGENET_STD = [0.229, 0.224, 0.225];
 
-interface ClassificationResult {
+export interface ClassificationResult {
   isScam: boolean;
   confidenceScore: number;
   screenshot: Buffer;

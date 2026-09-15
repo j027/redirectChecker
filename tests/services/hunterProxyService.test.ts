@@ -242,4 +242,47 @@ describe("HunterProxyService", () => {
 
     never.resolve();
   });
+
+  it("reports in-flight operations in getStatus", async () => {
+    const gate = deferred<void>();
+    const running = service.run("status-op", async () => {
+      await gate.promise;
+      return "done";
+    });
+
+    await sleep(5);
+    const during = service.getStatus();
+    expect(during.inFlight).toBe(1);
+    expect(during.operations.map((op) => op.name)).toContain("status-op");
+    expect(during.state).toBe("ready");
+    expect(during.healthy).toBe(true);
+
+    gate.resolve();
+    await running;
+
+    const after = service.getStatus();
+    expect(after.inFlight).toBe(0);
+    expect(after.operations).toHaveLength(0);
+  });
+
+  it("reports abandoned operations when they eventually settle", async () => {
+    service.operationTimeoutMs = 20;
+    vi.spyOn(service as any, "probeIp").mockResolvedValue(null);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const never = deferred<void>();
+    const hung = service.run("abandoned-op", async () => {
+      await never.promise;
+      return "late";
+    });
+
+    await expect(hung).rejects.toThrow(/timed out after 20ms/);
+
+    never.resolve();
+    await sleep(10);
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('Abandoned hunter proxy operation "abandoned-op" settled')
+    );
+  });
 });

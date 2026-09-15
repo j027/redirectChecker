@@ -60,7 +60,11 @@ function withTimeout<T>(
   });
 }
 
-async function withAbort<T>(
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function withAbort<T>(
   promise: Promise<T>,
   signal?: AbortSignal
 ): Promise<T> {
@@ -96,9 +100,19 @@ export function startRedirectChecker() {
     isRedirectCheckInProgress = true;
     const cycleStartTime = Date.now();
 
+    // Each cycle gets its own controller so a cycle timeout can abort that
+    // cycle's operations without poisoning the long-lived service controller.
+    const cycleAbortController = new AbortController();
+    const serviceStopSignal = redirectCheckerAbortController?.signal;
+    const onServiceStop = () => cycleAbortController.abort();
+    serviceStopSignal?.addEventListener("abort", onServiceStop, { once: true });
+
     try {
-      redirectCheckerAbortController?.signal.throwIfAborted();
-      
+      if (serviceStopSignal?.aborted) {
+        cycleAbortController.abort();
+      }
+      cycleAbortController.signal.throwIfAborted();
+
       // Restart browser before each run to clear lingering state
       console.log("Restarting redirect checker browser before cycle...");
       try {
@@ -110,29 +124,31 @@ export function startRedirectChecker() {
       } catch (error) {
         console.error("Error restarting redirect checker browser:", error);
       }
-      
+
+      if (!isRunning.redirectChecker) {
+        console.log("Redirect checking was cancelled");
+        return;
+      }
+
       const REDIRECT_CHECK_TIMEOUT_MS = 180000; // 3 minutes
-      await withAbort(
-        withTimeout(
-          checkRedirects(redirectCheckerAbortController?.signal),
-          REDIRECT_CHECK_TIMEOUT_MS,
-          "Redirect check cycle",
-          redirectCheckerAbortController ?? undefined
-        ),
-        redirectCheckerAbortController?.signal
+      await withTimeout(
+        checkRedirects(cycleAbortController.signal),
+        REDIRECT_CHECK_TIMEOUT_MS,
+        "Redirect check cycle",
+        cycleAbortController
       );
 
       const cycleDurationMs = Date.now() - cycleStartTime;
       console.log(`Completed redirect check cycle in ${(cycleDurationMs / 1000).toFixed(1)}s`);
     } catch (error) {
-      if (error instanceof Error && error.message === "AbortError") {
-        console.log("Redirect checking was cancelled");
-        isRedirectCheckInProgress = false;
-        return; // Don't schedule next run
-      }
       const cycleDurationMs = Date.now() - cycleStartTime;
+      if (isAbortError(error) && !isRunning.redirectChecker) {
+        console.log("Redirect checking was cancelled");
+        return; // finally won't schedule because the service is stopped
+      }
       console.error(`Error checking redirects after ${(cycleDurationMs / 1000).toFixed(1)}s:`, error);
     } finally {
+      serviceStopSignal?.removeEventListener("abort", onServiceStop);
       isRedirectCheckInProgress = false;
       // ALWAYS schedule the next run, regardless of success or failure
       if (isRunning.redirectChecker) {
@@ -267,13 +283,19 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
       for (let i = 0; i < hunters.length; i++) {
         const hunter = hunters[i];
         const hunterAbortController = new AbortController();
+        const huntStopSignal = adHunterAbortController?.signal;
+        const onHuntStop = () => hunterAbortController.abort();
+        huntStopSignal?.addEventListener("abort", onHuntStop, { once: true });
+
         try {
-          adHunterAbortController?.signal.throwIfAborted();
+          huntStopSignal?.throwIfAborted();
           await withTimeout(hunter.fn(hunterAbortController.signal), TIMEOUT_MS, hunter.name, hunterAbortController);
         } catch (error) {
-          if (error instanceof Error && error.message === "AbortError") throw error;
+          if (isAbortError(error) && !isRunning.adHunter) throw error;
           console.error(`Error during ${hunter.name}: ${(error as Error).message}`);
           logHunterEvent(hunter.type, "error", `Hunt failed: ${(error as Error).message}`);
+        } finally {
+          huntStopSignal?.removeEventListener("abort", onHuntStop);
         }
 
         // Stagger between hunters (skip delay after the last one)
@@ -286,7 +308,7 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
       console.log("Completed ad hunting cycle");
       await logHunterEvent("scheduler", "cycle_end", `Hunting cycle completed in ${(cycleDurationMs / 1000).toFixed(1)}s`, { duration_ms: cycleDurationMs });
     } catch (error) {
-      if (error instanceof Error && error.message === "AbortError") {
+      if (isAbortError(error) && !isRunning.adHunter) {
         console.log("Ad hunting cycle was cancelled");
         isHuntingInProgress = false;
         return; // Don't schedule next run

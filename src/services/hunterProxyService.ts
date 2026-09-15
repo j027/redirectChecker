@@ -4,9 +4,24 @@ import { setTimeout as sleep } from "timers/promises";
 import { readConfig } from "../config.js";
 import { logProxyEvent, ProxyEventType } from "./proxyEventLogger.js";
 
-type ProxyState = "ready" | "rotating";
+export type ProxyState = "ready" | "rotating";
 type Waiter = (woken: boolean) => void;
 type ProxyEventOptions = { ipAddress?: string; statusCode?: number };
+
+interface ActiveOperation {
+  name: string;
+  startedAt: number;
+}
+
+export interface HunterProxyStatus {
+  state: ProxyState;
+  healthy: boolean;
+  inFlight: number;
+  operations: { name: string; elapsedMs: number }[];
+  waiters: number;
+  lastKnownIp: string | null;
+  generation: number;
+}
 
 interface RotationResponse {
   ok?: boolean;
@@ -39,6 +54,8 @@ export class HunterProxyService {
   private recoveryProbe: Promise<boolean> | null = null;
   private generation = 0;
   private operationContext = new AsyncLocalStorage<HunterProxyRunContext>();
+  private activeOperations = new Map<number, ActiveOperation>();
+  private nextOperationId = 1;
 
   drainTimeoutMs = 120_000;
   rotationRequestTimeoutMs = 300_000;
@@ -57,6 +74,46 @@ export class HunterProxyService {
 
   isHealthy(): boolean {
     return this.state === "ready" && this.healthy;
+  }
+
+  getStatus(): HunterProxyStatus {
+    return {
+      state: this.state,
+      healthy: this.healthy,
+      inFlight: this.inFlight,
+      operations: Array.from(this.activeOperations.values()).map((op) => ({
+        name: op.name,
+        elapsedMs: Date.now() - op.startedAt,
+      })),
+      waiters: this.waiters.size,
+      lastKnownIp: this.lastKnownIp,
+      generation: this.generation,
+    };
+  }
+
+  private describeInFlight(): string {
+    const counts = new Map<string, number>();
+    for (const op of this.activeOperations.values()) {
+      counts.set(op.name, (counts.get(op.name) ?? 0) + 1);
+    }
+    const parts = Array.from(counts.entries()).map(([name, count]) =>
+      count > 1 ? `${name} x${count}` : name
+    );
+    return parts.length > 0 ? parts.join(", ") : "none";
+  }
+
+  private reportAbandonedSettlement(
+    operationName: string,
+    startedAt: number,
+    wasAbandoned: boolean,
+    outcome: string
+  ): void {
+    if (!wasAbandoned) {
+      return;
+    }
+    console.warn(
+      `Abandoned hunter proxy operation "${operationName}" settled after ${Date.now() - startedAt}ms (${outcome}); result discarded`
+    );
   }
 
   getLastKnownIp(): string | null {
@@ -84,6 +141,11 @@ export class HunterProxyService {
 
     await this.acquire(operationName, signal);
 
+    const startedAt = Date.now();
+    const operationId = this.nextOperationId++;
+    this.activeOperations.set(operationId, { name: operationName, startedAt });
+    let wasAbandoned = false;
+
     const generation = this.generation;
     const ctx: HunterProxyRunContext = {
       isHealthy: () => this.isHealthy() && this.generation === generation,
@@ -100,9 +162,11 @@ export class HunterProxyService {
         return;
       }
       released = true;
+      this.activeOperations.delete(operationId);
       this.inFlight = Math.max(0, this.inFlight - 1);
 
       if (reason != null) {
+        wasAbandoned = true;
         this.healthy = false;
         this.generation++;
         console.error(
@@ -141,11 +205,20 @@ export class HunterProxyService {
 
     signal?.addEventListener("abort", onAbort, { once: true });
 
+    const operationPromise = this.operationContext.run(ctx, () => fn(ctx));
+    void operationPromise.then(
+      () => this.reportAbandonedSettlement(operationName, startedAt, wasAbandoned, "completed"),
+      (error) =>
+        this.reportAbandonedSettlement(
+          operationName,
+          startedAt,
+          wasAbandoned,
+          `failed: ${error instanceof Error ? error.message : String(error)}`
+        )
+    );
+
     try {
-      return await Promise.race([
-        this.operationContext.run(ctx, () => fn(ctx)),
-        abandoned,
-      ]);
+      return await Promise.race([operationPromise, abandoned]);
     } finally {
       signal?.removeEventListener("abort", onAbort);
       clearTimeout(watchdog);
@@ -322,6 +395,13 @@ export class HunterProxyService {
 
   private async waitForDrain(): Promise<void> {
     const start = Date.now();
+    const initialInFlight = this.inFlight;
+
+    if (initialInFlight > 0) {
+      console.log(
+        `Rotation waiting for ${initialInFlight} in-flight operation(s) to drain: ${this.describeInFlight()}`
+      );
+    }
 
     while (this.inFlight > 0) {
       const remaining = this.drainTimeoutMs - (Date.now() - start);
@@ -336,6 +416,10 @@ export class HunterProxyService {
         return;
       }
       await this.wait(remaining);
+    }
+
+    if (initialInFlight > 0) {
+      console.log(`Rotation drain complete after ${Date.now() - start}ms`);
     }
   }
 

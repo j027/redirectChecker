@@ -14,6 +14,7 @@ import { scamStatsDailyCommand } from "./scamStatsDaily.js";
 import { scamStatsMonthlyCommand } from "./scamStatsMonthly.js";
 import { urlscanStatsCommand } from "./urlscanStats.js";
 import { abuseReportsCommand } from "./abuseReports.js";
+import { proxyCommand } from "./proxy.js";
 
 export type CommandDefinition = {
   execute(interaction: ChatInputCommandInteraction): Promise<void>;
@@ -32,5 +33,6 @@ export const commands: CommandDefinition[] = [
   scamStatsDailyCommand,
   scamStatsMonthlyCommand,
   urlscanStatsCommand,
-  abuseReportsCommand
+  abuseReportsCommand,
+  proxyCommand
 ];

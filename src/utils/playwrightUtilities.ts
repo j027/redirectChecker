@@ -174,39 +174,36 @@ export async function spoofWebGL(
 ): Promise<void> {
   // If no specific config is provided, pick a random one
   const webGLConfig = config || getRandomWebGLConfig();
-  
-  await page.addInitScript(({ vendor, renderer }) => {
-    const getParameterProxyHandler = {
-      apply: function(
-        target: (pname: number) => any, 
-        ctx: any, 
-        args: any[]
-      ): any {
-        const param = (args || [])[0];
-        const result = Reflect.apply(target, ctx, args);
-        // UNMASKED_VENDOR_WEBGL
-        if (param === 37445) {
-          return vendor;
-        }
-        // UNMASKED_RENDERER_WEBGL
-        if (param === 37446) {
-          return renderer;
-        }
-        return result;
-      }
+
+  // Injected as a string on purpose: bundlers (esbuild keepNames) wrap
+  // object-property function expressions with a __name helper that does not
+  // exist in the page when addInitScript serializes the function, which aborts
+  // the payload before anything is patched.
+  const script = `(function () {
+    var vendor = ${JSON.stringify(webGLConfig.vendor)};
+    var renderer = ${JSON.stringify(webGLConfig.renderer)};
+
+    var applySpoof = function (target, ctx, args) {
+      var param = (args || [])[0];
+      // UNMASKED_VENDOR_WEBGL / UNMASKED_RENDERER_WEBGL
+      if (param === 37445) return vendor;
+      if (param === 37446) return renderer;
+      return Reflect.apply(target, ctx, args);
     };
 
-    // Add proxies for both WebGL rendering contexts
-    if (typeof WebGLRenderingContext !== 'undefined' && WebGLRenderingContext.prototype) {
-      const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
-      WebGLRenderingContext.prototype.getParameter = new Proxy(originalGetParameter, getParameterProxyHandler);
-    }
-    
-    if (typeof WebGL2RenderingContext !== 'undefined' && WebGL2RenderingContext.prototype) {
-      const originalGetParameter = WebGL2RenderingContext.prototype.getParameter;
-      WebGL2RenderingContext.prototype.getParameter = new Proxy(originalGetParameter, getParameterProxyHandler);
-    }
-  }, webGLConfig);
+    var patch = function (proto) {
+      if (proto == null) return;
+      try {
+        var original = proto.getParameter;
+        proto.getParameter = new Proxy(original, { apply: applySpoof });
+      } catch (e) {}
+    };
+
+    patch(typeof WebGLRenderingContext !== 'undefined' ? WebGLRenderingContext.prototype : null);
+    patch(typeof WebGL2RenderingContext !== 'undefined' ? WebGL2RenderingContext.prototype : null);
+  })();`;
+
+  await page.addInitScript(script);
 }
 
 export async function spoofWindowsChrome(context: BrowserContext, page: Page, providedUserAgent?: string): Promise<void> {

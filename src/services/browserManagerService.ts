@@ -43,6 +43,7 @@ export class BrowserManagerService {
       headless: isHeadless,
       chromiumSandbox: true,
       channel: "chrome",
+      args: ["--enable-unsafe-swiftshader"],
     });
   }
 

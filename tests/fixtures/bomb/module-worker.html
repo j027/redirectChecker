@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bomb fixture: module-worker</title>
+</head>
+<body>
+<h1>module-worker</h1>
+<script>
+// Seeds three module workers on unload. The guard must treat module workers as
+// regular worker targets (the CDP target type is still "worker").
+(function () {
+  var SPIN_MS = 500;
+  var SEEDS = 3;
+  var payloadTick = location.origin + '/tick?name=module-payload';
+  var handlerTick = location.origin + '/tick?name=unload-handler';
+
+  window.addEventListener('beforeunload', function (event) {
+    try { event.returnValue = 'leave?'; } catch (e) {}
+    try { fetch(handlerTick); } catch (e) {}
+
+    for (var i = 0; i < SEEDS; i++) {
+      var source = [
+        "try { fetch(" + JSON.stringify(payloadTick) + "); } catch (e) {}",
+        "var s = Date.now();",
+        "while (Date.now() - s < " + SPIN_MS + ") { Math.random(); }",
+        "postMessage({done:true});"
+      ].join("\n");
+      var url = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
+      new Worker(url, { type: 'module' });
+    }
+  });
+})();
+</script>
+</body>
+</html>

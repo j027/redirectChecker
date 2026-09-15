@@ -2,6 +2,7 @@ import { Page, BrowserContext } from "patchright";
 import { parse as parseTldts } from "tldts";
 import { isIP } from "net";
 import crypto from "crypto";
+import { dispatchMainWorldEvent } from "../utils/playwrightUtilities.js";
 
 /**
  * Signals detected during page analysis
@@ -183,21 +184,51 @@ export class SignalService {
         // Ignore errors
       }
 
-      // Worker bomb detection: rate-based + threshold
-      // Scam pages spawn hundreds of workers in tight loops, often inside beforeunload/unload handlers.
-      // We track both total count and creation rate to distinguish from legitimate worker usage.
-      const WORKER_BOMB_THRESHOLD = 20;       // Total workers needed to flag
-      const WORKER_BOMB_RATE_LIMIT = 20;      // Workers within the rate window to flag
+      // Worker bomb detection and disarm.
+      // Scam pages spawn workers in tight loops, often inside beforeunload/unload handlers,
+      // and each worker self-replicates. We track count + rate (detection) and hand back an
+      // inert stub once past the hard cap (disarm) so a forking page cannot run the payload.
+      // Stubbing rather than throwing keeps the page unaware that anything was blocked.
+      const WORKER_BOMB_THRESHOLD = 20;        // Total workers needed to flag outside the guarded window
+      const WORKER_BOMB_RATE_LIMIT = 20;       // Workers within the rate window to flag
       const WORKER_BOMB_RATE_WINDOW_MS = 1000; // 1 second window for rate detection
+      const MAX_REAL_WORKERS_PER_FRAME = 12;   // Hard cap: beyond this, construct inert stubs
 
-      // Hook Worker constructor to detect worker bombs
-      try {
-        const OriginalWorker = (window as any).Worker;
-        if (typeof OriginalWorker === 'function') {
+      const createInertWorker = () => {
+        const noop = () => {};
+        return {
+          postMessage: noop,
+          terminate: noop,
+          addEventListener: noop,
+          removeEventListener: noop,
+          dispatchEvent: () => false,
+          start: noop,
+          close: noop,
+          port: {
+            postMessage: noop,
+            start: noop,
+            close: noop,
+            addEventListener: noop,
+            removeEventListener: noop,
+          },
+          onmessage: null,
+          onmessageerror: null,
+          onerror: null,
+        };
+      };
+
+      const hookWorkerConstructors = (global: any, name: 'Worker' | 'SharedWorker') => {
+        try {
+          const Original = global[name];
+          if (typeof Original !== 'function') {
+            return;
+          }
+
           const workerTimestamps: number[] = [];
 
-          (window as any).Worker = new Proxy(OriginalWorker, {
+          global[name] = new Proxy(Original, {
             construct(target, args, newTarget) {
+              let overCap = false;
               try {
                 const el = getOrCreateSignalElement();
                 const currentCount = parseInt(el.getAttribute('data-worker-count') || '0', 10);
@@ -216,16 +247,35 @@ export class SignalService {
                 if (newCount >= WORKER_BOMB_THRESHOLD || workerTimestamps.length >= WORKER_BOMB_RATE_LIMIT) {
                   setSignal('worker-bomb');
                 }
+
+                overCap = newCount > MAX_REAL_WORKERS_PER_FRAME;
+                if (overCap) {
+                  setSignal('worker-bomb');
+                }
               } catch {
                 // Ignore errors
               }
+
+              if (overCap) {
+                const inert = createInertWorker();
+                try {
+                  Object.setPrototypeOf(inert, target.prototype);
+                } catch {
+                  // Ignore errors
+                }
+                return inert;
+              }
+
               return Reflect.construct(target, args, newTarget);
             }
           });
+        } catch {
+          // API not available
         }
-      } catch {
-        // API not available
-      }
+      };
+
+      hookWorkerConstructors(window, 'Worker');
+      hookWorkerConstructors(window, 'SharedWorker');
 
       // Hook addEventListener to detect beforeunload/unload handlers that spawn workers.
       // Scam pages register these to bomb the browser when the user tries to leave.
@@ -361,9 +411,7 @@ export class SignalService {
       // due to Patchright's execution context isolation, so we just trigger the event
       // unconditionally. The Worker proxy will count any workers spawned by the handler.
       await Promise.race([
-        page.evaluate(() => {
-          window.dispatchEvent(new Event('beforeunload'));
-        }),
+        dispatchMainWorldEvent(page, 'beforeunload'),
         new Promise(resolve => setTimeout(resolve, 3000)),
       ]);
 
@@ -466,6 +514,17 @@ export class SignalService {
       await this.triggerNavigationSignals(page);
     }
 
+    return this.getSignals();
+  }
+
+  /**
+   * Collects signals that can be read without triggering navigation handlers.
+   * Used when the unload trigger is driven separately (e.g. with bomb disarming),
+   * so that a frozen page does not need another evaluate after the trigger.
+   */
+  public async detectStaticSignals(page: Page, url: string): Promise<DetectedSignals> {
+    this.analyzeUrl(url);
+    await this.collectApiSignals(page);
     return this.getSignals();
   }
 }

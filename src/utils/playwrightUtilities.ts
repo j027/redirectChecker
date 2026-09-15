@@ -28,6 +28,26 @@ export async function blockGoogleAnalytics(page: Page) {
   });
 }
 
+/**
+ * Dispatches a DOM event so that main-world listeners receive it.
+ *
+ * Patchright evaluates JavaScript in an isolated execution context, and an
+ * event dispatched from that context does not reliably reach listeners that
+ * page scripts registered in the main world. Injecting a script element runs
+ * the dispatch in the main world instead.
+ */
+export async function dispatchMainWorldEvent(
+  page: Page,
+  eventName: string
+): Promise<void> {
+  await page.evaluate((name: string) => {
+    const script = document.createElement("script");
+    script.textContent = `window.dispatchEvent(new Event(${JSON.stringify(name)}));`;
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+  }, eventName);
+}
+
 export async function blockPageResources(page: Page) {
   try {
     // attempt using playwright handlers first

@@ -3,7 +3,11 @@ import { chromium } from "patchright";
 import { createSignalService } from "../../src/services/signalService.js";
 
 function launchSandboxedBrowser() {
-  return chromium.launch({ headless: true, chromiumSandbox: true });
+  return chromium.launch({
+    headless: false,
+    channel: "chrome",
+    chromiumSandbox: true,
+  });
 }
 
 describe("SignalService Browser Integration", () => {

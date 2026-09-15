@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bomb fixture: unload-seed</title>
+</head>
+<body>
+<h1>unload-seed</h1>
+<script>
+// Sanitized reproduction of the decoded "leave guard" fork bomb:
+// 20 blob workers seeded from beforeunload, each ticking a counter, spawning a
+// child, and spinning on the main thread. Payloads are time-bounded so a failed
+// disarm cannot hang the test machine indefinitely.
+(function () {
+  var SPIN_MS = 1500;
+  var SEEDS = 20;
+  var payloadTick = location.origin + '/tick?name=payload';
+  var childTick = location.origin + '/tick?name=child';
+  var handlerTick = location.origin + '/tick?name=unload-handler';
+
+  var childSource = [
+    "try { fetch(" + JSON.stringify(childTick) + "); } catch (e) {}",
+    "var s = Date.now();",
+    "while (Date.now() - s < " + SPIN_MS + ") { Math.random(); }",
+    "postMessage({done:true});"
+  ].join("\n");
+
+  var template = [
+    "var start = Date.now();",
+    "try { fetch(" + JSON.stringify(payloadTick) + "); } catch (e) {}",
+    "try {",
+    "  var child = " + JSON.stringify(childSource) + ";",
+    "  var url = URL.createObjectURL(new Blob([child], { type: 'application/javascript' }));",
+    "  new Worker(url);",
+    "} catch (e) {}",
+    "while (Date.now() - start < " + SPIN_MS + ") { Math.random(); }",
+    "postMessage({done:true});"
+  ].join("\n");
+
+  function detonate() {
+    var blobUrl = URL.createObjectURL(new Blob([template], { type: 'application/javascript' }));
+    for (var i = 0; i < SEEDS; i++) {
+      new Worker(blobUrl);
+    }
+    try { window.open(window.location.href, '_blank'); } catch (e) {}
+  }
+
+  window.addEventListener('beforeunload', function (event) {
+    try { event.returnValue = 'Are you sure you want to leave?'; } catch (e) {}
+    try { fetch(handlerTick); } catch (e) {}
+    detonate();
+  });
+})();
+</script>
+</body>
+</html>

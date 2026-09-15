@@ -1,6 +1,6 @@
 import pool from "../dbPool.js";
 
-export type HunterType = "search" | "typosquat" | "pornhub" | "adspyglass" | "scheduler";
+export type HunterType = "search" | "typosquat" | "pornhub" | "adspyglass" | "scheduler" | "classifier";
 
 export type HunterEventType =
   | "cycle_start"
@@ -15,7 +15,8 @@ export type HunterEventType =
   | "status_changed"
   | "error"
   | "timeout"
-  | "whitelisted";
+  | "whitelisted"
+  | "bomb_detected";
 
 /**
  * Logs a hunter event to the database for debugging and monitoring.

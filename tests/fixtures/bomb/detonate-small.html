@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bomb fixture: detonate-small</title>
+</head>
+<body>
+<h1>detonate-small</h1>
+<script>
+// Small, fully bounded bomb used to prove the fixture actually detonates when
+// the guard is NOT armed. Every payload ticks once and exits after 300ms.
+(function () {
+  var SPIN_MS = 300;
+  var SEEDS = 3;
+  var payloadTick = location.origin + '/tick?name=payload';
+  var childTick = location.origin + '/tick?name=child';
+  var handlerTick = location.origin + '/tick?name=unload-handler';
+
+  var childSource =
+    "try { fetch(" + JSON.stringify(childTick) + "); } catch (e) {} postMessage({done:true});";
+
+  var template = [
+    "try { fetch(" + JSON.stringify(payloadTick) + "); } catch (e) {}",
+    "try {",
+    "  var child = " + JSON.stringify(childSource) + ";",
+    "  var childUrl = URL.createObjectURL(new Blob([child], { type: 'application/javascript' }));",
+    "  new Worker(childUrl);",
+    "} catch (e) {}",
+    "var s = Date.now();",
+    "while (Date.now() - s < " + SPIN_MS + ") { Math.random(); }",
+    "postMessage({done:true});"
+  ].join("\n");
+
+  window.addEventListener('beforeunload', function (event) {
+    try { event.returnValue = 'leave?'; } catch (e) {}
+    try { fetch(handlerTick); } catch (e) {}
+    var blobUrl = URL.createObjectURL(new Blob([template], { type: 'application/javascript' }));
+    for (var i = 0; i < SEEDS; i++) {
+      new Worker(blobUrl);
+    }
+  });
+})();
+</script>
+</body>
+</html>

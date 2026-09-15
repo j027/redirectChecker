@@ -1,6 +1,6 @@
 import * as onnx from "onnxruntime-node";
 import { promises as fs } from "fs";
-import { Browser } from "patchright";
+import { Browser, BrowserContext, Page } from "patchright";
 import path from "path";
 import pool from "../dbPool.js";
 import {
@@ -13,6 +13,8 @@ import crypto from "crypto";
 import sharp from "sharp";
 import { BrowserManagerService } from './browserManagerService.js';
 import { hunterProxyService, HunterProxyRunContext, HunterProxyRunOptions } from './hunterProxyService.js';
+import { BombGuard } from './bombGuard.js';
+import { logHunterEvent } from './hunterEventLogger.js';
 import { URL } from 'url';
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from './signalService.js';
 import {
@@ -39,6 +41,8 @@ export interface ClassificationResult {
   html: string;
   url: string;
   signals: DetectedSignals;
+  /** True when the page tried to fork-bomb the browser while leaving. */
+  bombDetected: boolean;
 }
 
 export class AiClassifierService {
@@ -151,6 +155,7 @@ export class AiClassifierService {
 
     // Create a signal service for this classification
     const signalService = createSignalService();
+    const bombGuard = new BombGuard();
 
     // Setup page and navigation
     const context = await this.browser.newContext({
@@ -192,14 +197,11 @@ export class AiClassifierService {
       // Redact server IPs from the rendered page before capturing
       await redactIpAddressesFromPage(page);
 
-      // Capture screenshot and HTML
+      // Capture screenshot and HTML before anything can detonate: scam pages
+      // commonly fork-bomb on unload, so the evidence must be taken first.
       const screenshot = await page.screenshot();
       const html = await page.content();
       const currentUrl = page.url();
-
-      // Collect all signals
-      await signalService.detectAllSignals(page, currentUrl);
-      const signals = signalService.getSignals();
 
       if (!proxyContext.isHealthy()) {
         console.warn(
@@ -218,18 +220,15 @@ export class AiClassifierService {
           html,
           url: currentUrl,
           signals: createEmptySignals(),
+          bombDetected: false,
         };
       }
 
-      // Process the image for the model
+      // Run inference before triggering navigation handlers so the verdict is
+      // never lost to a bomb, then persist the sample while it is still valid.
       const prediction = await this.runInference(screenshot);
       const isScam = prediction.isScam;
       const confidenceScore = prediction.confidenceScore;
-
-      // Log detected signals
-      if (hasWeightedSignal(signals)) {
-        console.log(`🚨 Weighted signals detected for ${currentUrl}:`, signals);
-      }
 
       // Save data regardless of classification
       await this.saveData(
@@ -239,6 +238,35 @@ export class AiClassifierService {
         isScam,
         confidenceScore
       );
+
+      // Collect signals that are readable without leaving the page.
+      const signals = await signalService.detectStaticSignals(page, currentUrl);
+
+      // Trigger the unload handlers with the bomb disarmed: new child targets are
+      // frozen before they execute, worker floods are counted from Node, and the
+      // page is CPU-throttled while this happens.
+      const bombDetected = await this.checkForBomb(page, context, bombGuard);
+
+      if (bombDetected) {
+        signals.workerBombDetected = true;
+        console.warn(
+          `💣 Worker bomb detected for ${currentUrl} (${bombGuard.getWorkerTargetCount()} worker targets); payloads were frozen`
+        );
+        void logHunterEvent(
+          "classifier",
+          "bomb_detected",
+          `Worker bomb disarmed for ${currentUrl}`,
+          {
+            url: currentUrl,
+            worker_targets: bombGuard.getWorkerTargetCount(),
+          }
+        );
+      }
+
+      // Log detected signals
+      if (hasWeightedSignal(signals)) {
+        console.log(`🚨 Weighted signals detected for ${currentUrl}:`, signals);
+      }
 
       // Log prediction details
       const confidencePercent = (confidenceScore * 100).toFixed(2);
@@ -259,14 +287,69 @@ export class AiClassifierService {
         html,
         url: currentUrl,
         signals,
+        bombDetected,
       };
     } catch (error) {
       console.error(`Error classifying URL ${url}:`, error);
       return null;
     } finally {
-      await page.close();
-      await context.close();
+      await bombGuard.dispose();
+      await this.closePageAndContext(page, context);
     }
+  }
+
+  /**
+   * Dispatches the page's unload handlers with the bomb guard armed. Resolves
+   * once worker target creation settles; never throws on a frozen page.
+   */
+  private async checkForBomb(
+    page: Page,
+    context: BrowserContext,
+    bombGuard: BombGuard
+  ): Promise<boolean> {
+    try {
+      await bombGuard.arm(context, page);
+      await bombGuard.throttle(4);
+
+      const dispatch = bombGuard.dispatchUnloadEvent().catch(
+        () => undefined
+      );
+
+      await Promise.race([
+        dispatch,
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+
+      return await bombGuard.waitForSettle();
+    } catch (error) {
+      console.warn("[BombGuard] Bomb check failed:", error);
+      return bombGuard.isBombDetected();
+    }
+  }
+
+  /**
+   * Closes the page and context with hard timeouts so a pinned renderer cannot
+   * hold the classification operation open until the 300s proxy watchdog.
+   */
+  private async closePageAndContext(
+    page: Page,
+    context: BrowserContext
+  ): Promise<void> {
+    const withTimeout = async (promise: Promise<unknown>, label: string) => {
+      try {
+        await Promise.race([
+          promise,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`${label} timed out`)), 5000)
+          ),
+        ]);
+      } catch (error) {
+        console.warn(`[Classifier] ${label} failed or timed out:`, error);
+      }
+    };
+
+    await withTimeout(page.close(), "page.close");
+    await withTimeout(context.close(), "context.close");
   }
 
   public async runInference(

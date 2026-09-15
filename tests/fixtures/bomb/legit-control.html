@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bomb fixture: legit-control</title>
+</head>
+<body>
+<h1>legit-control</h1>
+<script>
+// A legitimate page doing unload cleanup with a single short-lived worker.
+// It must never be reported as a bomb (false-positive guard).
+(function () {
+  var workerTick = location.origin + '/tick?name=legit-worker';
+
+  window.addEventListener('beforeunload', function (event) {
+    try { event.returnValue = ''; } catch (e) {}
+    var source = "try { fetch(" + JSON.stringify(workerTick) + "); } catch (e) {} postMessage({done:true});";
+    var url = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
+    new Worker(url);
+  });
+})();
+</script>
+</body>
+</html>

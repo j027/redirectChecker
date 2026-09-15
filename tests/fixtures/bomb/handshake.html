@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bomb fixture: handshake</title>
+</head>
+<body>
+<h1>handshake</h1>
+<script>
+// One unload worker that is expected to say "ready". If the guard freezes it,
+// the page notices and fires an alternate path. This documents that freeze-all
+// is observable by a page that performs a handshake, and pins the current
+// policy (one worker is under the bomb threshold, so it is not flagged).
+(function () {
+  window.__bombFixtureReady = false;
+  var payloadTick = location.origin + '/tick?name=payload';
+  var handlerTick = location.origin + '/tick?name=unload-handler';
+  var alternateTick = location.origin + '/tick?name=alternate';
+
+  window.addEventListener('beforeunload', function (event) {
+    try { event.returnValue = 'leave?'; } catch (e) {}
+    try { fetch(handlerTick); } catch (e) {}
+
+    var source = [
+      "try { fetch(" + JSON.stringify(payloadTick) + "); } catch (e) {}",
+      "postMessage({ status: 'ready' });",
+      "var s = Date.now();",
+      "while (Date.now() - s < 800) { Math.random(); }"
+    ].join("\n");
+    var url = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
+    var worker = new Worker(url);
+    worker.onmessage = function () { window.__bombFixtureReady = true; };
+
+    setTimeout(function () {
+      if (!window.__bombFixtureReady) {
+        try { fetch(alternateTick); } catch (e) {}
+      }
+    }, 300);
+  });
+})();
+</script>
+</body>
+</html>

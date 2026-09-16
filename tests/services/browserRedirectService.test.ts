@@ -60,19 +60,15 @@ describe("BrowserRedirectService retry on closed browser", () => {
     const internalSpy = vi
       .spyOn(service as any, "handleRedirectInternal")
       .mockRejectedValueOnce(CLOSED_ERROR)
-      .mockResolvedValueOnce({
-        destination: "https://example.com/landing",
-        requests: [],
-      });
+      .mockResolvedValueOnce("https://example.com/landing");
 
     const result = await service.handleRedirect(
       "https://example.com/ad",
       undefined,
-      false,
       false
     );
 
-    expect(result.destination).toBe("https://example.com/landing");
+    expect(result).toBe("https://example.com/landing");
     expect(internalSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -82,7 +78,7 @@ describe("BrowserRedirectService retry on closed browser", () => {
       .mockRejectedValue(new Error("navigation failed"));
 
     await expect(
-      service.handleRedirect("https://example.com/ad", undefined, false, false)
+      service.handleRedirect("https://example.com/ad", undefined, false)
     ).rejects.toThrow("navigation failed");
 
     expect(internalSpy).toHaveBeenCalledTimes(1);

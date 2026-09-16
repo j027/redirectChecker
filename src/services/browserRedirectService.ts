@@ -10,7 +10,6 @@ import {
 } from "../utils/playwrightUtilities.js";
 import { BrowserManagerService } from './browserManagerService.js';
 import { hunterProxyService, HunterProxyRunOptions } from './hunterProxyService.js';
-import { attachRequestLogger, RequestLogger, CapturedRequest } from '../utils/requestLogger.js';
 
 function isTargetClosedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -136,15 +135,13 @@ export class BrowserRedirectService {
     redirectUrl: string,
     referrer?: string,
     useHunterProxy? : boolean,
-    captureRequests: boolean = false,
     options: HunterProxyRunOptions = {}
-  ): Promise<{ destination: string | null; requests: CapturedRequest[] }> {
+  ): Promise<string | null> {
     const runOnceWithRetry = () =>
       this.handleRedirectWithRetry(
         redirectUrl,
         referrer,
-        useHunterProxy,
-        captureRequests
+        useHunterProxy
       );
 
     if (useHunterProxy) {
@@ -161,15 +158,13 @@ export class BrowserRedirectService {
   private async handleRedirectWithRetry(
     redirectUrl: string,
     referrer?: string,
-    useHunterProxy? : boolean,
-    captureRequests: boolean = false
-  ): Promise<{ destination: string | null; requests: CapturedRequest[] }> {
+    useHunterProxy? : boolean
+  ): Promise<string | null> {
     try {
       return await this.handleRedirectInternal(
         redirectUrl,
         referrer,
-        useHunterProxy,
-        captureRequests
+        useHunterProxy
       );
     } catch (error) {
       if (!isTargetClosedError(error)) {
@@ -182,8 +177,7 @@ export class BrowserRedirectService {
       return await this.handleRedirectInternal(
         redirectUrl,
         referrer,
-        useHunterProxy,
-        captureRequests
+        useHunterProxy
       );
     }
   }
@@ -191,9 +185,8 @@ export class BrowserRedirectService {
   private async handleRedirectInternal(
     redirectUrl: string,
     referrer?: string,
-    useHunterProxy? : boolean,
-    captureRequests: boolean = false
-  ): Promise<{ destination: string | null; requests: CapturedRequest[] }> {
+    useHunterProxy? : boolean
+  ): Promise<string | null> {
     this.inFlight++;
 
     try {
@@ -203,7 +196,7 @@ export class BrowserRedirectService {
         console.error(
           "Browser has not been initialized or has crashed - redirect handling failed"
         );
-        return { destination: null, requests: [] };
+        return null;
       }
 
       const context = await this.browser.newContext({
@@ -214,7 +207,6 @@ export class BrowserRedirectService {
       const page = await context.newPage();
 
       let loopDetected = false;
-      let requestLogger: RequestLogger | null = null;
 
       try {
         // Inside try so a spoof failure fails closed (and still hits
@@ -223,10 +215,6 @@ export class BrowserRedirectService {
         await blockGoogleAnalytics(page);
         await blockMailtoLinks(page);
         await blockPageResources(page);
-
-        if (captureRequests) {
-          requestLogger = await attachRequestLogger(page);
-        }
 
         const redirectTracker = await trackRedirectionPath(page, redirectUrl);
 
@@ -285,7 +273,7 @@ export class BrowserRedirectService {
           destinationUrl = page.url();
         }
         
-        return { destination: destinationUrl != redirectUrl ? destinationUrl : null, requests: requestLogger?.entries ?? [] };
+        return destinationUrl != redirectUrl ? destinationUrl : null;
       } catch (error) {
         if (loopDetected) {
           console.log(`Redirect loop aborted for ${redirectUrl}`);
@@ -295,9 +283,8 @@ export class BrowserRedirectService {
         } else {
           console.log(`Error when handling redirect: ${error}`);
         }
-        return { destination: null, requests: requestLogger?.entries ?? [] };
+        return null;
       } finally {
-        requestLogger?.detach();
         await page.close().catch(() => {});
         await context.close().catch(() => {});
       }

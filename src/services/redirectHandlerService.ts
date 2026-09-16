@@ -3,22 +3,14 @@ import { readConfig } from "../config.js";
 import { RedirectType } from "../redirectType.js";
 import { userAgentService } from "./userAgentService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
-import { CapturedRequest } from "../utils/requestLogger.js";
 import { HunterProxyRunOptions } from "./hunterProxyService.js";
-
-export interface RedirectResult {
-  location: string | null;
-  requests: CapturedRequest[];
-}
 
 export async function handleRedirect(
   redirectUrl: string,
   redirectType: RedirectType,
-  captureRequests: boolean = false,
   options: HunterProxyRunOptions = {},
-): Promise<RedirectResult> {
+): Promise<string | null> {
   let location: string | null = null;
-  let requests: CapturedRequest[] = [];
 
   // Step 1: Get the destination URL based on redirect type
   switch (redirectType) {
@@ -26,23 +18,20 @@ export async function handleRedirect(
       location = await httpRedirect(redirectUrl);
       break;
     case RedirectType.BrowserRedirect:
-      ({ destination: location, requests } =
-        await browserRedirectService.handleRedirect(redirectUrl, undefined, undefined, captureRequests, options));
+      location = await browserRedirectService.handleRedirect(redirectUrl, undefined, undefined, options);
       break;
     case RedirectType.BrowserRedirectPornhub:
-      ({ destination: location, requests } =
-        await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/", undefined, captureRequests, options));
+      location = await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/", undefined, options);
       break;
     case RedirectType.BrowserRedirectHunterProxy:
-      ({ destination: location, requests } =
-        await browserRedirectService.handleRedirect(redirectUrl, undefined, true, captureRequests, options));
+      location = await browserRedirectService.handleRedirect(redirectUrl, undefined, true, options);
       break;
     default:
       console.warn(`Redirect type ${redirectType} is not supported yet`);
       throw new Error("Redirect type not supported");
   }
 
-  return { location, requests };
+  return location;
 }
 
 async function httpRedirect(redirectUrl: string): Promise<string | null> {

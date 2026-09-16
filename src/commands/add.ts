@@ -14,7 +14,6 @@ import {
 } from "../services/aiClassifierService.js";
 import { hasWeightedSignal } from "../services/signalService.js";
 import { isValidUrl } from "../utils/urlUtils.js";
-import { formatRequestLog, CapturedRequest } from "../utils/requestLogger.js";
 import {
   formatConfidence,
   formatSignals,
@@ -75,20 +74,13 @@ export const addCommand: CommandDefinition = {
     }
 
     let redirectDestination: string | null = null;
-    let redirectRequests: CapturedRequest[] = [];
 
     try {
       await interaction.editReply("Attempting to validate redirect...");
       console.log(`[add] stage=validating url=${url} type=${redirectType}`);
-      const redirectResult = await handleRedirect(
-        url,
-        redirectType,
-        true,
-      );
-      redirectDestination = redirectResult.location;
-      redirectRequests = redirectResult.requests;
+      redirectDestination = await handleRedirect(url, redirectType);
       console.log(
-        `[add] stage=validated destination=${redirectDestination ?? "none"} requests=${redirectRequests.length}`
+        `[add] stage=validated destination=${redirectDestination ?? "none"}`
       );
     } catch (error) {
       await interaction.editReply(
@@ -99,33 +91,9 @@ export const addCommand: CommandDefinition = {
     }
 
     if (redirectDestination == null) {
-      const requestLog = formatRequestLog(redirectRequests);
-
-      if (requestLog.length === 0) {
-        await interaction.editReply(
-          "Redirect did not go anywhere, please provide a valid redirect or ensure the redirect type is correct.",
-        );
-        return;
-      }
-
-      if (requestLog.length <= 1500) {
-        await interaction.editReply(
-          "Redirect did not go anywhere, please provide a valid redirect or ensure the redirect type is correct.\n\n**HTTP request log:**\n```\n" +
-            requestLog +
-            "\n```",
-        );
-        return;
-      }
-
-      const attachment = new AttachmentBuilder(
-        Buffer.from(requestLog, "utf-8"),
-        { name: `redirect-requests-${Date.now()}.txt` },
+      await interaction.editReply(
+        "Redirect did not go anywhere, please provide a valid redirect or ensure the redirect type is correct.",
       );
-      await interaction.editReply({
-        content:
-          "Redirect did not go anywhere, please provide a valid redirect or ensure the redirect type is correct.\n\nFull HTTP request log attached below.",
-        files: [attachment],
-      });
       return;
     }
 
@@ -148,7 +116,6 @@ export const addCommand: CommandDefinition = {
       content:
         `${destinationLine}\n` +
         `**Redirect type:** \`${redirectType}\`\n` +
-        `**Hops:** ${redirectRequests.length}\n` +
         "Classifying destination...",
       ...(destinationFiles.length > 0 ? { files: destinationFiles } : {}),
     });

@@ -48,7 +48,7 @@ async function processRedirectEntry(
   signal?: AbortSignal
 ): Promise<void> {
 
-  const { location: redirectDestination } = await handleRedirect(sourceUrl, redirectType, false, { signal });
+  const redirectDestination = await handleRedirect(sourceUrl, redirectType, { signal });
 
   // if we didn't redirect anywhere
   if (redirectDestination == null) {

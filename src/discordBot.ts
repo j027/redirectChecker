@@ -144,13 +144,14 @@ async function main() {
     try {
       await command.execute(interaction);
     } catch (error) {
-      console.error(error);
+      console.error(`Error executing /${interaction.commandName}:`, error);
       try {
         const content = "There was an error while executing this command!";
+        const ephemeral = interaction.ephemeral ?? false;
         if (interaction.replied || interaction.deferred) {
-          await interaction.followUp({ content, ephemeral: false });
+          await interaction.followUp({ content, ephemeral });
         } else {
-          await interaction.reply({ content, ephemeral: false });
+          await interaction.reply({ content, ephemeral });
         }
       } catch (replyError) {
         console.error(`Failed to report command error to Discord: ${replyError}`);

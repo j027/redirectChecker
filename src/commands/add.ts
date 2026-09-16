@@ -79,6 +79,7 @@ export const addCommand: CommandDefinition = {
 
     try {
       await interaction.editReply("Attempting to validate redirect...");
+      console.log(`[add] stage=validating url=${url} type=${redirectType}`);
       const redirectResult = await handleRedirect(
         url,
         redirectType,
@@ -86,6 +87,9 @@ export const addCommand: CommandDefinition = {
       );
       redirectDestination = redirectResult.location;
       redirectRequests = redirectResult.requests;
+      console.log(
+        `[add] stage=validated destination=${redirectDestination ?? "none"} requests=${redirectRequests.length}`
+      );
     } catch (error) {
       await interaction.editReply(
         "There was an error attempting to validate the redirect.",
@@ -152,12 +156,14 @@ export const addCommand: CommandDefinition = {
     // attempt classification
     let classificationResult: ClassificationResult | null = null;
     try {
+      console.log(`[add] stage=classifying destination=${redirectDestination}`);
       classificationResult = await aiClassifierService.classifyUrl(
         redirectDestination,
       );
       if (classificationResult == null) {
         throw new Error("Failed to get classification result");
       }
+      console.log(`[add] stage=classified isScam=${classificationResult.isScam}`);
     } catch (error) {
       console.log(error);
       await interaction.followUp({

@@ -113,14 +113,11 @@ export function startRedirectChecker() {
       }
       cycleAbortController.signal.throwIfAborted();
 
-      // Restart browser before each run to clear lingering state
+      // Restart browser before each run to clear lingering state. The service
+      // drains in-flight redirect operations first (bounded internally).
       console.log("Restarting redirect checker browser before cycle...");
       try {
-        await withTimeout(
-          browserRedirectService.restartBrowser(),
-          30000,
-          "Redirect checker browser restart"
-        );
+        await browserRedirectService.restartBrowser();
       } catch (error) {
         console.error("Error restarting redirect checker browser:", error);
       }

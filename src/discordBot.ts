@@ -60,6 +60,30 @@ async function checkChromeVersionDrift(): Promise<void> {
   }
 }
 
+async function deployCommandsWithRetry(): Promise<void> {
+  const retryDelays = [5000, 15000];
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await deployCommands();
+      return;
+    } catch (error) {
+      if (attempt > retryDelays.length) {
+        console.warn(
+          `Failed to reload application commands after ${attempt} attempts (continuing to login with previous registrations):`,
+          error,
+        );
+        return;
+      }
+      console.warn(
+        `Failed to reload application commands (attempt ${attempt}/${retryDelays.length + 1}), retrying in ${retryDelays[attempt - 1] / 1000}s:`,
+        error,
+      );
+      await setTimeout(retryDelays[attempt - 1]);
+    }
+  }
+}
+
 async function initializeServices() {
   const config = await readConfig();
   const enabledHunters = HUNTER_NAMES.filter((hunter) => isHunterEnabled(config, hunter));
@@ -119,7 +143,7 @@ async function main() {
   const { token } = await readConfig();
   await initializeServices();
   await checkChromeVersionDrift();
-  await deployCommands();
+  await deployCommandsWithRetry();
 
   // Log in to Discord with your client's token
   console.log("Logging into discord");
@@ -186,4 +210,7 @@ process.on("unhandledRejection", (reason) => {
   console.error("Unhandled promise rejection (not crashing):", reason);
 });
 
-void main();
+main().catch((error) => {
+  console.error("Fatal startup error:", error);
+  process.exit(1);
+});

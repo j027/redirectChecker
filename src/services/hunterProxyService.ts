@@ -131,6 +131,9 @@ export class HunterProxyService {
     // rotation to finish. They must therefore proceed immediately.
     const inheritedContext = this.operationContext.getStore();
     if (inheritedContext) {
+      if (options.signal?.aborted) {
+        throw createAbortError(operationName);
+      }
       return fn(inheritedContext);
     }
 
@@ -147,8 +150,12 @@ export class HunterProxyService {
     let wasAbandoned = false;
 
     const generation = this.generation;
+    // Health is generation-based, not state-based: while a rotation is draining
+    // in-flight operations the proxy has not been swapped yet, so those
+    // operations must still be treated as valid. Once the rotation bumps the
+    // generation (or a failure flips `healthy`), stale operations are voided.
     const ctx: HunterProxyRunContext = {
-      isHealthy: () => this.isHealthy() && this.generation === generation,
+      isHealthy: () => this.healthy && this.generation === generation,
     };
 
     let released = false;

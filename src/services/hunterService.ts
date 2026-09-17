@@ -215,6 +215,13 @@ export class HunterService {
   ): Promise<AddToRedirectCheckerResult> {
     console.log(`Attempting to add ${url} to redirect checker automatically`);
 
+    const isAborted = () => options.signal?.aborted === true;
+
+    if (isAborted()) {
+      console.log(`Add aborted before starting for ${url}`);
+      return { added: false, strategy: null };
+    }
+
     // Extract domain from the incoming URL
     const domain = new URL(url).hostname.toLowerCase();
 
@@ -258,9 +265,19 @@ export class HunterService {
     ];
 
     for (const redirectType of redirectTypesToTry) {
+      if (isAborted()) {
+        console.log(`Add aborted for ${url}`);
+        break;
+      }
+
       try {
         console.log(`Trying ${redirectType} for ${url}`);
         const redirectDestination = await handleRedirect(url, redirectType, options);
+
+        if (isAborted()) {
+          console.log(`Add aborted after redirect for ${url}`);
+          return { added: false, strategy: null };
+        }
 
         if (redirectDestination) {
           console.log(`Got destination ${redirectDestination}, classifying...`);
@@ -284,6 +301,11 @@ export class HunterService {
                 `Destination ${redirectDestination} not classified as scam, trying next redirect type`
               );
               continue; // Try next redirect type
+            }
+
+            if (isAborted()) {
+              console.log(`Add aborted before insert for ${url}`);
+              return { added: false, strategy: null };
             }
 
             // Found a working redirect that leads to a scam, add to database

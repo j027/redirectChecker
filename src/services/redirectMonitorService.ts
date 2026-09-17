@@ -122,13 +122,18 @@ async function processRedirectEntry(
         effective_is_scam: isScam
       });
 
-      // Now we insert, still within the same transaction
+      // Now we insert, still within the same transaction. ON CONFLICT keeps the
+      // SELECT-then-INSERT atomic: concurrent checks redirecting to the same
+      // hostname would otherwise both miss the SELECT and one would fail the
+      // unique_hostname constraint.
       const insertResult = await client.query(
         `INSERT INTO redirect_destinations 
          (redirect_id, destination_url, hostname, is_scam, classifier_is_scam, confidence_score,
           signal_fullscreen, signal_keyboard_lock, signal_pointer_lock, 
           signal_third_party_hosting, signal_ip_address, signal_page_frozen, signal_worker_bomb) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         ON CONFLICT (hostname) DO UPDATE SET last_seen = NOW()
+         RETURNING id, (xmax = 0) AS inserted`,
         [
           redirectId, 
           redirectDestination, 
@@ -145,6 +150,16 @@ async function processRedirectEntry(
           signals.workerBombDetected
         ]
       );
+
+      if (insertResult.rows[0].inserted !== true) {
+        // Another transaction inserted this hostname first; its cycle owns the
+        // takedown init and any reporting.
+        await logRedirectEvent("existing_destination", `Known destination, updated last_seen`, sourceUrl, {
+          hostname: canonicalDestination
+        });
+        await client.query('COMMIT');
+        return;
+      }
 
       // Initialize security status for this new destination
       const destinationId = insertResult.rows[0].id;

@@ -91,10 +91,10 @@ export class TyposquatHunter {
   }
 
   async huntTyposquat(signal?: AbortSignal) {
-    return hunterProxyService.run("typosquat-ad-hunt", () => this.huntTyposquatInternal(), { signal });
+    return hunterProxyService.run("typosquat-ad-hunt", () => this.huntTyposquatInternal(signal), { signal });
   }
 
-  private async huntTyposquatInternal() {
+  private async huntTyposquatInternal(signal?: AbortSignal) {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {
@@ -250,7 +250,7 @@ export class TyposquatHunter {
 
           if (cloakerCandidate != null) {
             const { added: addedToChecker, strategy } =
-              await hunterService.tryAddToRedirectChecker(cloakerCandidate);
+              await hunterService.tryAddToRedirectChecker(cloakerCandidate, { signal });
             if (addedToChecker) {
               await sendCloakerAddedAlert(cloakerCandidate, "Typosquat", strategy);
               console.log(

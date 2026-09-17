@@ -20,8 +20,11 @@ import {
   SignalData,
 } from "../utils/discordFormatting.js";
 import pool from "../dbPool.js";
+import { setTimeout as sleep } from "timers/promises";
 
 const DESTINATION_INLINE_LIMIT = 1000;
+const CLASSIFICATION_ATTEMPTS = 3;
+const CLASSIFICATION_RETRY_DELAY_MS = 2_000;
 
 export const addCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
@@ -120,19 +123,33 @@ export const addCommand: CommandDefinition = {
       ...(destinationFiles.length > 0 ? { files: destinationFiles } : {}),
     });
 
-    // attempt classification
+    // attempt classification; a null result can be transient (proxy rotation
+    // recovery, navigation timeout), so retry a bounded number of times
     let classificationResult: ClassificationResult | null = null;
-    try {
-      console.log(`[add] stage=classifying destination=${redirectDestination}`);
-      classificationResult = await aiClassifierService.classifyUrl(
-        redirectDestination,
-      );
-      if (classificationResult == null) {
-        throw new Error("Failed to get classification result");
+    for (let attempt = 1; attempt <= CLASSIFICATION_ATTEMPTS; attempt++) {
+      try {
+        console.log(
+          `[add] stage=classifying destination=${redirectDestination} attempt=${attempt}/${CLASSIFICATION_ATTEMPTS}`,
+        );
+        classificationResult = await aiClassifierService.classifyUrl(
+          redirectDestination,
+        );
+        if (classificationResult != null) {
+          break;
+        }
+        console.warn(
+          `[add] stage=classification_empty attempt=${attempt}/${CLASSIFICATION_ATTEMPTS}`,
+        );
+      } catch (error) {
+        console.log(error);
       }
-      console.log(`[add] stage=classified isScam=${classificationResult.isScam}`);
-    } catch (error) {
-      console.log(error);
+
+      if (attempt < CLASSIFICATION_ATTEMPTS) {
+        await sleep(CLASSIFICATION_RETRY_DELAY_MS);
+      }
+    }
+
+    if (classificationResult == null) {
       await interaction.followUp({
         content:
           "There was an error attempting to classify the redirect destination.\n" +
@@ -141,6 +158,7 @@ export const addCommand: CommandDefinition = {
       });
       return;
     }
+    console.log(`[add] stage=classified isScam=${classificationResult.isScam}`);
 
     const isScam = classificationResult.isScam;
 

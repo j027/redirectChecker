@@ -53,10 +53,10 @@ export class PornhubAdHunter {
   }
 
   async huntPornhubAds(signal?: AbortSignal): Promise<boolean> {
-    return hunterProxyService.run("pornhub-ad-hunt", () => this.huntPornhubAdsInternal(), { signal });
+    return hunterProxyService.run("pornhub-ad-hunt", () => this.huntPornhubAdsInternal(signal), { signal });
   }
 
-  private async huntPornhubAdsInternal(): Promise<boolean> {
+  private async huntPornhubAdsInternal(signal?: AbortSignal): Promise<boolean> {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {
@@ -95,12 +95,12 @@ export class PornhubAdHunter {
     await logHunterEvent("pornhub", "cycle_start", `Processing pornhub ad`, { url: adDestination });
 
     // Process the ad (similar to handleSearchAd)
-    await this.handlePornhubAd(adDestination);
+    await this.handlePornhubAd(adDestination, signal);
 
     return true;
   }
 
-  private async handlePornhubAd(adDestination: string) {
+  private async handlePornhubAd(adDestination: string, signal?: AbortSignal) {
     // Check if this is already a known scam
     const isKnownScam = await this.checkIfPornhubAdIsKnownScam(adDestination);
     if (isKnownScam) {
@@ -250,7 +250,7 @@ export class PornhubAdHunter {
               });
 
               const { added: addedToRedirectChecker, strategy } = 
-                await hunterService.tryAddToRedirectChecker(adDestination);
+                await hunterService.tryAddToRedirectChecker(adDestination, { signal });
               if (addedToRedirectChecker) {
                 await sendCloakerAddedAlert(adDestination, "Pornhub Ad", strategy);
               } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {
@@ -312,7 +312,7 @@ export class PornhubAdHunter {
             });
 
             const { added: addedToRedirectChecker, strategy: newStrategy } = 
-              await hunterService.tryAddToRedirectChecker(adDestination);
+              await hunterService.tryAddToRedirectChecker(adDestination, { signal });
             if (addedToRedirectChecker) {
               await sendCloakerAddedAlert(adDestination, "Pornhub Ad", newStrategy);
             } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {

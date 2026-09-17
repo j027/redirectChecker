@@ -54,10 +54,10 @@ export class SearchAdHunter {
   }
 
   async huntSearchAds(signal?: AbortSignal) {
-    return hunterProxyService.run("search-ad-hunt", () => this.huntSearchAdsInternal(), { signal });
+    return hunterProxyService.run("search-ad-hunt", () => this.huntSearchAdsInternal(signal), { signal });
   }
 
-  private async huntSearchAdsInternal() {
+  private async huntSearchAdsInternal(signal?: AbortSignal) {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {
@@ -212,7 +212,7 @@ export class SearchAdHunter {
               continue;
             }
 
-            batchRequests.push(this.handleSearchAd(adLink, adText, searchUrl));
+            batchRequests.push(this.handleSearchAd(adLink, adText, searchUrl, signal));
           } catch (error) {
             console.log(`Error processing ad: ${error}`);
             continue;
@@ -259,7 +259,8 @@ export class SearchAdHunter {
   private async handleSearchAd(
     adLink: string,
     adText: string,
-    searchUrl: string
+    searchUrl: string,
+    signal?: AbortSignal
   ) {
     // grab where the ad is going to, without opening the ad
     // this is because we want to avoid damaging ip quality
@@ -418,7 +419,7 @@ export class SearchAdHunter {
               });
 
               const { added: addedToRedirectChecker, strategy } =
-                await hunterService.tryAddToRedirectChecker(adDestination);
+                await hunterService.tryAddToRedirectChecker(adDestination, { signal });
               if (addedToRedirectChecker) {
                 await sendCloakerAddedAlert(adDestination, "Search Ad", strategy);
               }
@@ -484,7 +485,7 @@ export class SearchAdHunter {
             });
 
             const { added: addedToRedirectChecker, strategy: newStrategy } =
-              await hunterService.tryAddToRedirectChecker(adDestination);
+              await hunterService.tryAddToRedirectChecker(adDestination, { signal });
             if (addedToRedirectChecker) {
               await sendCloakerAddedAlert(adDestination, "Search Ad", newStrategy);
             }

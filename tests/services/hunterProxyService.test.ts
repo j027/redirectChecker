@@ -77,6 +77,35 @@ describe("HunterProxyService", () => {
     expect(trigger).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps in-flight operations healthy while rotation is draining", async () => {
+    const gate = deferred<void>();
+    vi.spyOn(service as any, "triggerRotation").mockResolvedValue(true);
+
+    let healthyWhileDraining: boolean | null = null;
+    let opFinished = false;
+    const running = service.run("draining-op", async (ctx) => {
+      await gate.promise;
+      healthyWhileDraining = ctx.isHealthy();
+      opFinished = true;
+      return "done";
+    });
+
+    await sleep(5);
+    const rotating = service.rotate("test");
+
+    // The rotation is blocked on the drain, so the operation must still be
+    // considered valid: the proxy has not been swapped yet.
+    await sleep(30);
+    expect(opFinished).toBe(false);
+    expect(service.getStatus().state).toBe("rotating");
+
+    gate.resolve();
+    await running;
+    await rotating;
+
+    expect(healthyWhileDraining).toBe(true);
+  });
+
   it("blocks new operations while rotation is in progress", async () => {
     const rotationGate = deferred<boolean>();
     vi.spyOn(service as any, "triggerRotation").mockImplementation(

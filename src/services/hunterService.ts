@@ -17,6 +17,7 @@ import { SearchAdHunter } from "./searchAdHunter.js";
 import { TyposquatHunter } from "./typosquatHunter.js";
 import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
+import { AdsenseHunter } from "./adsenseHunter.js";
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
 import { hunterProxyService, HunterProxyRunOptions } from "./hunterProxyService.js";
 import { HUNTER_NAMES, HunterName } from "../config.js";
@@ -41,6 +42,7 @@ export const searchAdHunter = new SearchAdHunter();
 export const typosquatHunter = new TyposquatHunter();
 export const pornhubAdHunter = new PornhubAdHunter();
 export const adSpyGlassHunter = new AdSpyGlassHunter();
+export const adsenseHunter = new AdsenseHunter();
 
 export class HunterService {
   private browser: Browser | null = null;
@@ -63,6 +65,9 @@ export class HunterService {
     }
     if (huntersToInit.includes("adspyglass")) {
       await adSpyGlassHunter.init();
+    }
+    if (huntersToInit.includes("adsense")) {
+      await adsenseHunter.init();
     }
   }
 
@@ -120,6 +125,10 @@ export class HunterService {
 
   public async huntAdSpyGlassAds(signal?: AbortSignal) {
     return await adSpyGlassHunter.huntAdSpyGlassAds(signal);
+  }
+
+  public async huntAdsenseAds(signal?: AbortSignal) {
+    return await adsenseHunter.huntAdsenseAds(signal);
   }
 
   public async processAd(

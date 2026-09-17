@@ -1,9 +1,9 @@
 import { checkRedirects } from "./redirectMonitorService.js";
 import { monitorTakedownStatus } from "./takedownMonitorService.js";
-import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter } from "./hunterService.js";
+import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter, adsenseHunter } from "./hunterService.js";
 import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
-import { logHunterEvent, pruneHunterEvents } from "./hunterEventLogger.js";
+import { logHunterEvent, pruneHunterEvents, HunterType } from "./hunterEventLogger.js";
 import { pruneRedirectEvents } from "./redirectEventLogger.js";
 import { pruneProxyEvents } from "./proxyEventLogger.js";
 import { urlscanHunter } from "./urlscanHunter.js";
@@ -257,6 +257,9 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
       if (enabledHunters.includes("adspyglass")) {
         browserRestarts.push(adSpyGlassHunter.restartBrowser().catch(e => console.error("Error restarting AdSpyGlassHunter browser:", e)));
       }
+      if (enabledHunters.includes("adsense")) {
+        browserRestarts.push(adsenseHunter.restartBrowser().catch(e => console.error("Error restarting AdsenseHunter browser:", e)));
+      }
       await Promise.allSettled(browserRestarts);
 
       console.log("Starting hunting cycle...");
@@ -269,11 +272,17 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
 
       // Run hunt operations sequentially with staggered delays (2-8s between each)
       // This looks more realistic than parallel requests from the same IP
-      const allHunters = [
+      const allHunters: {
+        hunterName: HunterName;
+        name: string;
+        type: HunterType;
+        fn: (signal: AbortSignal) => Promise<unknown>;
+      }[] = [
         { hunterName: "search" as const, name: "Search ad hunting", type: "search" as const, fn: (signal: AbortSignal) => searchAdHunter.huntSearchAds(signal) },
         { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: (signal: AbortSignal) => typosquatHunter.huntTyposquat(signal) },
         { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: (signal: AbortSignal) => pornhubAdHunter.huntPornhubAds(signal) },
         { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: (signal: AbortSignal) => adSpyGlassHunter.huntAdSpyGlassAds(signal) },
+        { hunterName: "adsense" as const, name: "AdSense ad hunting", type: "adsense" as const, fn: (signal: AbortSignal) => adsenseHunter.huntAdsenseAds(signal) },
       ];
       const hunters = allHunters.filter(hunter => enabledHunters.includes(hunter.hunterName));
 

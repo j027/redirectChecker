@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mock GPT page (continue CTA creative)</title>
+</head>
+<body>
+  <div id="slot-1" data-google-query-id="fixture-continue" style="width: 600px; height: 300px">
+    <iframe id="google_ads_iframe_/123/fixture_continue" name="google_ads_iframe_/123/fixture_continue" width="600" height="300"></iframe>
+  </div>
+
+  <script>
+    const landingUrl = new URL("/landing.html", location.href).href;
+    const friendly = document.getElementById("google_ads_iframe_/123/fixture_continue");
+    const doc = friendly.contentDocument;
+    doc.open();
+    doc.write(
+      '<!doctype html><html><body style="margin:0;font-family:sans-serif">' +
+        '<div style="position:relative;width:600px;height:300px">' +
+        '<img alt="truck" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=" style="width:600px;height:180px;background:#ccd" />' +
+        '<a id="cta-text" href="' + landingUrl + '" target="_blank" ' +
+        'style="position:absolute;left:20px;top:200px;width:300px;height:60px;font-size:28px;font-weight:bold;color:#000;text-decoration:none">C0ntinue to our site</a>' +
+        '<a id="cta-arrow" href="' + landingUrl + '" target="_blank" ' +
+        'style="position:absolute;right:20px;top:210px;width:52px;height:52px;border-radius:50%;background:#111;color:#fff;text-align:center;line-height:52px;font-size:28px;text-decoration:none">&gt;</a>' +
+        '<a id="adchoices" href="https://adssettings.google.com/whythisad" target="_blank" ' +
+        'style="position:absolute;right:30px;top:8px;width:14px;height:14px;font-size:10px;text-decoration:none">i</a>' +
+        '<a id="adchoices-menu" href="https://www.google.com/settings/ads" target="_blank" ' +
+        'style="position:absolute;right:8px;top:8px;width:14px;height:14px;font-size:10px;text-decoration:none">...</a>' +
+        '<a id="privacy" href="https://admaster.cc/privacy" target="_blank" ' +
+        'style="position:absolute;left:10px;top:10px;width:60px;height:16px;font-size:10px;text-decoration:none">privacy</a>' +
+        "</div>" +
+      "</body></html>"
+    );
+    doc.close();
+  </script>
+</body>
+</html>

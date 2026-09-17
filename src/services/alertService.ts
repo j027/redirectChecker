@@ -3,7 +3,7 @@ import { readConfig } from "../config.js";
 import { discordClient } from "../discordClient.js";
 
 // Add pornhubAd and adspyglass as new alert types
-export type AlertType = "adScam" | "typosquat" | "pornhubAd" | "adspyglass";
+export type AlertType = "adScam" | "typosquat" | "pornhubAd" | "adspyglass" | "adsense";
 
 export interface AlertPayload {
   type: AlertType;
@@ -54,6 +54,11 @@ function getAlertConfig(type: AlertType, isNew: boolean): { emoji: string; title
     adspyglass: {
       newTitle: "NEW ADSPYGLASS AD SCAM DETECTED",
       existingTitle: "EXISTING ADSPYGLASS AD NOW MARKED AS SCAM",
+      color: 0xff0000, // Red
+    },
+    adsense: {
+      newTitle: "NEW ADSENSE AD SCAM DETECTED",
+      existingTitle: "EXISTING ADSENSE AD NOW MARKED AS SCAM",
       color: 0xff0000, // Red
     },
   };

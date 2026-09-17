@@ -1,6 +1,6 @@
 import {promises as fs} from "fs";
 
-export const HUNTER_NAMES = ["search", "typosquat", "pornhub", "adspyglass"] as const;
+export const HUNTER_NAMES = ["search", "typosquat", "pornhub", "adspyglass", "adsense"] as const;
 
 export type HunterName = (typeof HUNTER_NAMES)[number];
 

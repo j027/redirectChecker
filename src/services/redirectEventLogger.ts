@@ -9,6 +9,7 @@ export type RedirectEventType =
   | "scam_found"
   | "no_redirect"
   | "existing_destination"
+  | "redirect_retired"
   | "error";
 
 /**

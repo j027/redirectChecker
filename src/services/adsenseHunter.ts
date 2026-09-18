@@ -10,12 +10,12 @@ import {
   trackRedirectionPath,
 } from "../utils/playwrightUtilities.js";
 import { BrowserManagerService } from "./browserManagerService.js";
-import { hunterProxyService } from "./hunterProxyService.js";
 import { createSignalService, DetectedSignals, hasWeightedSignal } from "./signalService.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { CONFIDENCE_THRESHOLD, hunterService } from "./hunterService.js";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
+import { trySightingAdd } from "./redirectAddService.js";
 import pool from "../dbPool.js";
 
 export interface AdsenseTarget {
@@ -353,17 +353,12 @@ export class AdsenseHunter {
     this.browser = null;
   }
 
-  async huntAdsenseAds(signal?: AbortSignal, options: AdsenseHuntOptions = {}) {
-    return hunterProxyService.run(
-      "adsense-ad-hunt",
-      () => this.huntAdsenseAdsInternal(options, signal),
-      { signal },
-    );
+  async huntAdsenseAds(options: AdsenseHuntOptions = {}) {
+    return this.huntAdsenseAdsInternal(options);
   }
 
   private async huntAdsenseAdsInternal(
     options: AdsenseHuntOptions,
-    signal?: AbortSignal,
   ): Promise<AdsenseHuntResult> {
     const target = options.target ?? IZITO_TARGET;
     const dryRun = options.dryRun ?? false;
@@ -377,7 +372,7 @@ export class AdsenseHunter {
     }
 
     const context = await this.browser.newContext({
-      proxy: await parseProxy(true),
+      proxy: await parseProxy("hunter"),
       viewport: null,
     });
     const page = await context.newPage();
@@ -456,7 +451,7 @@ export class AdsenseHunter {
         };
       }
 
-      return this.processCapturedAd(target, capture, signal);
+      return this.processCapturedAd(target, capture);
     } catch (error) {
       console.error(`Adsense hunter error: ${error}`);
       await logHunterEvent("adsense", "error", `Hunt failed: ${error}`, {
@@ -491,7 +486,6 @@ export class AdsenseHunter {
   private async processCapturedAd(
     target: AdsenseTarget,
     capture: AdsensePopupCapture,
-    signal?: AbortSignal,
   ): Promise<AdsenseHuntResult> {
     const { initialUrl, finalUrl, redirectionPath, screenshot, html, signals } = capture;
 
@@ -520,6 +514,8 @@ export class AdsenseHunter {
 
     await aiClassifierService.saveData(finalUrl, screenshot, html, rawIsScam, confidenceScore);
 
+    let isNewDestination = false;
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -529,7 +525,7 @@ export class AdsenseHunter {
         "adsense",
         client,
       );
-      const isNewDestination = existingDestId === null;
+      isNewDestination = existingDestId === null;
 
       if (isNewDestination) {
         const adId = crypto.randomUUID();
@@ -574,49 +570,7 @@ export class AdsenseHunter {
         console.log(`Updated last_seen for existing destination: ${finalUrl}`);
       }
 
-      if (isScam && isNewDestination) {
-        const cloakerCandidate = hunterService.findCloakerCandidate(redirectionPath, finalUrl);
-
-        await logHunterEvent("adsense", "scam_detected", `New scam: ${finalUrl}`, {
-          target: target.name,
-          initial_url: initialUrl,
-          final_url: finalUrl,
-          confidence: confidenceScore,
-          cloaker: cloakerCandidate,
-        });
-        await sendAlert({
-          type: "adsense",
-          initialUrl,
-          finalUrl,
-          isNew: true,
-          confidenceScore,
-          redirectionPath,
-          cloakerCandidate,
-        });
-
-        if (cloakerCandidate != null) {
-          const { added, strategy } = await hunterService.tryAddToRedirectChecker(
-            cloakerCandidate,
-            { signal },
-          );
-          if (added) {
-            await sendCloakerAddedAlert(cloakerCandidate, "AdSense", strategy);
-            await logHunterEvent(
-              "adsense",
-              "added_to_checker",
-              `Added ${cloakerCandidate} to redirect checker`,
-              { target: target.name, url: cloakerCandidate },
-            );
-          }
-          console.log(
-            `Auto-add to redirect checker for new scam: ${added ? "Success" : "Failed"}`,
-          );
-        }
-      }
-
       await client.query("COMMIT");
-
-      return { status: "processed", target: target.name, initialUrl, finalUrl, redirectionPath };
     } catch (error) {
       await client.query("ROLLBACK");
       console.error(`Adsense database error: ${error}`);
@@ -633,6 +587,51 @@ export class AdsenseHunter {
     } finally {
       client.release();
     }
+
+    // Alerting and adding happen outside the transaction: adding involves
+    // browser work that can take minutes and must not hold database locks.
+    if (isScam) {
+      const cloakerCandidate = hunterService.findCloakerCandidate(redirectionPath, finalUrl);
+
+      if (isNewDestination) {
+        await logHunterEvent("adsense", "scam_detected", `New scam: ${finalUrl}`, {
+          target: target.name,
+          initial_url: initialUrl,
+          final_url: finalUrl,
+          confidence: confidenceScore,
+          cloaker: cloakerCandidate,
+        });
+        await sendAlert({
+          type: "adsense",
+          initialUrl,
+          finalUrl,
+          isNew: true,
+          confidenceScore,
+          redirectionPath,
+          cloakerCandidate,
+        });
+      }
+
+      if (cloakerCandidate != null) {
+        const { attempted, added, strategy } = await trySightingAdd(cloakerCandidate);
+        if (added) {
+          await sendCloakerAddedAlert(cloakerCandidate, "AdSense", strategy);
+          await logHunterEvent(
+            "adsense",
+            "added_to_checker",
+            `Added ${cloakerCandidate} to redirect checker`,
+            { target: target.name, url: cloakerCandidate },
+          );
+          console.log(`Auto-add to redirect checker for scam: Success`);
+        } else if (attempted) {
+          console.log(
+            `Auto-add to redirect checker failed, will retry on a later sighting`,
+          );
+        }
+      }
+    }
+
+    return { status: "processed", target: target.name, initialUrl, finalUrl, redirectionPath };
   }
 
   private async acceptConsent(page: Page, target: AdsenseTarget): Promise<void> {

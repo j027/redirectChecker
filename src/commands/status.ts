@@ -42,6 +42,7 @@ export const statusCommand: CommandDefinition = {
           FROM redirect_destinations
         ) d ON r.id = d.redirect_id AND d.rn <= 8
         LEFT JOIN takedown_status ts ON d.id = ts.redirect_destination_id
+        WHERE r.deleted_at IS NULL
         ORDER BY r.id, d.last_seen DESC;
       `;
       const result = await client.query(query);

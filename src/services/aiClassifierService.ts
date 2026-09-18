@@ -12,7 +12,6 @@ import {
 import crypto from "crypto";
 import sharp from "sharp";
 import { BrowserManagerService } from './browserManagerService.js';
-import { hunterProxyService, HunterProxyRunContext, HunterProxyRunOptions } from './hunterProxyService.js';
 import { BombGuard, BOMB_WORKER_THRESHOLD } from './bombGuard.js';
 import { logHunterEvent } from './hunterEventLogger.js';
 import { URL } from 'url';
@@ -132,16 +131,8 @@ export class AiClassifierService {
     );
   }
 
-  async classifyUrl(
-    url: string,
-    options: HunterProxyRunOptions = {}
-  ): Promise<ClassificationResult | null> {
-    return hunterProxyService.run(
-      "classify-url",
-      (ctx) =>
-        this.enqueueClassification(() => this.classifyUrlInternal(url, ctx)),
-      options
-    );
+  async classifyUrl(url: string): Promise<ClassificationResult | null> {
+    return this.enqueueClassification(() => this.classifyUrlInternal(url));
   }
 
   /**
@@ -157,8 +148,7 @@ export class AiClassifierService {
   }
 
   private async classifyUrlInternal(
-    url: string,
-    proxyContext: HunterProxyRunContext
+    url: string
   ): Promise<ClassificationResult | null> {
     await this.ensureBrowserIsHealthy();
 
@@ -173,7 +163,7 @@ export class AiClassifierService {
 
     // Setup page and navigation
     const context = await this.browser.newContext({
-      proxy: await parseProxy(true),
+      proxy: await parseProxy("classifier"),
       viewport: null,
     });
     const page = await context.newPage();
@@ -218,13 +208,6 @@ export class AiClassifierService {
       const screenshot = await page.screenshot();
       const html = await page.content();
       const currentUrl = page.url();
-
-      if (!proxyContext.isHealthy()) {
-        console.warn(
-          `Discarding classification for ${currentUrl}: hunter proxy is unhealthy`
-        );
-        return null;
-      }
 
       // Check if URL is whitelisted
       if (this.isWhitelisted(currentUrl)) {

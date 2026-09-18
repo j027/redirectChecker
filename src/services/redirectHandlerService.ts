@@ -3,12 +3,10 @@ import { readConfig } from "../config.js";
 import { RedirectType } from "../redirectType.js";
 import { userAgentService } from "./userAgentService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
-import { HunterProxyRunOptions } from "./hunterProxyService.js";
 
 export async function handleRedirect(
   redirectUrl: string,
   redirectType: RedirectType,
-  options: HunterProxyRunOptions = {},
 ): Promise<string | null> {
   let location: string | null = null;
 
@@ -18,13 +16,13 @@ export async function handleRedirect(
       location = await httpRedirect(redirectUrl);
       break;
     case RedirectType.BrowserRedirect:
-      location = await browserRedirectService.handleRedirect(redirectUrl, undefined, undefined, options);
+      location = await browserRedirectService.handleRedirect(redirectUrl);
       break;
     case RedirectType.BrowserRedirectPornhub:
-      location = await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/", undefined, options);
+      location = await browserRedirectService.handleRedirect(redirectUrl, "https://www.pornhub.com/");
       break;
     case RedirectType.BrowserRedirectHunterProxy:
-      location = await browserRedirectService.handleRedirect(redirectUrl, undefined, true, options);
+      location = await browserRedirectService.handleRedirect(redirectUrl, undefined, true);
       break;
     default:
       console.warn(`Redirect type ${redirectType} is not supported yet`);
@@ -56,4 +54,3 @@ async function httpRedirect(redirectUrl: string): Promise<string | null> {
 
   return response.headers.get("location");
 }
-

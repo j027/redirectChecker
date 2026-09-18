@@ -8,7 +8,6 @@ import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
-import { hunterProxyService } from "./hunterProxyService.js";
 
 export class AdSpyGlassHunter {
   private browser: Browser | null = null;
@@ -50,11 +49,11 @@ export class AdSpyGlassHunter {
     this.browser = null;
   }
 
-  async huntAdSpyGlassAds(signal?: AbortSignal) {
-    return hunterProxyService.run("adspyglass-ad-hunt", () => this.huntAdSpyGlassAdsInternal(signal), { signal });
+  async huntAdSpyGlassAds() {
+    return this.huntAdSpyGlassAdsInternal();
   }
 
-  private async huntAdSpyGlassAdsInternal(signal?: AbortSignal) {
+  private async huntAdSpyGlassAdsInternal() {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {
@@ -69,7 +68,7 @@ export class AdSpyGlassHunter {
     await logHunterEvent("adspyglass", "cycle_start", `Starting AdSpyGlass hunt`, { site });
 
     const context = await this.browser.newContext({
-        proxy: await parseProxy(true),
+        proxy: await parseProxy("hunter"),
         viewport: null
     })
 
@@ -113,11 +112,11 @@ export class AdSpyGlassHunter {
                 context.on("page", async (p: Page) => {
                     try {
                         if (p.url() !== fullVideoUrl) {
-                            popupPromises.push(this.handleAdClick(p, userAgent, signal));
+                            popupPromises.push(this.handleAdClick(p, userAgent));
                             return;
                         }
 
-                        popupPromises.push(this.handleAdClick(page, userAgent, signal));
+                        popupPromises.push(this.handleAdClick(page, userAgent));
                         page = p;
 
                         // spoof the new video page
@@ -176,7 +175,7 @@ export class AdSpyGlassHunter {
     return true;
   }
 
-  private async handleAdClick(page: Page, userAgent: string, signal?: AbortSignal): Promise<void> {
+  private async handleAdClick(page: Page, userAgent: string): Promise<void> {
     // Capture the popup's initial URL immediately before any async work,
     // since the page may already be navigating through its redirect chain
     const initialPopupUrl = page.url();
@@ -226,7 +225,7 @@ export class AdSpyGlassHunter {
       console.log(`Redirect path: ${redirectionPath}`);
 
       // Process this ad popup
-      await this.handleAdSpyGlassAd(adUrl, screenshot, html, redirectionPath, signals, signal);
+      await this.handleAdSpyGlassAd(adUrl, screenshot, html, redirectionPath, signals);
       
     } catch (error) {
       console.log(`Error handling AdSpyGlass ad popup: ${error}`);
@@ -245,8 +244,7 @@ export class AdSpyGlassHunter {
     screenshot: Buffer,
     html: string,
     redirectionPath: string[],
-    signals: DetectedSignals,
-    signal?: AbortSignal
+    signals: DetectedSignals
   ) {
     const finalUrl = redirectionPath[redirectionPath.length - 1] || adUrl;
 
@@ -380,7 +378,7 @@ export class AdSpyGlassHunter {
 
           if (cloakerCandidate != null) {
             const { added: addedToChecker, strategy } =
-              await hunterService.tryAddToRedirectChecker(cloakerCandidate, { signal });
+              await hunterService.tryAddToRedirectChecker(cloakerCandidate);
             if (addedToChecker) {
               await sendCloakerAddedAlert(cloakerCandidate, "AdSpyGlass", strategy);
               console.log(

@@ -69,9 +69,20 @@ export async function blockPageResources(page: Page) {
   }
 }
 
-export async function parseProxy(isHunterProxy = false): Promise<{server: string, username?: string, password?: string}> {
+export type ProxyTarget = "main" | "hunter" | "classifier";
+
+export async function parseProxy(target: ProxyTarget = "main"): Promise<{server: string, username?: string, password?: string}> {
   const config = await readConfig();
-  const proxy = isHunterProxy ? config.hunterProxy : config.proxy;
+  const proxy =
+    target === "hunter"
+      ? config.hunterProxy
+      : target === "classifier"
+        ? config.classifierProxy
+        : config.proxy;
+
+  if (typeof proxy !== "string" || proxy.trim() === "") {
+    throw new Error(`Missing "${target}" proxy configuration in config.json`);
+  }
 
   // Parse proxy URL to extract username and password
   let server = proxy;

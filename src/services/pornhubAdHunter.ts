@@ -10,7 +10,6 @@ import { BrowserManagerService } from "./browserManagerService.js";
 import { reportSite } from "./reportService.js";
 import { DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
-import { hunterProxyService } from "./hunterProxyService.js";
 
 export class PornhubAdHunter {
   private browser: Browser | null = null;
@@ -52,11 +51,11 @@ export class PornhubAdHunter {
     this.browser = null;
   }
 
-  async huntPornhubAds(signal?: AbortSignal): Promise<boolean> {
-    return hunterProxyService.run("pornhub-ad-hunt", () => this.huntPornhubAdsInternal(signal), { signal });
+  async huntPornhubAds(): Promise<boolean> {
+    return this.huntPornhubAdsInternal();
   }
 
-  private async huntPornhubAdsInternal(signal?: AbortSignal): Promise<boolean> {
+  private async huntPornhubAdsInternal(): Promise<boolean> {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {
@@ -95,12 +94,12 @@ export class PornhubAdHunter {
     await logHunterEvent("pornhub", "cycle_start", `Processing pornhub ad`, { url: adDestination });
 
     // Process the ad (similar to handleSearchAd)
-    await this.handlePornhubAd(adDestination, signal);
+    await this.handlePornhubAd(adDestination);
 
     return true;
   }
 
-  private async handlePornhubAd(adDestination: string, signal?: AbortSignal) {
+  private async handlePornhubAd(adDestination: string) {
     // Check if this is already a known scam
     const isKnownScam = await this.checkIfPornhubAdIsKnownScam(adDestination);
     if (isKnownScam) {
@@ -250,7 +249,7 @@ export class PornhubAdHunter {
               });
 
               const { added: addedToRedirectChecker, strategy } = 
-                await hunterService.tryAddToRedirectChecker(adDestination, { signal });
+                await hunterService.tryAddToRedirectChecker(adDestination);
               if (addedToRedirectChecker) {
                 await sendCloakerAddedAlert(adDestination, "Pornhub Ad", strategy);
               } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {
@@ -312,7 +311,7 @@ export class PornhubAdHunter {
             });
 
             const { added: addedToRedirectChecker, strategy: newStrategy } = 
-              await hunterService.tryAddToRedirectChecker(adDestination, { signal });
+              await hunterService.tryAddToRedirectChecker(adDestination);
             if (addedToRedirectChecker) {
               await sendCloakerAddedAlert(adDestination, "Pornhub Ad", newStrategy);
             } else if (this.shouldForceReport(adDestination, finalUrl, redirectionPath)) {
@@ -394,7 +393,7 @@ export class PornhubAdHunter {
     }
 
     const context = await this.browser.newContext({
-      proxy: await parseProxy(true),
+      proxy: await parseProxy("hunter"),
       viewport: null,
     });
 

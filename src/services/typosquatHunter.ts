@@ -9,7 +9,7 @@ import { hasWeightedSignal } from "./signalService.js";
 import fs from "fs/promises";
 import path from "path";
 import { logHunterEvent } from "./hunterEventLogger.js";
-import { hunterProxyService } from "./hunterProxyService.js";
+import { trySightingAdd } from "./redirectAddService.js";
 
 export class TyposquatHunter {
   private browser: Browser | null = null;
@@ -90,11 +90,11 @@ export class TyposquatHunter {
     return randomDomain;
   }
 
-  async huntTyposquat(signal?: AbortSignal) {
-    return hunterProxyService.run("typosquat-ad-hunt", () => this.huntTyposquatInternal(signal), { signal });
+  async huntTyposquat() {
+    return this.huntTyposquatInternal();
   }
 
-  private async huntTyposquatInternal(signal?: AbortSignal) {
+  private async huntTyposquatInternal() {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {
@@ -155,6 +155,8 @@ export class TyposquatHunter {
       redirect_hops: redirectionPath.length
     });
 
+    let isNewDestination = false;
+
     try {
       // Save the classified data to AI service (use raw values for training)
       await aiClassifierService.saveData(
@@ -176,7 +178,7 @@ export class TyposquatHunter {
           "typosquat",
           client
         );
-        const isNewDestination = existingDestId === null;
+        isNewDestination = existingDestId === null;
 
         if (isNewDestination) {
           // New destination we haven't seen before
@@ -223,18 +225,26 @@ export class TyposquatHunter {
           );
         }
 
-        // Only send an alert if:
-        // 1. It's classified as a scam
-        // 2. We haven't seen this destination before from any typosquat
-        if (
-          isScam &&
-          isNewDestination
-        ) {
-          const cloakerCandidate = hunterService.findCloakerCandidate(
-            redirectionPath,
-            finalUrl
-          );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        console.error(`Database error: ${error}`);
+        await logHunterEvent("typosquat", "error", `Database error: ${error}`, { domain: typosquat });
+        throw error;
+      } finally {
+        client.release();
+      }
 
+      // Alerting and adding happen outside the transaction: adding involves
+      // browser work that can take minutes and must not hold database locks.
+      if (isScam) {
+        const cloakerCandidate = hunterService.findCloakerCandidate(
+          redirectionPath,
+          finalUrl
+        );
+
+        // Only send an alert when this is a destination we haven't seen before
+        if (isNewDestination) {
           await sendAlert({
             type: "typosquat",
             initialUrl: typosquat,
@@ -247,29 +257,27 @@ export class TyposquatHunter {
           await logHunterEvent("typosquat", "scam_detected", `New scam: ${finalUrl}`, {
             domain: typosquat, final_url: finalUrl, confidence: confidenceScore, cloaker: cloakerCandidate
           });
-
-          if (cloakerCandidate != null) {
-            const { added: addedToChecker, strategy } =
-              await hunterService.tryAddToRedirectChecker(cloakerCandidate, { signal });
-            if (addedToChecker) {
-              await sendCloakerAddedAlert(cloakerCandidate, "Typosquat", strategy);
-              console.log(
-                `Added cloaker to redirect checker: ${cloakerCandidate}`
-              );
-            }
-          }
         }
 
-        await client.query("COMMIT");
-        return true;
-      } catch (error) {
-        await client.query("ROLLBACK");
-        console.error(`Database error: ${error}`);
-        await logHunterEvent("typosquat", "error", `Database error: ${error}`, { domain: typosquat });
-        throw error;
-      } finally {
-        client.release();
+        if (cloakerCandidate != null) {
+          const { attempted, added, strategy } = await trySightingAdd(cloakerCandidate);
+          if (added) {
+            await sendCloakerAddedAlert(cloakerCandidate, "Typosquat", strategy);
+            console.log(
+              `Added cloaker to redirect checker: ${cloakerCandidate}`
+            );
+            await logHunterEvent("typosquat", "added_to_checker", `Added ${cloakerCandidate} to redirect checker`, {
+              domain: typosquat, url: cloakerCandidate
+            });
+          } else if (attempted) {
+            console.log(
+              `Failed to add cloaker to redirect checker, will retry on a later sighting: ${cloakerCandidate}`
+            );
+          }
+        }
       }
+
+      return true;
     } catch (error) {
       console.error(`Error in typosquat hunter: ${error}`);
       await logHunterEvent("typosquat", "error", `Error: ${error}`, { domain: typosquat });

@@ -5,11 +5,11 @@ import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
 import { logHunterEvent, pruneHunterEvents, HunterType } from "./hunterEventLogger.js";
 import { pruneRedirectEvents } from "./redirectEventLogger.js";
-import { pruneProxyEvents } from "./proxyEventLogger.js";
+import { logProxyEvent, pruneProxyEvents } from "./proxyEventLogger.js";
 import { urlscanHunter } from "./urlscanHunter.js";
 import { syncHashLists } from "./safeBrowsingV5Service.js";
-import { hunterProxyService } from "./hunterProxyService.js";
-import { HUNTER_NAMES, HunterName } from "../config.js";
+import { readConfig, HUNTER_NAMES, HunterName } from "../config.js";
+import { fetch, ProxyAgent } from "undici";
 
 let checkInterval: NodeJS.Timeout | null = null;
 let takedownInterval: NodeJS.Timeout | null = null;
@@ -38,18 +38,59 @@ function randomDelay(minMs: number, maxMs: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, delay));
 }
 
+/** Logs the current IP seen through the hunter proxy */
+async function logHunterProxyIp(): Promise<void> {
+  try {
+    const config = await readConfig();
+    const response = await fetch("https://api.ipify.org?format=json", {
+      dispatcher: new ProxyAgent(config.hunterProxy),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    const data = (await response.json()) as { ip?: string };
+    if (!data.ip) {
+      console.error("Failed to log hunter proxy IP");
+      await logProxyEvent("error", "Failed to reach hunter proxy during IP check");
+      return;
+    }
+
+    console.log(`Hunter proxy IP: ${data.ip}`);
+    await logProxyEvent("ip_check", `Hunter proxy IP: ${data.ip}`, { ipAddress: data.ip });
+  } catch (error) {
+    console.error(`Failed to log hunter proxy IP: ${error}`);
+    await logProxyEvent("error", `Failed to reach hunter proxy during IP check`);
+  }
+}
+
+/** Triggers hunter proxy IP rotation if a rotation URL is configured */
+async function rotateHunterProxyIp(reason: string): Promise<void> {
+  try {
+    const config = await readConfig();
+    if (!config.hunterProxyRotationUrl) return;
+
+    const response = await fetch(config.hunterProxyRotationUrl, {
+      signal: AbortSignal.timeout(300000),
+    });
+    console.log(`Hunter proxy rotation triggered: ${response.status}`);
+    await logProxyEvent("rotation", `Proxy rotation triggered (${reason})`, {
+      statusCode: response.status,
+    });
+  } catch (error) {
+    console.error(`Failed to rotate hunter proxy IP: ${error}`);
+    await logProxyEvent("error", `Proxy rotation failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  operationName: string,
-  abortController?: AbortController
+  operationName: string
 ): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => {
       timer = setTimeout(() => {
-        abortController?.abort();
         reject(
           new Error(`Operation ${operationName} timed out after ${timeoutMs}ms`)
         );
@@ -129,10 +170,9 @@ export function startRedirectChecker() {
 
       const REDIRECT_CHECK_TIMEOUT_MS = 180000; // 3 minutes
       await withTimeout(
-        checkRedirects(cycleAbortController.signal),
+        checkRedirects(),
         REDIRECT_CHECK_TIMEOUT_MS,
-        "Redirect check cycle",
-        cycleAbortController
+        "Redirect check cycle"
       );
 
       const cycleDurationMs = Date.now() - cycleStartTime;
@@ -268,7 +308,7 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
       const cycleStartTime = Date.now();
 
       // Log current hunter proxy IP at the start of each cycle
-      await hunterProxyService.refreshIpAndLog();
+      await logHunterProxyIp();
 
       // Run hunt operations sequentially with staggered delays (2-8s between each)
       // This looks more realistic than parallel requests from the same IP
@@ -276,32 +316,26 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
         hunterName: HunterName;
         name: string;
         type: HunterType;
-        fn: (signal: AbortSignal) => Promise<unknown>;
+        fn: () => Promise<unknown>;
       }[] = [
-        { hunterName: "search" as const, name: "Search ad hunting", type: "search" as const, fn: (signal: AbortSignal) => searchAdHunter.huntSearchAds(signal) },
-        { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: (signal: AbortSignal) => typosquatHunter.huntTyposquat(signal) },
-        { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: (signal: AbortSignal) => pornhubAdHunter.huntPornhubAds(signal) },
-        { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: (signal: AbortSignal) => adSpyGlassHunter.huntAdSpyGlassAds(signal) },
-        { hunterName: "adsense" as const, name: "AdSense ad hunting", type: "adsense" as const, fn: (signal: AbortSignal) => adsenseHunter.huntAdsenseAds(signal) },
+        { hunterName: "search" as const, name: "Search ad hunting", type: "search" as const, fn: () => searchAdHunter.huntSearchAds() },
+        { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: () => typosquatHunter.huntTyposquat() },
+        { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: () => pornhubAdHunter.huntPornhubAds() },
+        { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: () => adSpyGlassHunter.huntAdSpyGlassAds() },
+        { hunterName: "adsense" as const, name: "AdSense ad hunting", type: "adsense" as const, fn: () => adsenseHunter.huntAdsenseAds() },
       ];
       const hunters = allHunters.filter(hunter => enabledHunters.includes(hunter.hunterName));
 
       for (let i = 0; i < hunters.length; i++) {
         const hunter = hunters[i];
-        const hunterAbortController = new AbortController();
-        const huntStopSignal = adHunterAbortController?.signal;
-        const onHuntStop = () => hunterAbortController.abort();
-        huntStopSignal?.addEventListener("abort", onHuntStop, { once: true });
 
         try {
-          huntStopSignal?.throwIfAborted();
-          await withTimeout(hunter.fn(hunterAbortController.signal), TIMEOUT_MS, hunter.name, hunterAbortController);
+          adHunterAbortController?.signal.throwIfAborted();
+          await withTimeout(hunter.fn(), TIMEOUT_MS, hunter.name);
         } catch (error) {
           if (isAbortError(error) && !isRunning.adHunter) throw error;
           console.error(`Error during ${hunter.name}: ${(error as Error).message}`);
           logHunterEvent(hunter.type, "error", `Hunt failed: ${(error as Error).message}`);
-        } finally {
-          huntStopSignal?.removeEventListener("abort", onHuntStop);
         }
 
         // Stagger between hunters (skip delay after the last one)
@@ -326,7 +360,7 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
       // ALWAYS schedule the next run, regardless of success or failure
       // This ensures the scheduler keeps running even if something fails
       if (isRunning.adHunter) {
-        await hunterProxyService.rotate("ad hunter cycle complete");
+        await rotateHunterProxyIp("ad hunter cycle complete");
         console.log("Scheduling next ad hunter run in 60 seconds");
         adHunterInterval = setTimeout(runAdHunter, 60 * 1000);
       } else {

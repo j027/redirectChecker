@@ -11,7 +11,6 @@ import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { DetectedSignals, hasWeightedSignal } from "./signalService.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
-import { hunterProxyService } from "./hunterProxyService.js";
 
 export class SearchAdHunter {
   private browser: Browser | null = null;
@@ -53,11 +52,11 @@ export class SearchAdHunter {
     this.browser = null;
   }
 
-  async huntSearchAds(signal?: AbortSignal) {
-    return hunterProxyService.run("search-ad-hunt", () => this.huntSearchAdsInternal(signal), { signal });
+  async huntSearchAds() {
+    return this.huntSearchAdsInternal();
   }
 
-  private async huntSearchAdsInternal(signal?: AbortSignal) {
+  private async huntSearchAdsInternal() {
     await this.ensureBrowserIsHealthy();
 
     if (this.browser == null || !this.browser.isConnected()) {
@@ -69,7 +68,7 @@ export class SearchAdHunter {
     }
 
     const context = await this.browser.newContext({
-      proxy: await parseProxy(true),
+      proxy: await parseProxy("hunter"),
       viewport: null,
     });
 
@@ -212,7 +211,7 @@ export class SearchAdHunter {
               continue;
             }
 
-            batchRequests.push(this.handleSearchAd(adLink, adText, searchUrl, signal));
+            batchRequests.push(this.handleSearchAd(adLink, adText, searchUrl));
           } catch (error) {
             console.log(`Error processing ad: ${error}`);
             continue;
@@ -259,8 +258,7 @@ export class SearchAdHunter {
   private async handleSearchAd(
     adLink: string,
     adText: string,
-    searchUrl: string,
-    signal?: AbortSignal
+    searchUrl: string
   ) {
     // grab where the ad is going to, without opening the ad
     // this is because we want to avoid damaging ip quality
@@ -419,7 +417,7 @@ export class SearchAdHunter {
               });
 
               const { added: addedToRedirectChecker, strategy } =
-                await hunterService.tryAddToRedirectChecker(adDestination, { signal });
+                await hunterService.tryAddToRedirectChecker(adDestination);
               if (addedToRedirectChecker) {
                 await sendCloakerAddedAlert(adDestination, "Search Ad", strategy);
               }
@@ -485,7 +483,7 @@ export class SearchAdHunter {
             });
 
             const { added: addedToRedirectChecker, strategy: newStrategy } =
-              await hunterService.tryAddToRedirectChecker(adDestination, { signal });
+              await hunterService.tryAddToRedirectChecker(adDestination);
             if (addedToRedirectChecker) {
               await sendCloakerAddedAlert(adDestination, "Search Ad", newStrategy);
             }

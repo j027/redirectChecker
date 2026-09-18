@@ -8,7 +8,6 @@ import { userAgentService } from "./userAgentService.js";
 import { fetch, ProxyAgent } from "undici";
 import { PoolClient } from "pg";
 import { checkUrlsSafeBrowsingV5, type SafeBrowsingCheckResult } from "./safeBrowsingV5Service.js";
-import { hunterProxyService } from "./hunterProxyService.js";
 
 // Configuration
 const SAFEBROWSING_BATCH_SIZE = 500; // Maximum URLs to check in one SafeBrowsing batch
@@ -254,12 +253,10 @@ export async function isNetcraftFlagged(url: string): Promise<boolean> {
         const encodedUrl = Buffer.from(baseUrl).toString("base64");
         const netcraftApiUrl = `https://mirror2.extension.netcraft.com/check_url/v4/${encodedUrl}/dodns`;
         
-        const response = await hunterProxyService.run("netcraft-check", () =>
-          fetch(netcraftApiUrl, {
-            headers: { "User-Agent": userAgent },
-            dispatcher: proxyAgent,
-          })
-        );
+        const response = await fetch(netcraftApiUrl, {
+          headers: { "User-Agent": userAgent },
+          dispatcher: proxyAgent,
+        });
 
         if (!response.ok) {
           // Handle errors and potential rate limit (429)
@@ -371,18 +368,16 @@ export async function isSmartScreenFlagged(url: string): Promise<{
     const authHeader = "SmartScreenHash " + Buffer.from(JSON.stringify(authObj)).toString('base64');
 
     // Make request to SmartScreen API
-    const response = await hunterProxyService.run("smartscreen-check", () =>
-      fetch("https://bf.smartscreen.microsoft.com/api/browser/Navigate/1", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Authorization": authHeader,
-          "User-Agent": payload.userAgent
-        },
-        body: payloadStr,
-        dispatcher: proxyAgent,
-      })
-    );
+    const response = await fetch("https://bf.smartscreen.microsoft.com/api/browser/Navigate/1", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Authorization": authHeader,
+        "User-Agent": payload.userAgent
+      },
+      body: payloadStr,
+      dispatcher: proxyAgent,
+    });
 
     if (!response.ok) {
       console.log(`SmartScreen API error: ${response.status} ${response.statusText}`);

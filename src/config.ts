@@ -10,6 +10,12 @@ type Config = {
   clientId: string;
   proxy: string;
   hunterProxy: string;
+  /**
+   * Dedicated proxy for the AI classifier. Must be independent of the hunter
+   * proxy so classifier runs can take as long as they need without blocking
+   * hunter proxy rotation. Required: startup fails fast if missing.
+   */
+  classifierProxy: string;
   channelId: string;
   netcraftReportEmail: string;
   urlscanApiKey: string;
@@ -54,7 +60,22 @@ type Config = {
 };
 
 export async function readConfig(): Promise<Config> {
-    return JSON.parse(await fs.readFile("./config.json", {encoding: "utf-8"}));
+  const config = JSON.parse(
+    await fs.readFile("./config.json", { encoding: "utf-8" })
+  ) as Config;
+
+  // Fail fast: the classifier must never share the hunter proxy.
+  if (
+    typeof config.classifierProxy !== "string" ||
+    config.classifierProxy.trim() === ""
+  ) {
+    throw new Error(
+      'config.json is missing required "classifierProxy". ' +
+        "Set it to the dedicated classifier proxy."
+    );
+  }
+
+  return config;
 }
 
 /** A hunter is enabled unless explicitly disabled in config. */

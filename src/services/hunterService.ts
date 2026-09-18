@@ -19,13 +19,12 @@ import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
 import { AdsenseHunter } from "./adsenseHunter.js";
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
-import { hunterProxyService, HunterProxyRunOptions } from "./hunterProxyService.js";
 import { HUNTER_NAMES, HunterName } from "../config.js";
 
 // Given a detected scam, confidence level above this will be treated as one
 export const CONFIDENCE_THRESHOLD = 0.80;
 
-interface AddToRedirectCheckerResult {
+export interface AddToRedirectCheckerResult {
   added: boolean;
   strategy: string | null;
 }
@@ -111,39 +110,27 @@ export class HunterService {
   }
 
   // Legacy methods that delegate to individual hunters (kept for backward compatibility)
-  public async huntSearchAds(signal?: AbortSignal) {
-    return await searchAdHunter.huntSearchAds(signal);
+  public async huntSearchAds() {
+    return await searchAdHunter.huntSearchAds();
   }
 
-  public async huntTyposquat(signal?: AbortSignal) {
-    return await typosquatHunter.huntTyposquat(signal);
+  public async huntTyposquat() {
+    return await typosquatHunter.huntTyposquat();
   }
 
-  public async huntPornhubAds(signal?: AbortSignal) {
-    return await pornhubAdHunter.huntPornhubAds(signal);
+  public async huntPornhubAds() {
+    return await pornhubAdHunter.huntPornhubAds();
   }
 
-  public async huntAdSpyGlassAds(signal?: AbortSignal) {
-    return await adSpyGlassHunter.huntAdSpyGlassAds(signal);
+  public async huntAdSpyGlassAds() {
+    return await adSpyGlassHunter.huntAdSpyGlassAds();
   }
 
-  public async huntAdsenseAds(signal?: AbortSignal) {
-    return await adsenseHunter.huntAdsenseAds(signal);
+  public async huntAdsenseAds() {
+    return await adsenseHunter.huntAdsenseAds();
   }
 
   public async processAd(
-    adDestination: string,
-    referer?: string,
-    options: HunterProxyRunOptions = {}
-  ): Promise<ProcessAdResult | null> {
-    return hunterProxyService.run(
-      "process-ad",
-      () => this.processAdInternal(adDestination, referer),
-      options
-    );
-  }
-
-  private async processAdInternal(
     adDestination: string,
     referer?: string
   ): Promise<ProcessAdResult | null> {
@@ -160,7 +147,7 @@ export class HunterService {
     const signalService = createSignalService();
 
     const context = await this.browser.newContext({
-      proxy: await parseProxy(true),
+      proxy: await parseProxy("hunter"),
       viewport: null,
     });
 
@@ -219,17 +206,9 @@ export class HunterService {
    * @returns True if successfully added, false if all strategies failed
    */
   public async tryAddToRedirectChecker(
-    url: string,
-    options: HunterProxyRunOptions = {}
+    url: string
   ): Promise<AddToRedirectCheckerResult> {
     console.log(`Attempting to add ${url} to redirect checker automatically`);
-
-    const isAborted = () => options.signal?.aborted === true;
-
-    if (isAborted()) {
-      console.log(`Add aborted before starting for ${url}`);
-      return { added: false, strategy: null };
-    }
 
     // Extract domain from the incoming URL
     const domain = new URL(url).hostname.toLowerCase();
@@ -237,25 +216,40 @@ export class HunterService {
     // Check if domain already exists in the database
     const checkClient = await pool.connect();
     try {
-      // Compare only hostnames (ignoring http/https)
+      // Compare only hostnames (ignoring http/https). Live rows win over retired ones.
       const query = `
-        SELECT id, source_url 
+        SELECT id, source_url, deleted_at 
         FROM redirects 
         WHERE lower(
           regexp_replace(source_url, '^https?://([^/]+)/?.*$', '\\1')
         ) = $1
+        ORDER BY deleted_at IS NULL DESC, id DESC
         LIMIT 1
       `;
       const result = await checkClient.query(query, [domain]);
 
       if (result.rowCount && result.rowCount > 0) {
+        const existing = result.rows[0];
+
+        if (existing.deleted_at != null) {
+          // Revive the retired redirect instead of inserting a duplicate row
+          const reviveQuery = `
+            UPDATE redirects
+            SET source_url = $1, deleted_at = NULL, deleted_reason = NULL
+            WHERE id = $2
+          `;
+          await checkClient.query(reviveQuery, [url, existing.id]);
+          console.log(`Revived retired redirect for ${domain} with ${url}`);
+          return { added: true, strategy: "revived" };
+        }
+
         console.log(`Domain ${domain} already exists in redirect checker. Updating URL.`);
         
         // Update the existing record with the new URL
         const updateQuery = `UPDATE redirects SET source_url = $1 WHERE id = $2`;
-        await checkClient.query(updateQuery, [url, result.rows[0].id]);
+        await checkClient.query(updateQuery, [url, existing.id]);
         
-        console.log(`Updated redirect for ${domain} from ${result.rows[0].source_url} to ${url}`);
+        console.log(`Updated redirect for ${domain} from ${existing.source_url} to ${url}`);
         return { added: true, strategy: "existing" };
       }
     } finally {
@@ -274,19 +268,9 @@ export class HunterService {
     ];
 
     for (const redirectType of redirectTypesToTry) {
-      if (isAborted()) {
-        console.log(`Add aborted for ${url}`);
-        break;
-      }
-
       try {
         console.log(`Trying ${redirectType} for ${url}`);
-        const redirectDestination = await handleRedirect(url, redirectType, options);
-
-        if (isAborted()) {
-          console.log(`Add aborted after redirect for ${url}`);
-          return { added: false, strategy: null };
-        }
+        const redirectDestination = await handleRedirect(url, redirectType);
 
         if (redirectDestination) {
           console.log(`Got destination ${redirectDestination}, classifying...`);
@@ -294,7 +278,7 @@ export class HunterService {
           // Classify the destination URL
           try {
             const classificationResult =
-              await aiClassifierService.classifyUrl(redirectDestination, options);
+              await aiClassifierService.classifyUrl(redirectDestination);
             if (classificationResult == null) {
               console.log("Failed to get classification result");
               continue; // Try next redirect type
@@ -310,11 +294,6 @@ export class HunterService {
                 `Destination ${redirectDestination} not classified as scam, trying next redirect type`
               );
               continue; // Try next redirect type
-            }
-
-            if (isAborted()) {
-              console.log(`Add aborted before insert for ${url}`);
-              return { added: false, strategy: null };
             }
 
             // Found a working redirect that leads to a scam, add to database

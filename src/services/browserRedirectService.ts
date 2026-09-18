@@ -9,7 +9,6 @@ import {
   trackRedirectionPath
 } from "../utils/playwrightUtilities.js";
 import { BrowserManagerService } from './browserManagerService.js';
-import { hunterProxyService, HunterProxyRunOptions } from './hunterProxyService.js';
 
 function isTargetClosedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -134,25 +133,13 @@ export class BrowserRedirectService {
   async handleRedirect(
     redirectUrl: string,
     referrer?: string,
-    useHunterProxy? : boolean,
-    options: HunterProxyRunOptions = {}
+    useHunterProxy? : boolean
   ): Promise<string | null> {
-    const runOnceWithRetry = () =>
-      this.handleRedirectWithRetry(
-        redirectUrl,
-        referrer,
-        useHunterProxy
-      );
-
-    if (useHunterProxy) {
-      return hunterProxyService.run(
-        "redirect-follow",
-        runOnceWithRetry,
-        options
-      );
-    }
-
-    return runOnceWithRetry();
+    return this.handleRedirectWithRetry(
+      redirectUrl,
+      referrer,
+      useHunterProxy
+    );
   }
 
   private async handleRedirectWithRetry(
@@ -200,7 +187,7 @@ export class BrowserRedirectService {
       }
 
       const context = await this.browser.newContext({
-        proxy: await parseProxy(useHunterProxy),
+        proxy: await parseProxy(useHunterProxy ? "hunter" : "main"),
         viewport: null,
       });
 

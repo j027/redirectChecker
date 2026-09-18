@@ -168,11 +168,24 @@ export const addCommand: CommandDefinition = {
       const client = await pool.connect();
 
       try {
-        const query = "SELECT 1 FROM redirects WHERE source_url = $1 LIMIT 1";
+        const query =
+          "SELECT id, deleted_at FROM redirects WHERE source_url = $1 ORDER BY deleted_at IS NULL DESC, id DESC LIMIT 1";
         const result = await client.query(query, [url]);
 
         if (result.rowCount != null && result.rowCount > 0) {
-          action = "Not added: this URL already exists in the database";
+          const existing = result.rows[0];
+
+          if (existing.deleted_at != null) {
+            await client.query(
+              `UPDATE redirects
+               SET deleted_at = NULL, deleted_reason = NULL, type = $2
+               WHERE id = $1`,
+              [existing.id, redirectType],
+            );
+            action = "Reactivated in monitoring";
+          } else {
+            action = "Not added: this URL already exists in the database";
+          }
         } else {
           const insertQuery =
             "INSERT INTO redirects (source_url, type) VALUES ($1, $2)";

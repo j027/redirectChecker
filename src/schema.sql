@@ -1,10 +1,25 @@
 -- Table for storing the source redirect information
 CREATE TABLE IF NOT EXISTS redirects
 (
-    id         SERIAL PRIMARY KEY,
-    source_url TEXT NOT NULL, -- The URL that triggers a redirect
-    type       TEXT NOT NULL, -- The type of redirect, stored as a string.
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    id             SERIAL PRIMARY KEY,
+    source_url     TEXT NOT NULL, -- The URL that triggers a redirect
+    type           TEXT NOT NULL, -- The type of redirect, stored as a string.
+    created_at     TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    deleted_at     TIMESTAMPTZ DEFAULT NULL, -- When the redirect was retired (soft delete)
+    deleted_reason TEXT        DEFAULT NULL  -- 'dns_unresolvable', 'inactive_scam', 'manual'
+);
+
+-- Tracks bounded add-to-redirect-checker attempts per cloaker hostname. Lets
+-- transient failures retry on later sightings, while dead redirects stop being
+-- retried forever once status is 'exhausted'.
+CREATE TABLE IF NOT EXISTS redirect_add_attempts
+(
+    hostname        TEXT PRIMARY KEY, -- Cloaker candidate hostname
+    attempts        INTEGER     NOT NULL DEFAULT 0,
+    last_attempt_at TIMESTAMPTZ DEFAULT NULL,
+    status          TEXT        NOT NULL DEFAULT 'pending', -- 'pending', 'added', 'exhausted'
+    last_error      TEXT,
+    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table for storing where the redirect actually goes,
@@ -168,6 +183,8 @@ CREATE INDEX IF NOT EXISTS idx_ads_type ON ads (ad_type);
 CREATE INDEX IF NOT EXISTS idx_ads_scam ON ads (is_scam);
 CREATE INDEX IF NOT EXISTS idx_ads_last_seen ON ads (last_seen);
 CREATE INDEX IF NOT EXISTS idx_search_ads_search_url ON search_ads (search_url);
+CREATE INDEX IF NOT EXISTS idx_redirects_active ON redirects (id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_redirect_add_attempts_due ON redirect_add_attempts (status, last_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_redirect_destinations_hostname ON redirect_destinations (hostname);
 CREATE INDEX IF NOT EXISTS idx_hunter_events_type ON hunter_events (hunter_type);
 CREATE INDEX IF NOT EXISTS idx_hunter_events_event ON hunter_events (event_type);

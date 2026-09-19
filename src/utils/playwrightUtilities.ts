@@ -296,19 +296,15 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
   const redirectionPath: Set<string> = new Set();
   redirectionPath.add(startUrl);
 
-  // This optional helper decides if we should record a URL
-  function shouldRecord(url: string, resourceType?: string) {
-    // Filter out known junk patterns and non-navigation resource types
-    if (
-      resourceType &&
-      ["image", "font", "media", "stylesheet", "script"].includes(resourceType)
-    ) {
+  // Only main-frame document navigations belong in the redirect path.
+  // Subresource/iframe redirects are ad pixels and trackers, not destinations.
+  function shouldRecord(url: string) {
+    try {
+      const { protocol } = new URL(url);
+      return protocol === "http:" || protocol === "https:";
+    } catch {
       return false;
     }
-    if (url.includes(".gif") || url.includes(".js")) {
-      return false;
-    }
-    return true;
   }
 
   // ------------------------------
@@ -317,10 +313,18 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
   try {
     const cdpClient = await page.context().newCDPSession(page);
     await cdpClient.send("Network.enable");
+    await cdpClient.send("Page.enable");
+    const frameTree = await cdpClient.send("Page.getFrameTree");
+    const mainFrameId = frameTree.frameTree.frame.id;
+
+    const isMainFrameDocument = (frameId?: string, type?: string) =>
+      frameId === mainFrameId && type === "Document";
 
     // Fires when a request is about to be sent
     cdpClient.on("Network.requestWillBeSent", (event) => {
-      const url = event.request.url;
+      if (!isMainFrameDocument(event.frameId, event.type)) {
+        return;
+      }
 
       // If this request was triggered by a redirect
       if (event.redirectResponse && event.redirectResponse.headers) {
@@ -343,6 +347,10 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
 
     // Fires when a response is received (headers available)
     cdpClient.on("Network.responseReceived", (event) => {
+      if (!isMainFrameDocument(event.frameId, event.type)) {
+        return;
+      }
+
       const { url, status, headers } = event.response;
 
       if (status >= 300 && status < 400 && headers.location) {
@@ -364,22 +372,33 @@ export async function trackRedirectionPath(page: Page, startUrl: string) {
   // 2) Existing Playwright Listeners
   // ------------------------------
 
-  const responseListener = async (response: Response) => {
-    const status = response.status();
-    const respUrl = response.url();
+  const responseListener = (response: Response) => {
+    // Only main-frame document navigations; a 302 on an image, script or
+    // iframe is a tracker response, not a destination of the page.
+    if (!response.request().isNavigationRequest()) {
+      return;
+    }
+    if (response.frame() !== page.mainFrame()) {
+      return;
+    }
 
-    if (status >= 300 && status < 400) {
-      const location = response.headers()["location"];
-      if (location) {
-        try {
-          const fullUrl = new URL(location, respUrl).toString();
-          if (shouldRecord(fullUrl)) {
-            redirectionPath.add(fullUrl);
-          }
-        } catch (err) {
-          console.error(`[DEBUG] Failed to parse location in responseListener`, err);
-        }
+    const status = response.status();
+    if (status < 300 || status >= 400) {
+      return;
+    }
+
+    const location = response.headers()["location"];
+    if (!location) {
+      return;
+    }
+
+    try {
+      const fullUrl = new URL(location, response.url()).toString();
+      if (shouldRecord(fullUrl)) {
+        redirectionPath.add(fullUrl);
       }
+    } catch (err) {
+      console.error(`[DEBUG] Failed to parse location in responseListener`, err);
     }
   };
 

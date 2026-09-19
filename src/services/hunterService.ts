@@ -29,7 +29,7 @@ export interface AddToRedirectCheckerResult {
   strategy: string | null;
 }
 
-interface ProcessAdResult {
+export interface ProcessAdResult {
   screenshot: Buffer;
   html: string;
   redirectionPath: string[];

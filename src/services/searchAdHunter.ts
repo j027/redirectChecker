@@ -5,6 +5,7 @@ import {
   parseProxy,
   blockGoogleAnalytics,
 } from "../utils/playwrightUtilities.js";
+import { extractAdDestinationUrl } from "../utils/urlUtils.js";
 import pool from "../dbPool.js";
 import crypto from "crypto";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
@@ -262,11 +263,17 @@ export class SearchAdHunter {
   ) {
     // grab where the ad is going to, without opening the ad
     // this is because we want to avoid damaging ip quality
-    const adDestination = this.canonicalizeSearchAdUrl(adLink);
+    const extracted = extractAdDestinationUrl(adLink, {
+      fallbackToRawHref: false,
+      stripTrackingParams: true,
+    });
 
-    if (adDestination == null) {
+    if (extracted == null) {
+      console.log("Failed to extract destination from search ad url");
       return;
     }
+
+    const adDestination = extracted.url;
 
     // we already saw this, and it's a scam so then skip it
     const isKnownScam = await this.checkIfSearchAdIsKnownScam(adDestination);
@@ -575,60 +582,4 @@ export class SearchAdHunter {
     return `${randomSearchWebsite}${encodedSearchTerm}`;
   }
 
-  /**
-   * Extracts and normalizes the actual destination URL from a search ad link
-   * @param adUrl The raw ad URL from search results
-   * @returns The canonicalized destination URL or null if extraction fails
-   */
-  private canonicalizeSearchAdUrl(adUrl: string): string | null {
-    try {
-      let adDestination = new URL(adUrl).searchParams.get("adurl");
-      if (adDestination == null) {
-        console.log("Failed to extract destination from search ad url");
-        return null;
-      }
-
-      adDestination = decodeURIComponent(adDestination);
-
-      // strip out parameters that are in the decoded url
-      // that aren't actually there if you followed the redirect
-      const url = new URL(adDestination);
-      const stripParams = [
-        "q",
-        "nb",
-        "nm",
-        "nx",
-        "ny",
-        "is",
-        "_agid",
-        "gad_source",
-        "rid",
-        "gclid",
-      ];
-
-      stripParams.forEach((param) => url.searchParams.delete(param));
-
-      adDestination = url.toString();
-
-      // Handle DoubleClick redirect URLs
-      if (
-        adDestination.includes(
-          "https://ad.doubleclick.net/searchads/link/click"
-        )
-      ) {
-        const destUrl = new URL(adDestination).searchParams.get("ds_dest_url");
-
-        if (destUrl == null) {
-          console.log("Failed to extract destination from DoubleClick URL");
-          return adDestination;
-        }
-        return destUrl;
-      }
-
-      return adDestination;
-    } catch (error) {
-      console.log(`Error canonicalizing URL ${error}`);
-      return null;
-    }
-  }
 }

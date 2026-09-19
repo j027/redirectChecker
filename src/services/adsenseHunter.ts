@@ -1,19 +1,20 @@
 import crypto from "crypto";
-import { setTimeout as sleep } from "timers/promises";
-import { Browser, Frame, Page } from "patchright";
+import { Browser, Page } from "patchright";
 import {
   blockGoogleAnalytics,
   parseProxy,
-  redactIpAddressesFromPage,
-  simulateRandomMouseMovements,
   spoofWindowsChrome,
-  trackRedirectionPath,
 } from "../utils/playwrightUtilities.js";
+import { extractAdDestinationUrl } from "../utils/urlUtils.js";
 import { BrowserManagerService } from "./browserManagerService.js";
-import { createSignalService, DetectedSignals, hasWeightedSignal } from "./signalService.js";
+import { hasWeightedSignal } from "./signalService.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
 import { aiClassifierService } from "./aiClassifierService.js";
-import { CONFIDENCE_THRESHOLD, hunterService } from "./hunterService.js";
+import {
+  CONFIDENCE_THRESHOLD,
+  hunterService,
+  ProcessAdResult,
+} from "./hunterService.js";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { trySightingAdd } from "./redirectAddService.js";
 import pool from "../dbPool.js";
@@ -37,8 +38,6 @@ export const IZITO_TARGET: AdsenseTarget = {
 export type AdsenseHuntStatus = "no_fill" | "processed" | "skipped" | "failed";
 
 export interface AdsenseHuntOptions {
-  /** Detection only: no alerts, DB writes, or redirect checker additions. */
-  dryRun?: boolean;
   target?: AdsenseTarget;
 }
 
@@ -53,34 +52,11 @@ export interface AdsenseHuntResult {
   reason?: string;
 }
 
-export interface AdsensePopupCapture {
-  initialUrl: string;
-  finalUrl: string;
-  redirectionPath: string[];
-  screenshot: Buffer;
-  html: string;
-  signals: DetectedSignals;
+export interface ExtractedAdLink {
+  url: string;
+  source: "adurl" | "ds_dest_url" | "raw";
+  text: string;
 }
-
-const AD_FILL_TIMEOUT_MS = 30_000;
-const PAGE_LOAD_TIMEOUT_MS = 60_000;
-const CONSENT_CLICK_TIMEOUT_MS = 5_000;
-const POPUP_TIMEOUT_MS = 15_000;
-const POPUP_DWELL_MS = 5_000;
-const ELEMENT_CLICK_TIMEOUT_MS = 5_000;
-/**
- * GPT sets data-google-query-id before the creative inside the safeframe is
- * interactive; clicking immediately hits an inert frame and no popup opens.
- */
-const CREATIVE_SETTLE_MS = 3_000;
-/** Time to wait for a popup after an element click before retrying by coordinates. */
-const POPUP_AFTER_ELEMENT_CLICK_MS = 6_000;
-const CLICKABLE_SELECTOR = 'a[href], button, [role="button"]';
-
-const CTA_TEXT_PATTERN = /c[o0]ntinue|download|learn more|click here|visit/i;
-const UTILITY_HREF_PATTERN =
-  /adssettings\.google|google\.com\/settings\/ads|myadcenter|support\.google|\/privacy/i;
-const MIN_CANDIDATE_AREA = 400;
 
 export interface AdClickCandidate {
   text: string;
@@ -90,46 +66,66 @@ export interface AdClickCandidate {
   visible: boolean;
 }
 
+const AD_FILL_TIMEOUT_MS = 15_000;
+const PAGE_LOAD_TIMEOUT_MS = 30_000;
+const CONSENT_CLICK_TIMEOUT_MS = 5_000;
+/** Cap on waiting for the filled creative to expose its first anchor. */
+const ANCHOR_WAIT_MS = 3_000;
+const MAX_ADS_PER_CYCLE = 3;
+/** Navigation + classification budget for one hunt, under the scheduler's 120s cap. */
+const CYCLE_BUDGET_MS = 90_000;
+const ANCHOR_SELECTOR = "a[href]";
+
+const CTA_TEXT_PATTERN = /c[o0]ntinue|download|learn more|click here|visit/i;
+const UTILITY_HREF_PATTERN =
+  /adssettings\.google|google\.com\/settings\/ads|myadcenter|support\.google|\/privacy/i;
+const MIN_CANDIDATE_AREA = 400;
+
 function isUtilityHref(href: string | null): boolean {
   return href != null && UTILITY_HREF_PATTERN.test(href);
 }
 
 /**
- * Picks the index of the element most likely to be the creative's call to
- * action: CTA text first, then image-bearing elements, then the largest
- * visible one. Utility links (AdChoices, ad settings, privacy) never win.
+ * Orders eligible creative anchors most-likely-to-be-a-link first: CTA text,
+ * then image-bearing, then largest. Utility links (AdChoices, ad settings,
+ * privacy) are excluded so they are never extracted as destinations.
  */
-export function rankAdCandidates(
+export function rankAdCandidatesOrdered(
   candidates: AdClickCandidate[],
-): number | null {
+): number[] {
   const eligible = candidates
     .map((candidate, index) => ({ candidate, index }))
     .filter(({ candidate }) => candidate.visible)
     .filter(({ candidate }) => candidate.area >= MIN_CANDIDATE_AREA)
     .filter(({ candidate }) => !isUtilityHref(candidate.href));
 
-  if (eligible.length === 0) {
-    return null;
-  }
+  eligible.sort((a, b) => {
+    const ctaA = CTA_TEXT_PATTERN.test(a.candidate.text) ? 1 : 0;
+    const ctaB = CTA_TEXT_PATTERN.test(b.candidate.text) ? 1 : 0;
+    if (ctaA !== ctaB) return ctaB - ctaA;
 
-  const ctaCandidates = eligible.filter(({ candidate }) =>
-    CTA_TEXT_PATTERN.test(candidate.text),
-  );
-  const textPool = ctaCandidates.length > 0 ? ctaCandidates : eligible;
+    const imageA = a.candidate.hasImage ? 1 : 0;
+    const imageB = b.candidate.hasImage ? 1 : 0;
+    if (imageA !== imageB) return imageB - imageA;
 
-  const imageCandidates = textPool.filter(({ candidate }) => candidate.hasImage);
-  const finalPool = imageCandidates.length > 0 ? imageCandidates : textPool;
+    return b.candidate.area - a.candidate.area;
+  });
 
-  return finalPool.reduce((best, entry) =>
-    entry.candidate.area > best.candidate.area ? entry : best,
-  ).index;
+  return eligible.map(({ index }) => index);
 }
 
-async function collectClickCandidates(
-  page: Page,
-): Promise<{ frame: Frame; candidates: AdClickCandidate[] }[]> {
+/**
+ * Picks the index of the element most likely to be the creative's call to
+ * action. Kept for ranking unit coverage; extraction uses the ordered list.
+ */
+export function rankAdCandidates(candidates: AdClickCandidate[]): number | null {
+  const ordered = rankAdCandidatesOrdered(candidates);
+  return ordered.length > 0 ? ordered[0] : null;
+}
+
+async function collectAdCandidates(page: Page): Promise<AdClickCandidate[]> {
   const mainFrame = page.mainFrame();
-  const result: { frame: Frame; candidates: AdClickCandidate[] }[] = [];
+  const candidates: AdClickCandidate[] = [];
 
   for (const frame of page.frames()) {
     if (frame === mainFrame) {
@@ -137,13 +133,13 @@ async function collectClickCandidates(
     }
 
     try {
-      const candidates = await frame.evaluate((selector) => {
+      const frameCandidates = await frame.evaluate((selector) => {
         return Array.from(document.querySelectorAll(selector)).map((element) => {
           const rect = element.getBoundingClientRect();
           const style = window.getComputedStyle(element);
           return {
             text: (element.textContent ?? "").trim().slice(0, 120),
-            href: element.tagName === "A" ? (element as HTMLAnchorElement).href : null,
+            href: (element as HTMLAnchorElement).href,
             area: rect.width * rect.height,
             hasImage: element.querySelector("img, svg, picture") != null,
             visible:
@@ -153,60 +149,72 @@ async function collectClickCandidates(
               rect.height > 0,
           };
         });
-      }, CLICKABLE_SELECTOR);
-      result.push({ frame, candidates });
+      }, ANCHOR_SELECTOR);
+      candidates.push(...frameCandidates);
     } catch (error) {
-      console.warn(`Failed to read click candidates from frame: ${error}`);
+      console.warn(`Failed to read ad candidates from frame: ${error}`);
     }
   }
 
-  return result;
+  return candidates;
 }
 
-async function clickBestCandidate(
-  frames: { frame: Frame; candidates: AdClickCandidate[] }[],
-): Promise<boolean> {
-  const flat = frames.flatMap(({ frame, candidates }) =>
-    candidates.map((candidate, localIndex) => ({
-      ...candidate,
-      frame,
-      localIndex,
-    })),
-  );
-
-  const bestIndex = rankAdCandidates(flat);
-  if (bestIndex == null) {
-    console.log(
-      `No ad click candidate found in ${frames.length} frame(s); using slot center click`,
+/**
+ * Resolves as soon as any creative frame exposes an anchor, or after the
+ * timeout when none appear, so a filled slot is not delayed by a fixed wait.
+ */
+async function waitForAdAnchor(page: Page, timeoutMs: number): Promise<void> {
+  const mainFrame = page.mainFrame();
+  const waits = page
+    .frames()
+    .filter((frame) => frame !== mainFrame)
+    .map((frame) =>
+      frame
+        .waitForSelector(ANCHOR_SELECTOR, { timeout: timeoutMs, state: "attached" })
+        .catch(() => null),
     );
-    return false;
+
+  if (waits.length === 0) {
+    await page.waitForTimeout(Math.min(timeoutMs, 1000));
+    return;
   }
 
-  const best = flat[bestIndex];
-  try {
-    await best.frame
-      .locator(CLICKABLE_SELECTOR)
-      .nth(best.localIndex)
-      .click({ timeout: ELEMENT_CLICK_TIMEOUT_MS });
-    console.log(
-      `Clicked ad candidate: text="${best.text}" href=${best.href ?? "none"}`,
-    );
-    return true;
-  } catch (error) {
-    console.warn(`Element click failed: ${error}`);
-    return false;
-  }
+  await Promise.race([
+    Promise.any(waits).catch(() => undefined),
+    page.waitForTimeout(timeoutMs),
+  ]);
 }
 
-async function clickSlotCenter(
-  page: Page,
-  box: { x: number; y: number; width: number; height: number },
-): Promise<void> {
-  const centerX = box.x + box.width / 2;
-  const centerY = box.y + box.height / 2;
-  await page.mouse.move(centerX, centerY, { steps: 5 });
-  await page.waitForTimeout(500);
-  await page.mouse.click(centerX, centerY);
+/**
+ * Extracts the destinations advertised in the creative frames, ranked best
+ * first and deduplicated after tracking-parameter stripping. No clicking: the
+ * anchor href is the exact URL the browser would have opened.
+ */
+export async function extractAdLinks(page: Page): Promise<ExtractedAdLink[]> {
+  const candidates = await collectAdCandidates(page);
+  const ordered = rankAdCandidatesOrdered(candidates);
+  const links: ExtractedAdLink[] = [];
+  const seen = new Set<string>();
+
+  for (const index of ordered) {
+    const { href, text } = candidates[index];
+    if (href == null) {
+      continue;
+    }
+
+    const extracted = extractAdDestinationUrl(href, {
+      fallbackToRawHref: true,
+      stripTrackingParams: true,
+    });
+    if (extracted == null || seen.has(extracted.url)) {
+      continue;
+    }
+
+    seen.add(extracted.url);
+    links.push({ url: extracted.url, source: extracted.source, text });
+  }
+
+  return links;
 }
 
 export async function isSlotFilled(
@@ -226,87 +234,6 @@ export async function waitForSlotFill(
     return true;
   } catch {
     return false;
-  }
-}
-
-/**
- * Clicks the filled GPT slot and captures the popup it opens. GPT creatives on
- * iZito open their landing page in a new tab; the popup is where the redirect
- * chain, screenshot, and signals are collected.
- */
-export async function clickSlotAndCapturePopup(
-  page: Page,
-  slotSelector: string,
-  dwellMs: number = POPUP_DWELL_MS,
-  popupTimeoutMs: number = POPUP_TIMEOUT_MS,
-): Promise<AdsensePopupCapture | null> {
-  const slot = await page.$(slotSelector);
-  const box = await slot?.boundingBox();
-  if (box == null) {
-    return null;
-  }
-
-  const popupPromise = page
-    .context()
-    .waitForEvent("page", { timeout: popupTimeoutMs })
-    .catch(() => null);
-
-  const frames = await collectClickCandidates(page);
-  const clickedCandidate = await clickBestCandidate(frames);
-
-  let popup: Page | null = null;
-  if (clickedCandidate) {
-    popup = await Promise.race([
-      popupPromise,
-      sleep(POPUP_AFTER_ELEMENT_CLICK_MS).then(() => null),
-    ]);
-  }
-
-  if (popup == null) {
-    // Creatives without a usable link (canvas, plain overlay) only respond to
-    // a real pointer press inside the slot.
-    await clickSlotCenter(page, box);
-    popup = await popupPromise;
-  }
-
-  if (popup == null) {
-    return null;
-  }
-
-  const initialUrl = popup.url();
-  const redirectTracker = await trackRedirectionPath(popup, initialUrl);
-  const signalService = createSignalService();
-
-  try {
-    await spoofWindowsChrome(popup.context(), popup);
-    await blockGoogleAnalytics(popup);
-    await signalService.attachApiListeners(popup);
-
-    await popup.waitForLoadState("load").catch(() => undefined);
-    await simulateRandomMouseMovements(popup);
-    await popup.waitForTimeout(dwellMs);
-    await redactIpAddressesFromPage(popup);
-
-    const screenshot = await popup.screenshot();
-    const html = await popup.content();
-    const redirectionPath = redirectTracker.getPath();
-    const finalUrl = redirectionPath[redirectionPath.length - 1] || popup.url();
-
-    await signalService.detectAllSignals(popup, finalUrl);
-
-    return {
-      initialUrl,
-      finalUrl,
-      redirectionPath,
-      screenshot,
-      html,
-      signals: signalService.getSignals(),
-    };
-  } catch (error) {
-    console.warn(`Failed to capture ad popup: ${error}`);
-    return null;
-  } finally {
-    await popup.close().catch(() => undefined);
   }
 }
 
@@ -361,7 +288,6 @@ export class AdsenseHunter {
     options: AdsenseHuntOptions,
   ): Promise<AdsenseHuntResult> {
     const target = options.target ?? IZITO_TARGET;
-    const dryRun = options.dryRun ?? false;
 
     await this.ensureBrowserIsHealthy();
 
@@ -401,57 +327,73 @@ export class AdsenseHunter {
         return { status: "no_fill", target: target.name };
       }
 
-      await page.waitForTimeout(CREATIVE_SETTLE_MS);
+      await waitForAdAnchor(page, ANCHOR_WAIT_MS);
 
-      const capture = await clickSlotAndCapturePopup(
-        page,
-        target.filledSlotSelector,
-      );
-      if (capture == null) {
-        console.log(`Adsense hunter: filled slot opened no popup on ${target.name}`);
-        await logHunterEvent("adsense", "ad_skipped", "no popup opened", {
-          target: target.name,
-        });
-        return { status: "skipped", target: target.name, reason: "no popup opened" };
-      }
-
+      const links = await extractAdLinks(page);
       console.log(
-        `Adsense hunter captured popup (dryRun=${dryRun}): ${capture.initialUrl} -> ${capture.finalUrl}`,
+        `Adsense hunter extracted ${links.length} ad link(s) from ${target.name}`,
       );
-      await logHunterEvent("adsense", "ads_found", `Captured ad popup`, {
+      await logHunterEvent("adsense", "ads_found", `Extracted ${links.length} ad link(s)`, {
         target: target.name,
-        initial_url: capture.initialUrl,
-        final_url: capture.finalUrl,
-        redirection_path: capture.redirectionPath,
+        count: links.length,
+        urls: links.slice(0, MAX_ADS_PER_CYCLE).map((link) => link.url),
       });
 
-      if (dryRun) {
-        const verdict = await this.classifyCapture(capture);
-        if (verdict == null) {
-          return {
-            status: "skipped",
-            target: target.name,
-            initialUrl: capture.initialUrl,
-            finalUrl: capture.finalUrl,
-            reason: "whitelisted",
-          };
-        }
-
-        console.log(
-          `Adsense dry-run verdict: ${verdict.isScam ? "SCAM" : "clean"} (raw ${verdict.rawIsScam ? "scam" : "clean"}, confidence ${verdict.confidenceScore.toFixed(2)})`,
-        );
-        return {
-          status: "processed",
+      if (links.length === 0) {
+        await logHunterEvent("adsense", "ad_skipped", "no ad links extracted", {
           target: target.name,
-          initialUrl: capture.initialUrl,
-          finalUrl: capture.finalUrl,
-          redirectionPath: capture.redirectionPath,
-          isScam: verdict.isScam,
-          confidenceScore: verdict.confidenceScore,
-        };
+        });
+        return { status: "skipped", target: target.name, reason: "no ad links extracted" };
       }
 
-      return this.processCapturedAd(target, capture);
+      const deadline = Date.now() + CYCLE_BUDGET_MS;
+      let lastResult: AdsenseHuntResult | null = null;
+
+      for (const link of links.slice(0, MAX_ADS_PER_CYCLE)) {
+        if (Date.now() >= deadline) {
+          await logHunterEvent("adsense", "ad_skipped", "cycle budget exhausted", {
+            target: target.name,
+            url: link.url,
+          });
+          break;
+        }
+
+        await logHunterEvent("adsense", "link_extracted", "Extracted ad link", {
+          target: target.name,
+          source: link.source,
+          url: link.url,
+          text: link.text,
+        });
+
+        if (await this.isKnownScamAd(link.url)) {
+          console.log(`Skipping already known scam ad: ${link.url}`);
+          await logHunterEvent("adsense", "ad_skipped", "known scam", {
+            target: target.name,
+            url: link.url,
+          });
+          continue;
+        }
+
+        const result = await hunterService.processAd(link.url, target.url);
+        if (result == null) {
+          console.log(`Adsense hunter failed to process ${link.url}`);
+          await logHunterEvent("adsense", "ad_skipped", "navigation failed", {
+            target: target.name,
+            url: link.url,
+          });
+          continue;
+        }
+
+        lastResult = await this.processAdResult(target, link.url, result);
+      }
+
+      return (
+        lastResult ?? {
+          status: "skipped",
+          target: target.name,
+          reason: "no ads processed",
+        }
+      );
     } catch (error) {
       console.error(`Adsense hunter error: ${error}`);
       await logHunterEvent("adsense", "error", `Hunt failed: ${error}`, {
@@ -464,46 +406,31 @@ export class AdsenseHunter {
     }
   }
 
-  private async classifyCapture(capture: AdsensePopupCapture): Promise<{
-    rawIsScam: boolean;
-    confidenceScore: number;
-    hasSignal: boolean;
-    isScam: boolean;
-  } | null> {
-    if (aiClassifierService.isWhitelisted(capture.finalUrl)) {
-      return null;
-    }
-
-    const { isScam: rawIsScam, confidenceScore } = await aiClassifierService.runInference(
-      capture.screenshot,
-    );
-    const hasSignal = hasWeightedSignal(capture.signals);
-    const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
-
-    return { rawIsScam, confidenceScore, hasSignal, isScam };
-  }
-
-  private async processCapturedAd(
+  private async processAdResult(
     target: AdsenseTarget,
-    capture: AdsensePopupCapture,
+    adUrl: string,
+    result: ProcessAdResult,
   ): Promise<AdsenseHuntResult> {
-    const { initialUrl, finalUrl, redirectionPath, screenshot, html, signals } = capture;
+    const { screenshot, html, redirectionPath, signals } = result;
+    const finalUrl = redirectionPath[redirectionPath.length - 1] || adUrl;
 
-    const verdict = await this.classifyCapture(capture);
-    if (verdict == null) {
+    if (aiClassifierService.isWhitelisted(finalUrl)) {
       console.log(`✅ Whitelisted domain detected: ${finalUrl} - Skipping adsense processing`);
       await logHunterEvent("adsense", "whitelisted", `Whitelisted: ${finalUrl}`, {
         target: target.name,
+        url: adUrl,
         final_url: finalUrl,
       });
-      return { status: "skipped", target: target.name, initialUrl, finalUrl, reason: "whitelisted" };
+      return { status: "skipped", target: target.name, initialUrl: adUrl, finalUrl, reason: "whitelisted" };
     }
 
-    const { rawIsScam, confidenceScore, hasSignal, isScam } = verdict;
+    const { isScam: rawIsScam, confidenceScore } = await aiClassifierService.runInference(screenshot);
+    const hasSignal = hasWeightedSignal(signals);
+    const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
 
     await logHunterEvent("adsense", "classification", `Classified ${finalUrl}`, {
       target: target.name,
-      initial_url: initialUrl,
+      url: adUrl,
       final_url: finalUrl,
       classifier_is_scam: rawIsScam,
       confidence: confidenceScore,
@@ -515,19 +442,73 @@ export class AdsenseHunter {
     await aiClassifierService.saveData(finalUrl, screenshot, html, rawIsScam, confidenceScore);
 
     let isNewDestination = false;
+    let isStatusChange = false;
 
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
 
-      const existingDestId = await hunterService.findExistingDestination(
-        finalUrl,
-        "adsense",
-        client,
+      const existingResult = await client.query(
+        `SELECT id, is_scam FROM ads WHERE initial_url = $1 AND ad_type = 'adsense'`,
+        [adUrl],
       );
-      isNewDestination = existingDestId === null;
+      const existingAd = existingResult.rows[0];
 
-      if (isNewDestination) {
+      if (existingAd) {
+        await client.query(
+          `UPDATE ads SET
+             last_seen = CURRENT_TIMESTAMP,
+             last_updated = CURRENT_TIMESTAMP,
+             final_url = $1,
+             redirect_path = $2,
+             classifier_is_scam = $3,
+             confidence_score = $4,
+             signal_fullscreen = $5,
+             signal_keyboard_lock = $6,
+             signal_pointer_lock = $7,
+             signal_third_party_hosting = $8,
+             signal_ip_address = $9,
+             signal_page_frozen = $10,
+             signal_worker_bomb = $11
+           WHERE id = $12`,
+          [
+            finalUrl,
+            hunterService.pgArray(redirectionPath),
+            rawIsScam,
+            confidenceScore,
+            signals.fullscreenRequested,
+            signals.keyboardLockRequested,
+            signals.pointerLockRequested,
+            signals.isThirdPartyHosting,
+            signals.isIpAddress,
+            signals.pageLoadFrozen,
+            signals.workerBombDetected,
+            existingAd.id,
+          ],
+        );
+
+        if (existingAd.is_scam !== isScam) {
+          isStatusChange = true;
+          await client.query(`UPDATE ads SET is_scam = $1 WHERE id = $2`, [
+            isScam,
+            existingAd.id,
+          ]);
+
+          const reason = isScam
+            ? `Changed to scam with confidence ${(confidenceScore * 100).toFixed(1)}%`
+            : `No longer classified as scam (confidence: ${(confidenceScore * 100).toFixed(1)}%)`;
+
+          await client.query(
+            `INSERT INTO ad_status_history
+               (ad_id, previous_status, new_status, classifier_is_scam, confidence_score, reason)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [existingAd.id, existingAd.is_scam, isScam, rawIsScam, confidenceScore, reason],
+          );
+        }
+
+        console.log(`Updated existing adsense ad: ${existingAd.id}`);
+      } else {
+        isNewDestination = true;
         const adId = crypto.randomUUID();
         await client.query(
           `INSERT INTO ads
@@ -537,7 +518,7 @@ export class AdsenseHunter {
           [
             adId,
             "adsense",
-            initialUrl,
+            adUrl,
             finalUrl,
             hunterService.pgArray(redirectionPath),
             rawIsScam,
@@ -553,21 +534,7 @@ export class AdsenseHunter {
           ],
         );
 
-        console.log(`New adsense record: ${initialUrl} -> ${finalUrl}`);
-        await logHunterEvent("adsense", "ad_processed", `New ad: ${isScam ? "SCAM" : "clean"}`, {
-          target: target.name,
-          ad_id: adId,
-          initial_url: initialUrl,
-          final_url: finalUrl,
-          is_scam: isScam,
-          confidence: confidenceScore,
-        });
-      } else {
-        await client.query(
-          `UPDATE ads SET last_seen = CURRENT_TIMESTAMP WHERE id = $1`,
-          [existingDestId],
-        );
-        console.log(`Updated last_seen for existing destination: ${finalUrl}`);
+        console.log(`New adsense record: ${adUrl} -> ${finalUrl}`);
       }
 
       await client.query("COMMIT");
@@ -576,16 +543,36 @@ export class AdsenseHunter {
       console.error(`Adsense database error: ${error}`);
       await logHunterEvent("adsense", "error", `Database error: ${error}`, {
         target: target.name,
+        url: adUrl,
       });
       return {
         status: "failed",
         target: target.name,
-        initialUrl,
+        initialUrl: adUrl,
         finalUrl,
         reason: String(error),
       };
     } finally {
       client.release();
+    }
+
+    if (isNewDestination) {
+      await logHunterEvent("adsense", "ad_processed", `New ad: ${isScam ? "SCAM" : "clean"}`, {
+        target: target.name,
+        url: adUrl,
+        final_url: finalUrl,
+        is_scam: isScam,
+        confidence: confidenceScore,
+      });
+    }
+
+    if (isStatusChange) {
+      await logHunterEvent("adsense", "status_changed", `Status changed to ${isScam}`, {
+        target: target.name,
+        url: adUrl,
+        final_url: finalUrl,
+        confidence: confidenceScore,
+      });
     }
 
     // Alerting and adding happen outside the transaction: adding involves
@@ -596,16 +583,26 @@ export class AdsenseHunter {
       if (isNewDestination) {
         await logHunterEvent("adsense", "scam_detected", `New scam: ${finalUrl}`, {
           target: target.name,
-          initial_url: initialUrl,
+          url: adUrl,
           final_url: finalUrl,
           confidence: confidenceScore,
           cloaker: cloakerCandidate,
         });
         await sendAlert({
           type: "adsense",
-          initialUrl,
+          initialUrl: adUrl,
           finalUrl,
           isNew: true,
+          confidenceScore,
+          redirectionPath,
+          cloakerCandidate,
+        });
+      } else if (isStatusChange) {
+        await sendAlert({
+          type: "adsense",
+          initialUrl: adUrl,
+          finalUrl,
+          isNew: false,
           confidenceScore,
           redirectionPath,
           cloakerCandidate,
@@ -616,12 +613,10 @@ export class AdsenseHunter {
         const { attempted, added, strategy } = await trySightingAdd(cloakerCandidate);
         if (added) {
           await sendCloakerAddedAlert(cloakerCandidate, "AdSense", strategy);
-          await logHunterEvent(
-            "adsense",
-            "added_to_checker",
-            `Added ${cloakerCandidate} to redirect checker`,
-            { target: target.name, url: cloakerCandidate },
-          );
+          await logHunterEvent("adsense", "added_to_checker", `Added ${cloakerCandidate} to redirect checker`, {
+            target: target.name,
+            url: cloakerCandidate,
+          });
           console.log(`Auto-add to redirect checker for scam: Success`);
         } else if (attempted) {
           console.log(
@@ -631,7 +626,28 @@ export class AdsenseHunter {
       }
     }
 
-    return { status: "processed", target: target.name, initialUrl, finalUrl, redirectionPath };
+    return { status: "processed", target: target.name, initialUrl: adUrl, finalUrl, redirectionPath };
+  }
+
+  /** Returns true when this exact destination was already confirmed as a scam. */
+  private async isKnownScamAd(adUrl: string): Promise<boolean> {
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT id FROM ads WHERE initial_url = $1 AND ad_type = 'adsense' AND is_scam = true`,
+        [adUrl],
+      );
+      if (result.rowCount === 0) {
+        return false;
+      }
+
+      await client.query(`UPDATE ads SET last_seen = CURRENT_TIMESTAMP WHERE id = $1`, [
+        result.rows[0].id,
+      ]);
+      return true;
+    } finally {
+      client.release();
+    }
   }
 
   private async acceptConsent(page: Page, target: AdsenseTarget): Promise<void> {

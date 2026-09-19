@@ -9,6 +9,125 @@ export function isValidUrl(url: string): boolean {
   }
 }
 
+/** Tracking parameters stripped from ad destinations so the same landing page
+ *  is not treated as a new destination when only tracker params differ. */
+const AD_TRACKING_PARAMS = [
+  "q",
+  "nb",
+  "nm",
+  "nx",
+  "ny",
+  "is",
+  "_agid",
+  "gad_source",
+  "rid",
+  "gclid",
+];
+
+/** Ad-serving utility links that are never the creative's destination. */
+const AD_UTILITY_HREF_PATTERN =
+  /adssettings\.google|google\.com\/settings\/ads|myadcenter|support\.google|\/privacy/i;
+
+export interface ExtractedAdDestination {
+  url: string;
+  source: "adurl" | "ds_dest_url" | "raw";
+}
+
+export interface ExtractAdDestinationOptions {
+  /** Return the href itself when it carries no extractable destination. */
+  fallbackToRawHref?: boolean;
+  /** Remove known ad tracking parameters from the returned URL. */
+  stripTrackingParams?: boolean;
+}
+
+function stripAdTrackingParams(url: URL): URL {
+  for (const param of AD_TRACKING_PARAMS) {
+    url.searchParams.delete(param);
+  }
+  return url;
+}
+
+function resolveDoubleClickDestination(
+  url: URL,
+  source: "adurl" | "raw"
+): ExtractedAdDestination {
+  if (
+    url.hostname === "ad.doubleclick.net" &&
+    url.pathname.startsWith("/searchads/link/click")
+  ) {
+    const destination = url.searchParams.get("ds_dest_url");
+    if (destination != null) {
+      return { url: destination, source: "ds_dest_url" };
+    }
+  }
+
+  return { url: url.toString(), source };
+}
+
+/**
+ * Extracts the destination a search/AdSense ad link points to.
+ *
+ * Google click URLs carry the landing page in `adurl`; older DoubleClick
+ * search links carry it in `ds_dest_url`. Links that expose neither (network
+ * trackers) can be returned as-is when `fallbackToRawHref` is enabled, since
+ * navigating the tracker reproduces the real redirect chain.
+ */
+export function extractAdDestinationUrl(
+  href: string,
+  options: ExtractAdDestinationOptions = {}
+): ExtractedAdDestination | null {
+  const { fallbackToRawHref = false, stripTrackingParams = false } = options;
+
+  if (typeof href !== "string" || href.trim() === "") {
+    return null;
+  }
+
+  if (AD_UTILITY_HREF_PATTERN.test(href)) {
+    return null;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(href);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return null;
+  }
+
+  const adurl = parsed.searchParams.get("adurl");
+  if (adurl != null && adurl.trim() !== "") {
+    let destination: URL;
+    try {
+      destination = new URL(decodeURIComponent(adurl));
+    } catch {
+      return null;
+    }
+
+    if (destination.protocol !== "http:" && destination.protocol !== "https:") {
+      return null;
+    }
+
+    if (stripTrackingParams) {
+      stripAdTrackingParams(destination);
+    }
+
+    return resolveDoubleClickDestination(destination, "adurl");
+  }
+
+  if (!fallbackToRawHref) {
+    return null;
+  }
+
+  if (stripTrackingParams) {
+    stripAdTrackingParams(parsed);
+  }
+
+  return resolveDoubleClickDestination(parsed, "raw");
+}
+
 // Matches standard IPv4 addresses (strict octet range 0-255)
 const IPV4_REGEX = /\b(?:(?:25[0-5]|2[0-4]\d|1\d{2}|\d{1,2})\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|\d{1,2})\b/g;
 

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { redactIpFromUrl } from "../../src/utils/urlUtils.js";
+import {
+  extractAdDestinationUrl,
+  redactIpFromUrl,
+} from "../../src/utils/urlUtils.js";
 
 describe("redactIpFromUrl", () => {
   // ── IPv4 ──────────────────────────────────────────────────────────────────
@@ -90,5 +93,86 @@ describe("redactIpFromUrl", () => {
     const url = new URL(result);
     expect(url.searchParams.get("v4")).toBe("[redacted]");
     expect(url.searchParams.get("v6")).toBe("[redacted]");
+  });
+});
+
+describe("extractAdDestinationUrl", () => {
+  const stripOptions = {
+    fallbackToRawHref: true,
+    stripTrackingParams: true,
+  };
+
+  it("decodes the adurl destination and strips tracking parameters", () => {
+    const href =
+      "https://www.googleadservices.com/pagead/aclk?sa=L&ai=Cin-7rwOuao3" +
+      "&sig=AOD64_0q&client=ca-pub-9560180491300958&nb=0" +
+      "&adurl=https://www.chinafy.com/chinafy-vs-cdn%3Fgbraid%3D0AAAAACoFX8miIWq5BxLWPNY8_9tohy-_R" +
+      "%26gad_source%3D5%26gad_campaignid%3D21297091895%26gclid%3DEAIaIQobChMIzYHb";
+
+    expect(extractAdDestinationUrl(href, stripOptions)).toEqual({
+      url: "https://www.chinafy.com/chinafy-vs-cdn?gbraid=0AAAAACoFX8miIWq5BxLWPNY8_9tohy-_R&gad_campaignid=21297091895",
+      source: "adurl",
+    });
+  });
+
+  it("returns null when there is no adurl and raw fallback is disabled", () => {
+    const href = "https://tracker.example/click?tn=1&gclid=abc";
+    expect(
+      extractAdDestinationUrl(href, {
+        fallbackToRawHref: false,
+        stripTrackingParams: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("falls back to the raw href when adurl is missing", () => {
+    const href = "https://tracenep.admaster.cc/ju/ic?tn=2ce2&gclid=abc";
+    expect(extractAdDestinationUrl(href, stripOptions)).toEqual({
+      url: "https://tracenep.admaster.cc/ju/ic?tn=2ce2",
+      source: "raw",
+    });
+  });
+
+  it("falls back to the raw href when adurl is empty", () => {
+    const href = "https://tracker.example/ic?tn=1&adurl=&gclid=abc";
+    expect(extractAdDestinationUrl(href, stripOptions)).toEqual({
+      url: "https://tracker.example/ic?tn=1&adurl=",
+      source: "raw",
+    });
+  });
+
+  it("extracts ds_dest_url from DoubleClick search links", () => {
+    const href =
+      "https://ad.doubleclick.net/searchads/link/click?ds_dest_url=https%3A%2F%2Fscam.example%2Flanding";
+    expect(extractAdDestinationUrl(href, stripOptions)).toEqual({
+      url: "https://scam.example/landing",
+      source: "ds_dest_url",
+    });
+  });
+
+  it("rejects non-http hrefs", () => {
+    for (const href of [
+      "javascript:void(0)",
+      "data:text/html,<script>alert(1)</script>",
+      "mailto:someone@example.com",
+      "/landing.html",
+      "#",
+    ]) {
+      expect(extractAdDestinationUrl(href, stripOptions)).toBeNull();
+    }
+  });
+
+  it("rejects ad utility links", () => {
+    expect(
+      extractAdDestinationUrl("https://adssettings.google.com/whythisad", stripOptions),
+    ).toBeNull();
+    expect(
+      extractAdDestinationUrl("https://www.google.com/settings/ads", stripOptions),
+    ).toBeNull();
+  });
+
+  it("rejects an adurl with a non-http destination", () => {
+    const href = "https://tracker.example/click?adurl=javascript%3Aalert(1)";
+    expect(extractAdDestinationUrl(href, stripOptions)).toBeNull();
   });
 });

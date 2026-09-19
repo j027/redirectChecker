@@ -7,6 +7,7 @@ export type HunterEventType =
   | "cycle_end"
   | "browser_restart"
   | "ads_found"
+  | "link_extracted"
   | "ad_processed"
   | "ad_skipped"
   | "classification"

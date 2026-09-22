@@ -244,14 +244,27 @@ export const addCommand: CommandDefinition = {
       });
     }
 
-    await interaction.followUp({
-      embeds: [embed],
-      files: [
-        new AttachmentBuilder(classificationResult.screenshot, {
-          name: "destination.png",
-        }),
-      ],
-      flags: "Ephemeral",
-    });
+    const attachment = new AttachmentBuilder(
+      classificationResult.screenshot,
+      { name: "destination.png" },
+    );
+
+    try {
+      await interaction.followUp({
+        embeds: [embed],
+        files: [attachment],
+        flags: "Ephemeral",
+      });
+    } catch (error) {
+      console.error(
+        "Failed to send /add result with screenshot, retrying without it:",
+        error,
+      );
+      try {
+        await interaction.followUp({ embeds: [embed], flags: "Ephemeral" });
+      } catch (fallbackError) {
+        console.error("Failed to send /add result embed:", fallbackError);
+      }
+    }
   },
 };

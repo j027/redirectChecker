@@ -12,6 +12,7 @@ import { isMicrosoftHosted } from '../utils/hostingDetection.js';
 import { reportToMsrc } from './msrcReportService.js';
 import { getMatchingXarfProvider, sendXarfReport } from './xarfReportService.js';
 import { redactIpFromUrl } from '../utils/urlUtils.js';
+import { reportToDiscourse } from './discourseReportService.js';
 
 let webRiskClient: WebRiskServiceClient|null = null; 
 
@@ -517,6 +518,9 @@ export async function reportSite(
 
   // send a message in the discord server with a link to the popup
   reports.push(sendMessageToDiscord(site, redirect, options?.signals, options?.confidenceScore));
+
+  // report to Discourse
+  reports.push(reportToDiscourse(site, redirect, screenshot));
 
   // MSRC reporting for Microsoft-hosted scam URLs
   try {

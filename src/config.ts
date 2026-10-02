@@ -57,6 +57,13 @@ type Config = {
   smtpPort: number;
   smtpUser: string;
   smtpPass: string;
+  // Discourse reporting
+  discourseBaseUrl?: string;
+  discourseApiKey?: string;
+  discourseApiUsername?: string;
+  discourseTopicId?: number;
+  discourseBypassHeader?: string;
+  discourseScannerName?: string;
 };
 
 export async function readConfig(): Promise<Config> {

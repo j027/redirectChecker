@@ -71,7 +71,6 @@ For production: `yarn build && yarn start`
 | `/remove <id>` | Remove a redirect |
 | `/status` | View all redirects and their current status |
 | `/takedown_status [count]` | View recent takedowns and timing |
-| `/report <url>` | Manually report a URL |
 | `/hunterlogs` | View hunter event logs (filterable by hunter/event type) |
 | `/ads` | Browse detected ads with scam/clean filtering |
 | `/redirectlogs` | View redirect checker logs (filterable by event/source) |

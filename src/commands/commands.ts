@@ -6,7 +6,6 @@ import { addCommand } from "./add.js";
 import { statusCommand } from "./status.js";
 import { removeCommand } from "./remove.js";
 import { takedownStatusCommand } from "./takedownStatus.js";
-import { reportCommand } from "./report.js";
 import { hunterLogsCommand } from "./hunterLogs.js";
 import { adsCommand } from "./ads.js";
 import { redirectLogsCommand } from "./redirectLogs.js";
@@ -26,7 +25,6 @@ export const commands: CommandDefinition[] = [
   statusCommand,
   removeCommand,
   takedownStatusCommand,
-  reportCommand,
   hunterLogsCommand,
   adsCommand,
   redirectLogsCommand,

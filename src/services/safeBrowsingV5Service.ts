@@ -881,26 +881,31 @@ function decodeRemovalIndices(encoded: RiceDeltaEncoded32): number[] {
 }
 
 // ---------------------------------------------------------------------------
-// Real-Time Check Procedure
+// Shared Check Helpers
 // ---------------------------------------------------------------------------
 
-async function realTimeCheck(url: string): Promise<{ result: CheckResult; threatTypes: string[] }> {
+interface HashCheckInputs {
+  expressionHashes: Buffer[];
+  expressionHashPrefixes: Buffer[];
+}
+
+function prepareUrlHashes(url: string): HashCheckInputs {
   const canonical = canonicalizeUrl(url);
   const expressions = generateExpressions(canonical);
-
   const expressionHashes = expressions.map((expr) => sha256(expr));
   const expressionHashPrefixes = expressionHashes.map((h) => hashPrefix4(h));
+  return { expressionHashes, expressionHashPrefixes };
+}
 
-  // Step 1: Check Global Cache
-  // If ANY expression hash is found in the Global Cache, the URL is "likely benign"
-  // => fall through to UNSURE (will be checked via Local List Mode externally)
-  for (const hash of expressionHashes) {
-    if (await isHashInGlobalCache(hash)) {
-      return { result: "UNSURE", threatTypes: [] };
-    }
-  }
+interface LocalCacheCheckResult {
+  threatTypesFound: Set<string>;
+  uncachedPrefixes: Buffer[];
+}
 
-  // Step 2: Check local cache for unexpired entries
+async function checkLocalCache(
+  expressionHashPrefixes: Buffer[],
+  expressionHashes: Buffer[]
+): Promise<LocalCacheCheckResult> {
   const uncachedPrefixes: Buffer[] = [];
   const threatTypesFound: Set<string> = new Set();
 
@@ -925,19 +930,13 @@ async function realTimeCheck(url: string): Promise<{ result: CheckResult; threat
     }
   }
 
-  if (threatTypesFound.size > 0) {
-    return { result: "UNSAFE", threatTypes: [...threatTypesFound] };
-  }
+  return { threatTypesFound, uncachedPrefixes };
+}
 
-  // Step 3: Deduplicate prefixes before sending to API
-  const uniquePrefixes = deduplicatePrefixes(uncachedPrefixes);
-
-  if (uniquePrefixes.length === 0) {
-    // All prefixes were cached and none matched
-    return { result: "SAFE", threatTypes: [] };
-  }
-
-  // Step 4: Remote hash search
+async function searchRemoteHashes(
+  uniquePrefixes: Buffer[],
+  expressionHashes: Buffer[]
+): Promise<{ result: CheckResult; threatTypes: string[] }> {
   const { googleSafeBrowsingApiKey: apiKey } = await readConfig();
   if (!apiKey) {
     return { result: "UNSURE", threatTypes: [] };
@@ -974,7 +973,7 @@ async function realTimeCheck(url: string): Promise<{ result: CheckResult; threat
     return { result: "UNSURE", threatTypes: [] };
   }
 
-  // Step 5: Cache the response
+  // Cache the response
   const cacheDurationSec = searchResponse.cacheDuration
     ? Number(searchResponse.cacheDuration.seconds || 0) + (searchResponse.cacheDuration.nanos || 0) / 1e9
     : 300;
@@ -997,7 +996,7 @@ async function realTimeCheck(url: string): Promise<{ result: CheckResult; threat
     }
   }
 
-  // Step 6: Check if any returned full hash matches our expression hashes
+  // Check if any returned full hash matches our expression hashes
   const remoteThreatTypes = new Set<string>();
 
   for (const fh of fullHashes) {
@@ -1038,6 +1037,89 @@ function deduplicatePrefixes(prefixes: Buffer[]): Buffer[] {
 }
 
 // ---------------------------------------------------------------------------
+// Real-Time Check Procedure
+// ---------------------------------------------------------------------------
+
+async function realTimeCheck(url: string): Promise<{ result: CheckResult; threatTypes: string[] }> {
+  const { expressionHashes, expressionHashPrefixes } = prepareUrlHashes(url);
+
+  // Step 1: Check Global Cache
+  // If ANY expression hash is found in the Global Cache, the URL is "likely benign"
+  // => return UNSURE so the caller can fall back to Local List Mode per the spec.
+  for (const hash of expressionHashes) {
+    if (await isHashInGlobalCache(hash)) {
+      return { result: "UNSURE", threatTypes: [] };
+    }
+  }
+
+  // Step 2: Check local cache for unexpired entries
+  const { threatTypesFound, uncachedPrefixes } = await checkLocalCache(
+    expressionHashPrefixes,
+    expressionHashes
+  );
+
+  if (threatTypesFound.size > 0) {
+    return { result: "UNSAFE", threatTypes: [...threatTypesFound] };
+  }
+
+  // Step 3: Deduplicate prefixes before sending to API
+  const uniquePrefixes = deduplicatePrefixes(uncachedPrefixes);
+
+  if (uniquePrefixes.length === 0) {
+    // All prefixes were cached and none matched
+    return { result: "SAFE", threatTypes: [] };
+  }
+
+  // Step 4: Remote hash search
+  return searchRemoteHashes(uniquePrefixes, expressionHashes);
+}
+
+// ---------------------------------------------------------------------------
+// Local List Mode Check Procedure
+// ---------------------------------------------------------------------------
+
+async function localListCheck(url: string): Promise<{ result: "SAFE" | "UNSAFE"; threatTypes: string[] }> {
+  const { expressionHashes, expressionHashPrefixes } = prepareUrlHashes(url);
+
+  // Step 1: Check local cache for unexpired entries
+  const { threatTypesFound, uncachedPrefixes } = await checkLocalCache(
+    expressionHashPrefixes,
+    expressionHashes
+  );
+
+  if (threatTypesFound.size > 0) {
+    return { result: "UNSAFE", threatTypes: [...threatTypesFound] };
+  }
+
+  // Step 2: Filter prefixes by local threat lists
+  const threatListPrefixes: Buffer[] = [];
+  for (const prefix of uncachedPrefixes) {
+    const lists = await isHashPrefixInThreatLists(prefix);
+    if (lists.length > 0) {
+      threatListPrefixes.push(prefix);
+    }
+  }
+
+  // Step 3: Deduplicate prefixes before sending to API
+  const uniquePrefixes = deduplicatePrefixes(threatListPrefixes);
+
+  if (uniquePrefixes.length === 0) {
+    // No prefix matched a local threat list
+    return { result: "SAFE", threatTypes: [] };
+  }
+
+  // Step 4: Remote hash search
+  const remoteResult = await searchRemoteHashes(uniquePrefixes, expressionHashes);
+
+  // Local List Mode treats API errors as SAFE (spec step 6)
+  if (remoteResult.result === "UNSURE") {
+    return { result: "SAFE", threatTypes: [] };
+  }
+
+  return remoteResult as { result: "SAFE" | "UNSAFE"; threatTypes: string[] };
+}
+
+// ---------------------------------------------------------------------------
 // Public API (replaces v4 isSafeBrowsingBatchFlagged)
 // ---------------------------------------------------------------------------
 
@@ -1060,10 +1142,15 @@ export async function checkUrlsSafeBrowsingV5(
       if (result === "UNSAFE") {
         results.set(url, { isFlagged: true, threatTypes });
         console.log(`SafeBrowsing v5 flagged: ${url} (${threatTypes.join(", ")})`);
+      } else if (result === "UNSURE") {
+        // Per the Real-Time Mode spec, a global-cache hit returns UNSURE and
+        // must be followed by Local List Mode before deeming the URL safe.
+        const localResult = await localListCheck(url);
+        if (localResult.result === "UNSAFE") {
+          results.set(url, { isFlagged: true, threatTypes: localResult.threatTypes });
+          console.log(`SafeBrowsing v5 flagged (local list fallback): ${url} (${localResult.threatTypes.join(", ")})`);
+        }
       }
-      // UNSURE falls through as not flagged by real-time check
-      // (in a full implementation, Local List Mode would handle UNSURE,
-      //  but our local threat list check in realTimeCheck already covers this)
     } catch (error) {
       console.error(`Error checking ${url} with SafeBrowsing v5:`, error);
     }

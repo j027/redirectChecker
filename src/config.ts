@@ -63,7 +63,6 @@ type Config = {
   discourseApiUsername?: string;
   discourseTopicId?: number;
   discourseBypassHeader?: string;
-  discourseScannerName?: string;
 };
 
 export async function readConfig(): Promise<Config> {

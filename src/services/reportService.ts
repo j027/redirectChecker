@@ -89,9 +89,9 @@ interface UrlscanResponse {
   url: string;
 }
 
-async function reportToUrlscan(site: string) {
+async function reportToUrlscan(site: string): Promise<string | null> {
   const { urlscanApiKey } = await readConfig();
-  
+
   try {
     const response = await fetch("https://urlscan.io/api/v1/scan/", {
       method: "POST",
@@ -104,16 +104,18 @@ async function reportToUrlscan(site: string) {
         visibility: "public",
       }),
     });
-    
+
     if (response.ok) {
       const data = await response.json() as UrlscanResponse;
       console.info(`Reported to URLScan: ${site} (uuid: ${data.uuid}, message: ${data.message})`);
+      return data.uuid;
     } else {
       console.error(`URLScan report failed for ${site}: ${response.status}`);
     }
   } catch (err) {
     console.error(`Error reporting to URLScan: ${err}`);
   }
+  return null;
 }
 
 interface VirusTotalResponse {
@@ -279,14 +281,18 @@ async function reportToHybridAnalysis(site: string) {
 }
 
 interface CloudflareUrlScannerResponse {
-  uuid: string;
-  api: string;
-  visibility: string;
-  url: string;
-  message: string;
+  success: boolean;
+  errors: { code: number; message: string }[];
+  messages: string[];
+  result: {
+    scanId: string;
+    url: string;
+    visibility: "Public" | "Private";
+    time: string;
+  };
 }
 
-async function reportToCloudflareUrlScanner(site: string) {
+async function reportToCloudflareUrlScanner(site: string): Promise<string | null> {
   const { cloudflareUrlScannerApiKey, cloudflareAccountId } =
     await readConfig();
 
@@ -304,10 +310,12 @@ async function reportToCloudflareUrlScanner(site: string) {
         }),
       }
     );
-    
+
     if (response.ok) {
       const data = await response.json() as CloudflareUrlScannerResponse;
-      console.info(`Reported to Cloudflare URL Scanner: ${site} (uuid: ${data.uuid}, message: ${data.message})`);
+      const scanId = data.result?.scanId;
+      console.info(`Reported to Cloudflare URL Scanner: ${site} (scanId: ${scanId})`);
+      return scanId ?? null;
     } else {
       let errorText = '';
       try {
@@ -320,6 +328,7 @@ async function reportToCloudflareUrlScanner(site: string) {
   } catch (err) {
     console.error(`Error reporting to Cloudflare URL Scanner: ${err}`);
   }
+  return null;
 }
 
 interface CrdfLabsResponse {
@@ -498,8 +507,18 @@ export async function reportSite(
   site = redactIpFromUrl(site);
   redirect = redactIpFromUrl(redirect);
 
+  // Submit to external scanners first so we can link their screenshots in the Discourse post.
+  const [cfResult, urlscanResult] = await Promise.allSettled([
+    reportToCloudflareUrlScanner(site),
+    reportToUrlscan(site),
+  ]);
+  const cloudflareScanId =
+    cfResult.status === "fulfilled" ? cfResult.value : null;
+  const urlscanUuid =
+    urlscanResult.status === "fulfilled" ? urlscanResult.value : null;
+
   // report to google safe browsing, netcraft, virustotal, kaspersky, metadefender, microsoft smartscreen,
-  // checkphish, hybrid analysis, urlscan, cloudflare url scanner, and crdf labs
+  // checkphish, hybrid analysis, and crdf labs
   const reports = [];
   reports.push(reportToNetcraft(site));
   reports.push(reportToGoogleSafeBrowsing(site, screenshot, html));
@@ -509,8 +528,6 @@ export async function reportSite(
   reports.push(browserReportService.reportToSmartScreen(site));
   reports.push(reportToCheckPhish(site));
   reports.push(reportToHybridAnalysis(site));
-  reports.push(reportToUrlscan(site));
-  reports.push(reportToCloudflareUrlScanner(site));
   reports.push(reportToCrdfLabs(site));
 
   // google web risk api (needs special permission to get access)
@@ -520,7 +537,7 @@ export async function reportSite(
   reports.push(sendMessageToDiscord(site, redirect, options?.signals, options?.confidenceScore));
 
   // report to Discourse
-  reports.push(reportToDiscourse(site, redirect, screenshot));
+  reports.push(reportToDiscourse(site, redirect, cloudflareScanId, urlscanUuid));
 
   // MSRC reporting for Microsoft-hosted scam URLs
   try {

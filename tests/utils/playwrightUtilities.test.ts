@@ -61,6 +61,11 @@ describe('Redirect Path Tracker', () => {
   }, 30000); // Increase timeout for this test
 
   it('should track JavaScript client-side redirects', async () => {
+    // Attach the tracker before setContent, matching how production call sites
+    // use it: trackRedirectionPath is async (CDP setup) and setContent starts
+    // the redirect countdown, so attaching afterwards races the navigation.
+    const redirectTracker = await trackRedirectionPath(page, page.url());
+
     // Create a page with a JavaScript redirect
     await page.setContent(`
       <!DOCTYPE html>
@@ -75,9 +80,7 @@ describe('Redirect Path Tracker', () => {
       <body>Redirecting...</body>
       </html>
     `);
-    
-    const redirectTracker = await trackRedirectionPath(page, page.url());
-    
+
     // Wait for navigation to complete
     await page.waitForURL('https://example.com/**');
     

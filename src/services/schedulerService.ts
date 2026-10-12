@@ -8,6 +8,7 @@ import { pruneRedirectEvents } from "./redirectEventLogger.js";
 import { logProxyEvent, pruneProxyEvents } from "./proxyEventLogger.js";
 import { urlscanHunter } from "./urlscanHunter.js";
 import { syncHashLists } from "./safeBrowsingV5Service.js";
+import { retryFailedMsrcReports } from "./msrcReportService.js";
 import { readConfig, HUNTER_NAMES, HunterName } from "../config.js";
 import { fetch, ProxyAgent } from "undici";
 
@@ -18,6 +19,7 @@ let pruningInterval: NodeJS.Timeout | null = null;
 let urlscanInterval: NodeJS.Timeout | null = null;
 let hashListSyncInterval: NodeJS.Timeout | null = null;
 let eventLogPrunerTimeout: NodeJS.Timeout | null = null;
+let msrcRetryTimeout: NodeJS.Timeout | null = null;
 
 let redirectCheckerAbortController: AbortController | null = null;
 let adHunterAbortController: AbortController | null = null;
@@ -30,6 +32,7 @@ let isRunning = {
   redirectPruner: false,
   urlscanHunter: false,
   hashListSync: false,
+  msrcRetrySweep: false,
 };
 
 /** Returns a random delay between min and max milliseconds */
@@ -504,5 +507,33 @@ export function stopHashListSync(): void {
   if (hashListSyncInterval) {
     clearTimeout(hashListSyncInterval);
     hashListSyncInterval = null;
+  }
+}
+
+export function startMsrcRetrySweep(): void {
+  isRunning.msrcRetrySweep = true;
+
+  async function runMsrcRetrySweep() {
+    if (!isRunning.msrcRetrySweep) return;
+
+    try {
+      await retryFailedMsrcReports();
+    } catch (error) {
+      console.error("Error during MSRC retry sweep:", error);
+    }
+
+    if (isRunning.msrcRetrySweep) {
+      msrcRetryTimeout = setTimeout(runMsrcRetrySweep, 10 * 60 * 1000);
+    }
+  }
+
+  runMsrcRetrySweep();
+}
+
+export function stopMsrcRetrySweep(): void {
+  isRunning.msrcRetrySweep = false;
+  if (msrcRetryTimeout) {
+    clearTimeout(msrcRetryTimeout);
+    msrcRetryTimeout = null;
   }
 }

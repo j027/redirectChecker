@@ -20,7 +20,9 @@ import {
   startUrlscanHunter,
   stopUrlscanHunter,
   startHashListSync,
-  stopHashListSync
+  stopHashListSync,
+  startMsrcRetrySweep,
+  stopMsrcRetrySweep
 } from "./services/schedulerService.js";
 import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
@@ -101,6 +103,7 @@ async function initializeServices() {
   startRedirectPruner();
   startEventLogPruner();
   startHashListSync();
+  startMsrcRetrySweep();
 
   // Start URLScan hunter if enabled in config
   if (config.urlscanHunterEnabled) {
@@ -116,6 +119,7 @@ async function shutdownServices() {
   stopRedirectPruner();
   stopEventLogPruner();
   stopHashListSync();
+  stopMsrcRetrySweep();
 
   console.log("Waiting for operations to cancel...");
   await setTimeout(5000); // wait for 5 seconds to allow operations to cancel

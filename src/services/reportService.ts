@@ -494,6 +494,40 @@ export interface ReportOptions {
   confidenceScore?: number;
 }
 
+const BEHAVIOR_SIGNAL_LABELS: Array<[keyof DetectedSignals, string]> = [
+  ["fullscreenRequested", "fullscreen trap"],
+  ["keyboardLockRequested", "keyboard lock"],
+  ["pointerLockRequested", "pointer lock"],
+  ["pageLoadFrozen", "frozen page"],
+  ["workerBombDetected", "worker flood"],
+];
+
+function buildSafeBrowsingReportDetails(
+  urlscanUuid: string | null,
+  signals?: DetectedSignals,
+  confidenceScore?: number
+): string {
+  let details = "Automated report: tech support scam detected";
+
+  if (confidenceScore !== undefined) {
+    details += ` (classifier confidence ${(confidenceScore * 100).toFixed(1)}%)`;
+  }
+  details += ".";
+
+  const behaviors = BEHAVIOR_SIGNAL_LABELS
+    .filter(([key]) => signals?.[key])
+    .map(([, label]) => label);
+  if (behaviors.length > 0) {
+    details += ` Page behavior: ${behaviors.join(", ")}.`;
+  }
+
+  if (urlscanUuid) {
+    details += ` URLScan: https://urlscan.io/result/${urlscanUuid}/`;
+  }
+
+  return details;
+}
+
 export async function reportSite(
   site: string, 
   redirect: string, 
@@ -526,6 +560,10 @@ export async function reportSite(
   reports.push(reportToKaspersky(site));
   reports.push(reportToMetaDefender(site));
   reports.push(browserReportService.reportToSmartScreen(site));
+  browserReportService.enqueueSafeBrowsingReport(
+    site,
+    buildSafeBrowsingReportDetails(urlscanUuid, options?.signals, options?.confidenceScore)
+  );
   reports.push(reportToCheckPhish(site));
   reports.push(reportToHybridAnalysis(site));
   reports.push(reportToCrdfLabs(site));

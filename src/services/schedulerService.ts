@@ -3,6 +3,7 @@ import { monitorTakedownStatus } from "./takedownMonitorService.js";
 import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter, adsenseHunter } from "./hunterService.js";
 import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
+import { browserReportService } from "./browserReportService.js";
 import { logHunterEvent, pruneHunterEvents, HunterType } from "./hunterEventLogger.js";
 import { pruneRedirectEvents } from "./redirectEventLogger.js";
 import { logProxyEvent, pruneProxyEvents } from "./proxyEventLogger.js";
@@ -67,6 +68,10 @@ async function logHunterProxyIp(): Promise<void> {
 
 /** Triggers hunter proxy IP rotation if a rotation URL is configured */
 async function rotateHunterProxyIp(reason: string): Promise<void> {
+  // Let any in-flight Safe Browsing report finish before the oroxy rotates,
+  // otherwise the submission is cut mid-flight.
+  await browserReportService.pauseForRotation();
+
   try {
     const config = await readConfig();
     if (!config.hunterProxyRotationUrl) return;
@@ -81,6 +86,8 @@ async function rotateHunterProxyIp(reason: string): Promise<void> {
   } catch (error) {
     console.error(`Failed to rotate hunter proxy IP: ${error}`);
     await logProxyEvent("error", `Proxy rotation failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    browserReportService.resume();
   }
 }
 

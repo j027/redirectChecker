@@ -3,15 +3,23 @@ import { promises as fs } from "fs";
 import { setTimeout } from "timers/promises";
 import path from "path";
 import { readConfig } from "../config.js";
-import { spoofWindowsChrome } from "../utils/playwrightUtilities.js";
+import { parseProxy, spoofWindowsChrome } from "../utils/playwrightUtilities.js";
 import { BrowserManagerService } from './browserManagerService.js';
 
 const SMARTSCREEN_REPORT_URL =
   "https://www.microsoft.com/en-us/wdsi/support/report-unsafe-site";
 
+const SAFE_BROWSING_REPORT_URL =
+  "https://safebrowsing.google.com/safebrowsing/report-url";
+
+const SAFE_BROWSING_MAX_ATTEMPTS = 3;
+const SAFE_BROWSING_RETRY_BASE_DELAY_MS = 30_000;
+const SAFE_BROWSING_SUCCESS_TIMEOUT_MS = 60_000;
+
 // Cookies for the reporting account. Git-ignored with the rest of data/.
 const SESSION_FILE = path.join(process.cwd(), "data", "smartscreen", "session.json");
 const FAILURE_SCREENSHOT_DIR = path.join(process.cwd(), "data", "smartscreen");
+const SAFE_BROWSING_SCREENSHOT_DIR = path.join(process.cwd(), "data", "safebrowsing");
 
 type StorageState = NonNullable<
   Parameters<Browser["newContext"]>[0]
@@ -20,15 +28,44 @@ type StorageState = NonNullable<
 // How long to keep clearing optional Microsoft login prompts before giving up.
 const LOGIN_SETTLE_TIMEOUT_MS = 25000;
 
+export type SafeBrowsingReportStatus = "success" | "captcha" | "blocked" | "error";
+
+interface SafeBrowsingReportTask {
+  url: string;
+  details: string;
+  attempts: number;
+}
+
 export class BrowserReportService {
   private browser: Browser | null;
   private context: BrowserContext | null;
   private browserInitializing: boolean;
+  private safeBrowsingContext: BrowserContext | null;
+  private safeBrowsingQueue: SafeBrowsingReportTask[];
+  private safeBrowsingPendingUrls: Set<string>;
+  private safeBrowsingProcessing: boolean;
+  private safeBrowsingInFlight: Promise<void> | null;
+  private safeBrowsingStopped: boolean;
+  private safeBrowsingPaused: boolean;
+  private safeBrowsingCounters: {
+    submitted: number;
+    captcha: number;
+    blocked: number;
+    gaveUp: number;
+  };
 
   constructor() {
     this.browser = null;
     this.context = null;
     this.browserInitializing = false;
+    this.safeBrowsingContext = null;
+    this.safeBrowsingQueue = [];
+    this.safeBrowsingPendingUrls = new Set();
+    this.safeBrowsingProcessing = false;
+    this.safeBrowsingInFlight = null;
+    this.safeBrowsingStopped = false;
+    this.safeBrowsingPaused = false;
+    this.safeBrowsingCounters = { submitted: 0, captcha: 0, blocked: 0, gaveUp: 0 };
   }
 
   async init() {
@@ -119,6 +156,299 @@ export class BrowserReportService {
     }
 
     return true;
+  }
+
+  /**
+   * Reports a URL through the Google Safe Browsing web form
+   * (https://safebrowsing.google.com/safebrowsing/report-url). The form uses
+   * an invisible reCAPTCHA that passes for a normal headful Chrome; a shown
+   * challenge or an absent reCAPTCHA token is terminal and not retried.
+   */
+  async reportToGoogleSafeBrowsing(
+    url: string,
+    details?: string
+  ): Promise<SafeBrowsingReportStatus> {
+    await this.ensureBrowserIsHealthy();
+
+    if (this.browser == null) {
+      console.error(
+        "[safe-browsing] browser has not been initialized - report failed",
+      );
+      return "error";
+    }
+
+    const context = await this.getSafeBrowsingContext();
+    const page = await context.newPage();
+
+    try {
+      await spoofWindowsChrome(context, page);
+      await page.goto(SAFE_BROWSING_REPORT_URL);
+
+      await this.selectSafeBrowsingOption(page, "Report Type", "This page is not safe");
+      await this.selectSafeBrowsingOption(page, "Threat Type", "Social Engineering");
+      await this.selectSafeBrowsingOption(page, "Threat Category", "Fake Support Scam");
+
+      await page.getByLabel("URL to report").pressSequentially(url, { delay: 10 });
+      if (details) {
+        await page.getByLabel("Additional details").pressSequentially(details.slice(0, 800), { delay: 2 });
+      }
+
+      await page.getByRole("button", { name: "Submit" }).click();
+
+      const outcome = await this.waitForSafeBrowsingOutcome(page);
+
+      if (outcome === "captcha") {
+        const screenshot = await this.takeFailureScreenshot(page, url, "safebrowsing_captcha", SAFE_BROWSING_SCREENSHOT_DIR);
+        console.error(
+          `[safe-browsing] reCAPTCHA CHALLENGE for ${url} - not retrying (unsolvable)` +
+            (screenshot ? `; screenshot: ${screenshot}` : ""),
+        );
+        return "captcha";
+      }
+
+      if (outcome === "blocked") {
+        const screenshot = await this.takeFailureScreenshot(page, url, "safebrowsing_captcha", SAFE_BROWSING_SCREENSHOT_DIR);
+        console.error(
+          `[safe-browsing] reCAPTCHA did not issue a token for ${url} - not retrying` +
+            (screenshot ? `; screenshot: ${screenshot}` : ""),
+        );
+        return "blocked";
+      }
+
+      if (outcome === "rejected") {
+        const screenshot = await this.takeFailureScreenshot(page, url, "safebrowsing_failure", SAFE_BROWSING_SCREENSHOT_DIR);
+        console.error(
+          `[safe-browsing] submission was rejected for ${url} (retryable)` +
+            (screenshot ? `; screenshot: ${screenshot}` : ""),
+        );
+        return "error";
+      }
+
+      if (outcome === "error") {
+        const screenshot = await this.takeFailureScreenshot(page, url, "safebrowsing_failure", SAFE_BROWSING_SCREENSHOT_DIR);
+        console.error(
+          `[safe-browsing] submission timed out for ${url}` +
+            (screenshot ? ` (screenshot: ${screenshot})` : ""),
+        );
+        return "error";
+      }
+
+      return "success";
+    } catch (error) {
+      const screenshot = await this.takeFailureScreenshot(page, url, "safebrowsing_failure", SAFE_BROWSING_SCREENSHOT_DIR);
+      console.error(
+        `[safe-browsing] error while reporting ${url}: ${error}` +
+          (screenshot ? ` (screenshot: ${screenshot})` : ""),
+      );
+      return "error";
+    } finally {
+      await page.close().catch(() => {});
+    }
+  }
+
+  /**
+   * Waits for the Safe Browsing form to resolve. Resolves "success" on the
+   * confirmation banner and "captcha" when the challenge iframe appears. On
+   * timeout an absent reCAPTCHA token means the invisible challenge never
+   * resolved ("blocked"); anything else is a retryable "error".
+   */
+  private async waitForSafeBrowsingOutcome(
+    page: Page
+  ): Promise<"success" | "captcha" | "blocked" | "rejected" | "error"> {
+    const success = page
+      .getByText("Submission was successful")
+      .first()
+      .waitFor({ state: "visible", timeout: SAFE_BROWSING_SUCCESS_TIMEOUT_MS })
+      .then(() => "success" as const);
+
+    const challenge = page
+      .locator('iframe[src*="bframe"], iframe[title*="challenge" i]')
+      .first()
+      .waitFor({ state: "visible", timeout: SAFE_BROWSING_SUCCESS_TIMEOUT_MS })
+      .then(() => "captcha" as const);
+
+    const rejected = page
+      .getByText("Something went wrong")
+      .first()
+      .waitFor({ state: "visible", timeout: SAFE_BROWSING_SUCCESS_TIMEOUT_MS })
+      .then(() => "rejected" as const);
+
+    const outcome = await Promise.race([success, challenge, rejected]).catch(
+      () => "timeout" as const
+    );
+
+    if (outcome !== "timeout") {
+      return outcome;
+    }
+
+    const tokenLength = await page
+      .evaluate(() => {
+        const el = document.querySelector<HTMLTextAreaElement>(
+          'textarea[name="g-recaptcha-response"]'
+        );
+        return el ? el.value.length : -1;
+      })
+      .catch(() => -1);
+
+    return tokenLength > 0 ? "error" : "blocked";
+  }
+
+  private async selectSafeBrowsingOption(
+    page: Page,
+    fieldLabel: string,
+    optionName: string
+  ): Promise<void> {
+    const field = page.getByLabel(fieldLabel);
+    await field.waitFor({ state: "visible" });
+    await field.click();
+    await page.locator("mat-option").filter({ hasText: optionName }).first().click();
+  }
+
+  /**
+   * Reuses the Safe Browsing context across reports so cookies and reCAPTCHA
+   * state survive, recreating it when the shared browser has been restarted.
+   */
+  private async getSafeBrowsingContext(): Promise<BrowserContext> {
+    const browser = this.browser;
+    if (browser == null) {
+      throw new Error(
+        "Browser has not been initialized - reporting to safe browsing failed",
+      );
+    }
+
+    if (this.safeBrowsingContext != null && this.safeBrowsingContext.browser() === browser) {
+      return this.safeBrowsingContext;
+    }
+
+    if (this.safeBrowsingContext != null) {
+      await this.safeBrowsingContext.close().catch(() => {});
+      this.safeBrowsingContext = null;
+    }
+
+    this.safeBrowsingContext = await browser.newContext({
+      proxy: await parseProxy("hunter"),
+    });
+    console.log("Safe browsing report context created (hunter proxy)");
+    return this.safeBrowsingContext;
+  }
+
+  /**
+   * Waits for the in-flight Safe Browsing report (if any) to finish so the
+   * hunter proxy can rotate without cutting a submission mid-flight.
+   */
+  async pauseForRotation(timeoutMs: number = 60000): Promise<void> {
+    this.safeBrowsingPaused = true;
+
+    const inFlight = this.safeBrowsingInFlight;
+    if (inFlight != null) {
+      await Promise.race([inFlight, setTimeout(timeoutMs)]).catch(() => {});
+    }
+  }
+
+  resume(): void {
+    this.safeBrowsingPaused = false;
+  }
+
+  private async waitWhileSafeBrowsingPaused(): Promise<void> {
+    while (this.safeBrowsingPaused && !this.safeBrowsingStopped) {
+      await setTimeout(500);
+    }
+  }
+
+  /**
+   * Queues a Google Safe Browsing browser report. A single worker submits
+   * reports sequentially; transient failures are retried with backoff while
+   * captcha blocks are terminal and logged for visibility.
+   */
+  enqueueSafeBrowsingReport(url: string, details: string): void {
+    if (this.safeBrowsingStopped) {
+      return;
+    }
+
+    if (this.safeBrowsingPendingUrls.has(url)) {
+      console.log(`[safe-browsing] ${url} is already queued, skipping duplicate`);
+      return;
+    }
+
+    this.safeBrowsingPendingUrls.add(url);
+    this.safeBrowsingQueue.push({ url, details, attempts: 0 });
+    console.log(`[safe-browsing] queued report for ${url} (${this.safeBrowsingQueue.length} in queue)`);
+    void this.processSafeBrowsingQueue();
+  }
+
+  private async processSafeBrowsingQueue(): Promise<void> {
+    if (this.safeBrowsingProcessing || this.safeBrowsingStopped) {
+      return;
+    }
+
+    this.safeBrowsingProcessing = true;
+    try {
+      while (this.safeBrowsingQueue.length > 0 && !this.safeBrowsingStopped) {
+        await this.waitWhileSafeBrowsingPaused();
+        if (this.safeBrowsingStopped) {
+          break;
+        }
+
+        const task = this.safeBrowsingQueue.shift()!;
+        task.attempts++;
+
+        const run = (async () => {
+          const status = await this.reportToGoogleSafeBrowsing(task.url, task.details);
+          await this.handleSafeBrowsingResult(task, status);
+        })();
+
+        this.safeBrowsingInFlight = run;
+        try {
+          await run;
+        } finally {
+          this.safeBrowsingInFlight = null;
+        }
+      }
+    } finally {
+      this.safeBrowsingProcessing = false;
+    }
+  }
+
+  private async handleSafeBrowsingResult(
+    task: SafeBrowsingReportTask,
+    status: SafeBrowsingReportStatus
+  ): Promise<void> {
+    if (status === "success") {
+      this.safeBrowsingPendingUrls.delete(task.url);
+      this.safeBrowsingCounters.submitted++;
+      console.log(
+        `[safe-browsing] report succeeded for ${task.url} (attempt ${task.attempts}/${SAFE_BROWSING_MAX_ATTEMPTS})`,
+      );
+    } else if (status === "captcha" || status === "blocked") {
+      this.safeBrowsingPendingUrls.delete(task.url);
+      if (status === "captcha") {
+        this.safeBrowsingCounters.captcha++;
+      } else {
+        this.safeBrowsingCounters.blocked++;
+      }
+    } else if (task.attempts < SAFE_BROWSING_MAX_ATTEMPTS && !this.safeBrowsingStopped) {
+      const delayMs = SAFE_BROWSING_RETRY_BASE_DELAY_MS * task.attempts;
+      console.warn(
+        `[safe-browsing] report failed for ${task.url} (attempt ${task.attempts}/${SAFE_BROWSING_MAX_ATTEMPTS}); retrying in ${delayMs / 1000}s`,
+      );
+      await setTimeout(delayMs);
+      if (this.safeBrowsingStopped) {
+        this.safeBrowsingPendingUrls.delete(task.url);
+      } else {
+        this.safeBrowsingQueue.push(task);
+      }
+    } else {
+      this.safeBrowsingPendingUrls.delete(task.url);
+      this.safeBrowsingCounters.gaveUp++;
+      console.error(
+        `[safe-browsing] gave up on ${task.url} after ${task.attempts} attempt(s)`,
+      );
+    }
+
+    const counters = this.safeBrowsingCounters;
+    console.log(
+      `[safe-browsing] lifetime: ${counters.submitted} submitted, ${counters.captcha} captcha, ${counters.blocked} blocked, ${counters.gaveUp} gave up`,
+    );
   }
 
   /** Returns true when the report form is already available (signed in). */
@@ -230,22 +560,29 @@ export class BrowserReportService {
     return await page.title().catch(() => "unknown");
   }
 
-  private async takeFailureScreenshot(page: Page, url: string): Promise<void> {
+  private async takeFailureScreenshot(
+    page: Page,
+    url: string,
+    prefix: string = "smartscreen_failure",
+    dir: string = FAILURE_SCREENSHOT_DIR
+  ): Promise<string | null> {
     try {
-      if (page.isClosed()) return;
+      if (page.isClosed()) return null;
 
-      await fs.mkdir(FAILURE_SCREENSHOT_DIR, { recursive: true });
+      await fs.mkdir(dir, { recursive: true });
       const hostname = new URL(url).hostname.replace(/[^a-zA-Z0-9.-]/g, "_");
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const filePath = path.join(
-        FAILURE_SCREENSHOT_DIR,
-        `smartscreen_failure_${hostname}_${timestamp}.png`
+        dir,
+        `${prefix}_${hostname}_${timestamp}.png`
       );
 
       await page.screenshot({ path: filePath, fullPage: true });
-      console.error(`Saved smartscreen failure screenshot to ${filePath}`);
+      console.error(`Saved ${prefix} screenshot to ${filePath}`);
+      return filePath;
     } catch (error) {
-      console.error(`Failed to save smartscreen failure screenshot: ${error}`);
+      console.error(`Failed to save ${prefix} screenshot: ${error}`);
+      return null;
     }
   }
 
@@ -271,6 +608,23 @@ export class BrowserReportService {
   }
 
   async close() {
+    this.safeBrowsingStopped = true;
+    this.safeBrowsingQueue.length = 0;
+    this.safeBrowsingPendingUrls.clear();
+
+    if (this.safeBrowsingInFlight) {
+      await Promise.race([
+        this.safeBrowsingInFlight,
+        setTimeout(15000),
+      ]).catch(() => {});
+      this.safeBrowsingInFlight = null;
+    }
+
+    if (this.safeBrowsingContext) {
+      await this.safeBrowsingContext.close().catch(() => {});
+      this.safeBrowsingContext = null;
+    }
+
     if (this.context) {
       await this.context.close().catch(() => {});
       this.context = null;

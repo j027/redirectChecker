@@ -21,4 +21,16 @@ describe("BrowserReportService", () => {
 
     expect(result).toBe(true);
   });
+
+  it("should report to Google Safe Browsing", async () => {
+    // Google's Safe Browsing demo page, safe to report as a test
+    const url = "https://testsafebrowsing.appspot.com/s/phishing.html";
+    const details =
+      "Automated test submission from a scam-reporting pipeline; this is Google's " +
+      "Safe Browsing demo page. Please disregard.";
+
+    const result = await service.reportToGoogleSafeBrowsing(url, details);
+
+    expect(result).toBe("success");
+  });
 });

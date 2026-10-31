@@ -1,11 +1,14 @@
 import crypto from "crypto";
-import { Browser, Page } from "patchright";
+import { Browser, Frame, Page } from "patchright";
 import {
   blockGoogleAnalytics,
   parseProxy,
   spoofWindowsChrome,
 } from "../utils/playwrightUtilities.js";
-import { extractAdDestinationUrl } from "../utils/urlUtils.js";
+import {
+  canonicalizeAdDestinationForDedupe,
+  extractAdDestinationUrl,
+} from "../utils/urlUtils.js";
 import { BrowserManagerService } from "./browserManagerService.js";
 import { hasWeightedSignal } from "./signalService.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
@@ -26,6 +29,16 @@ export interface AdsenseTarget {
   filledSlotSelector: string;
   /** Consent control to dismiss before waiting for fill, when the target shows one. */
   consentSelector?: string;
+  /**
+   * Selector for the ad iframes to inspect. When present, only these frames
+   * and their descendants are scanned; the rest of the page is usually a
+   * forest of cookie-sync/tracking frames.
+   */
+  adFrameSelector?: string;
+  /** Navigation wait strategy. Defaults to "load" for older targets. */
+  waitUntil?: "load" | "domcontentloaded";
+  /** Extra time after a slot fills so sibling slots can fill too. */
+  postFillSettleMs?: number;
 }
 
 export const IZITO_TARGET: AdsenseTarget = {
@@ -35,10 +48,38 @@ export const IZITO_TARGET: AdsenseTarget = {
   consentSelector: "#cookie-consent__accept",
 };
 
+/**
+ * 123greetings uses Google Ad Manager slots with AdPushup header bidding.
+ * The GPT slot divs receive data-google-query-id when filled, and the
+ * creatives expose Google click URLs with the landing page in `adurl`.
+ */
+export const GREETINGS_123_TARGET: AdsenseTarget = {
+  name: "123greetings",
+  url: "https://www.123greetings.com/",
+  filledSlotSelector: [
+    "div#div-gpt-mrec1[data-google-query-id]",
+    "div#div-gpt-mrec2[data-google-query-id]",
+    "div#div-gpt-topbanner[data-google-query-id]",
+    'iframe[name*="/Anchor_"][data-load-complete="true"]',
+  ].join(", "),
+  adFrameSelector: [
+    'div[id^="div-gpt"] iframe',
+    'iframe[name^="google_ads_iframe_"]',
+    'iframe[id^="google_ads_iframe_"]',
+  ].join(", "),
+  waitUntil: "domcontentloaded",
+  postFillSettleMs: 3_000,
+};
+
+/** Default target used by the scheduled hunter. */
+export const DEFAULT_ADSENSE_TARGET = GREETINGS_123_TARGET;
+
 export type AdsenseHuntStatus = "no_fill" | "processed" | "skipped" | "failed";
 
 export interface AdsenseHuntOptions {
   target?: AdsenseTarget;
+  /** Classify and log only; skip database writes, alerts, and redirect adds. */
+  dryRun?: boolean;
 }
 
 export interface AdsenseHuntResult {
@@ -66,14 +107,12 @@ export interface AdClickCandidate {
   visible: boolean;
 }
 
-const AD_FILL_TIMEOUT_MS = 15_000;
-const PAGE_LOAD_TIMEOUT_MS = 30_000;
+const AD_FILL_TIMEOUT_MS = 45_000;
+const PAGE_LOAD_TIMEOUT_MS = 45_000;
 const CONSENT_CLICK_TIMEOUT_MS = 5_000;
-/** Cap on waiting for the filled creative to expose its first anchor. */
-const ANCHOR_WAIT_MS = 3_000;
 const MAX_ADS_PER_CYCLE = 3;
-/** Navigation + classification budget for one hunt, under the scheduler's 120s cap. */
-const CYCLE_BUDGET_MS = 90_000;
+/** Navigation + classification budget for one hunt, under the scheduler's 180s cap. */
+const CYCLE_BUDGET_MS = 75_000;
 const ANCHOR_SELECTOR = "a[href]";
 
 const CTA_TEXT_PATTERN = /c[o0]ntinue|download|learn more|click here|visit/i;
@@ -123,12 +162,93 @@ export function rankAdCandidates(candidates: AdClickCandidate[]): number | null 
   return ordered.length > 0 ? ordered[0] : null;
 }
 
-async function collectAdCandidates(page: Page): Promise<AdClickCandidate[]> {
-  const mainFrame = page.mainFrame();
-  const candidates: AdClickCandidate[] = [];
+/**
+ * Returns the visible area of a frame. Some creatives (notably 123greetings'
+ * bottom anchor and side rails) have anchors with a 0x0 rect even though the
+ * containing iframe is visible, so the frame area is the useful fallback.
+ */
+async function getFrameArea(frame: Frame): Promise<number> {
+  try {
+    const element = await frame.frameElement();
+    const box = await element.boundingBox();
+    if (box != null && box.width > 0 && box.height > 0) {
+      return box.width * box.height;
+    }
+  } catch {
+    // Frame element can disappear while the page is refreshing its ads.
+  }
 
-  for (const frame of page.frames()) {
-    if (frame === mainFrame) {
+  try {
+    const viewport = await frame.evaluate(() => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }));
+    return Math.max(0, viewport.width * viewport.height);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Collects the ad-slot frames to scan. When a target supplies an ad-frame
+ * selector, only those frames and their descendants are used; scanning every
+ * frame on an ad-heavy page mostly finds cookie-sync and tracking iframes.
+ */
+async function collectAdFrames(
+  page: Page,
+  target?: AdsenseTarget,
+): Promise<Frame[]> {
+  const mainFrame = page.mainFrame();
+  const roots: Frame[] = [];
+
+  if (target?.adFrameSelector != null) {
+    const handles = await page.$$(target.adFrameSelector);
+    for (const handle of handles) {
+      try {
+        const frame = await handle.contentFrame();
+        if (frame != null) {
+          roots.push(frame);
+        }
+      } catch {
+        // The iframe may be detached while the ad slot refreshes.
+      }
+    }
+  }
+
+  if (roots.length === 0) {
+    return page.frames().filter((frame) => frame !== mainFrame);
+  }
+
+  const seen = new Set<Frame>();
+  const frames: Frame[] = [];
+  const walk = (frame: Frame) => {
+    if (frame === mainFrame || seen.has(frame)) {
+      return;
+    }
+    seen.add(frame);
+    frames.push(frame);
+    for (const child of frame.childFrames()) {
+      walk(child);
+    }
+  };
+
+  for (const root of roots) {
+    walk(root);
+  }
+
+  return frames;
+}
+
+async function collectAdCandidates(
+  page: Page,
+  target?: AdsenseTarget,
+): Promise<AdClickCandidate[]> {
+  const candidates: AdClickCandidate[] = [];
+  const frames = await collectAdFrames(page, target);
+
+  for (const frame of frames) {
+    const frameArea = await getFrameArea(frame);
+    if (frameArea <= 0) {
       continue;
     }
 
@@ -145,12 +265,18 @@ async function collectAdCandidates(page: Page): Promise<AdClickCandidate[]> {
             visible:
               style.visibility !== "hidden" &&
               style.display !== "none" &&
-              rect.width > 0 &&
-              rect.height > 0,
+              style.opacity !== "0",
           };
         });
       }, ANCHOR_SELECTOR);
-      candidates.push(...frameCandidates);
+
+      for (const candidate of frameCandidates) {
+        candidates.push({
+          ...candidate,
+          // A 0x0 anchor inside a visible ad iframe is still a real ad link.
+          area: candidate.area > 0 ? candidate.area : frameArea,
+        });
+      }
     } catch (error) {
       console.warn(`Failed to read ad candidates from frame: ${error}`);
     }
@@ -160,38 +286,15 @@ async function collectAdCandidates(page: Page): Promise<AdClickCandidate[]> {
 }
 
 /**
- * Resolves as soon as any creative frame exposes an anchor, or after the
- * timeout when none appear, so a filled slot is not delayed by a fixed wait.
- */
-async function waitForAdAnchor(page: Page, timeoutMs: number): Promise<void> {
-  const mainFrame = page.mainFrame();
-  const waits = page
-    .frames()
-    .filter((frame) => frame !== mainFrame)
-    .map((frame) =>
-      frame
-        .waitForSelector(ANCHOR_SELECTOR, { timeout: timeoutMs, state: "attached" })
-        .catch(() => null),
-    );
-
-  if (waits.length === 0) {
-    await page.waitForTimeout(Math.min(timeoutMs, 1000));
-    return;
-  }
-
-  await Promise.race([
-    Promise.any(waits).catch(() => undefined),
-    page.waitForTimeout(timeoutMs),
-  ]);
-}
-
-/**
  * Extracts the destinations advertised in the creative frames, ranked best
- * first and deduplicated after tracking-parameter stripping. No clicking: the
- * anchor href is the exact URL the browser would have opened.
+ * first and deduplicated by a stable destination key. No clicking: the anchor
+ * href is the exact URL the browser would have opened.
  */
-export async function extractAdLinks(page: Page): Promise<ExtractedAdLink[]> {
-  const candidates = await collectAdCandidates(page);
+export async function extractAdLinks(
+  page: Page,
+  target?: AdsenseTarget,
+): Promise<ExtractedAdLink[]> {
+  const candidates = await collectAdCandidates(page, target);
   const ordered = rankAdCandidatesOrdered(candidates);
   const links: ExtractedAdLink[] = [];
   const seen = new Set<string>();
@@ -206,13 +309,28 @@ export async function extractAdLinks(page: Page): Promise<ExtractedAdLink[]> {
       fallbackToRawHref: true,
       stripTrackingParams: true,
     });
-    if (extracted == null || seen.has(extracted.url)) {
+    if (extracted == null) {
       continue;
     }
 
-    seen.add(extracted.url);
+    const dedupeKey = canonicalizeAdDestinationForDedupe(extracted.url);
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+
+    seen.add(dedupeKey);
     links.push({ url: extracted.url, source: extracted.source, text });
   }
+
+  // Prefer destinations we could unwrap; raw tracker URLs are the fallback.
+  const sourcePriority: Record<ExtractedAdLink["source"], number> = {
+    adurl: 0,
+    ds_dest_url: 0,
+    maxdest: 0,
+    redir: 0,
+    raw: 1,
+  };
+  links.sort((a, b) => sourcePriority[a.source] - sourcePriority[b.source]);
 
   return links;
 }
@@ -287,7 +405,7 @@ export class AdsenseHunter {
   private async huntAdsenseAdsInternal(
     options: AdsenseHuntOptions,
   ): Promise<AdsenseHuntResult> {
-    const target = options.target ?? IZITO_TARGET;
+    const target = options.target ?? DEFAULT_ADSENSE_TARGET;
 
     await this.ensureBrowserIsHealthy();
 
@@ -314,7 +432,7 @@ export class AdsenseHunter {
       });
 
       await page.goto(target.url, {
-        waitUntil: "load",
+        waitUntil: target.waitUntil ?? "load",
         timeout: PAGE_LOAD_TIMEOUT_MS,
       });
       await this.acceptConsent(page, target);
@@ -327,9 +445,10 @@ export class AdsenseHunter {
         return { status: "no_fill", target: target.name };
       }
 
-      await waitForAdAnchor(page, ANCHOR_WAIT_MS);
+      // Let the other slots on the page fill after the first one appears.
+      await page.waitForTimeout(target.postFillSettleMs ?? 3_000);
 
-      const links = await extractAdLinks(page);
+      const links = await extractAdLinks(page, target);
       console.log(
         `Adsense hunter extracted ${links.length} ad link(s) from ${target.name}`,
       );
@@ -384,7 +503,12 @@ export class AdsenseHunter {
           continue;
         }
 
-        lastResult = await this.processAdResult(target, link.url, result);
+        lastResult = await this.processAdResult(
+          target,
+          link.url,
+          result,
+          options.dryRun ?? false,
+        );
       }
 
       return (
@@ -410,6 +534,7 @@ export class AdsenseHunter {
     target: AdsenseTarget,
     adUrl: string,
     result: ProcessAdResult,
+    dryRun: boolean,
   ): Promise<AdsenseHuntResult> {
     const { screenshot, html, redirectionPath, signals } = result;
     const finalUrl = redirectionPath[redirectionPath.length - 1] || adUrl;
@@ -439,6 +564,24 @@ export class AdsenseHunter {
       redirect_hops: redirectionPath.length,
     });
 
+    if (dryRun) {
+      console.log(
+        `[adsense dry-run] ${adUrl} -> ${finalUrl} ` +
+          `(isScam=${isScam}, confidence=${confidenceScore.toFixed(3)}, ` +
+          `signals=${hasSignal})`,
+      );
+      return {
+        status: "processed",
+        target: target.name,
+        initialUrl: adUrl,
+        finalUrl,
+        redirectionPath,
+        isScam,
+        confidenceScore,
+        reason: "dry run",
+      };
+    }
+
     await aiClassifierService.saveData(finalUrl, screenshot, html, rawIsScam, confidenceScore);
 
     let isNewDestination = false;
@@ -448,9 +591,19 @@ export class AdsenseHunter {
     try {
       await client.query("BEGIN");
 
+      const canonicalAdUrl = canonicalizeAdDestinationForDedupe(adUrl);
       const existingResult = await client.query(
-        `SELECT id, is_scam FROM ads WHERE initial_url = $1 AND ad_type = 'adsense'`,
-        [adUrl],
+        `SELECT id, is_scam
+         FROM ads
+         WHERE ad_type = 'adsense'
+           AND (
+             initial_url = $1
+             OR regexp_replace(initial_url, '\\?.*$', '')
+                = regexp_replace($1, '\\?.*$', '')
+           )
+         ORDER BY last_seen DESC
+         LIMIT 1`,
+        [canonicalAdUrl],
       );
       const existingAd = existingResult.rows[0];
 
@@ -629,13 +782,28 @@ export class AdsenseHunter {
     return { status: "processed", target: target.name, initialUrl: adUrl, finalUrl, redirectionPath };
   }
 
-  /** Returns true when this exact destination was already confirmed as a scam. */
+  /**
+   * Returns true when this destination was already confirmed as a scam.
+   * The query-stripped fallback matches rows written before rotating click
+   * identifiers were removed from the dedupe key.
+   */
   private async isKnownScamAd(adUrl: string): Promise<boolean> {
+    const canonicalAdUrl = canonicalizeAdDestinationForDedupe(adUrl);
     const client = await pool.connect();
     try {
       const result = await client.query(
-        `SELECT id FROM ads WHERE initial_url = $1 AND ad_type = 'adsense' AND is_scam = true`,
-        [adUrl],
+        `SELECT id
+         FROM ads
+         WHERE ad_type = 'adsense'
+           AND is_scam = true
+           AND (
+             initial_url = $1
+             OR regexp_replace(initial_url, '\\?.*$', '')
+                = regexp_replace($1, '\\?.*$', '')
+           )
+         ORDER BY last_seen DESC
+         LIMIT 1`,
+        [canonicalAdUrl],
       );
       if (result.rowCount === 0) {
         return false;

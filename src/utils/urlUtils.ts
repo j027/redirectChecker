@@ -24,6 +24,55 @@ const AD_TRACKING_PARAMS = [
   "gclid",
 ];
 
+/**
+ * Additional rotating click/campaign identifiers used only when building a
+ * dedupe key. These are intentionally not part of AD_TRACKING_PARAMS because
+ * stripping them from the navigation URL can change where the ad lands.
+ */
+const AD_DEDUPE_TRACKING_PARAMS = new Set([
+  ...AD_TRACKING_PARAMS,
+  "extclickid",
+  "t1",
+  "t2",
+  "adposition",
+  "adid",
+  "matchtype",
+  "match_type",
+  "campid",
+  "target",
+  "campaign",
+  "adgroup",
+  "creative",
+  "placement",
+  "term",
+  "source",
+  "network",
+  "device",
+  "device_type",
+  "keyword",
+  "adgroupid",
+  "campaignid",
+  "creativeid",
+  "creative_id",
+  "adgroup_id",
+  "campaign_id",
+  "ad_id",
+  "keyword_id",
+  "cid",
+  "gad_campaignid",
+  "gbraid",
+  "wbraid",
+  "dclid",
+  "msclkid",
+  "fbclid",
+  "ttclid",
+  "twclid",
+  "yclid",
+  "srsltid",
+  "tblci",
+  "gad",
+]);
+
 /** Ad-serving utility links that are never the creative's destination. */
 const AD_UTILITY_HREF_PATTERN =
   /adssettings\.google|google\.com\/settings\/ads|myadcenter|support\.google|\/privacy/i;
@@ -45,6 +94,38 @@ function stripAdTrackingParams(url: URL): URL {
     url.searchParams.delete(param);
   }
   return url;
+}
+
+/**
+ * Builds a stable key for deduplicating an ad destination across cycles.
+ *
+ * Ad click URLs often carry rotating identifiers (`extclickid`, `gclid`,
+ * campaign IDs, etc.) that change on every impression even though the landing
+ * page is identical. This helper removes those identifiers while preserving
+ * path and meaningful query parameters. It must only be used for comparisons;
+ * navigating the returned URL could drop parameters the landing page needs.
+ */
+export function canonicalizeAdDestinationForDedupe(raw: string): string {
+  try {
+    const url = new URL(raw);
+    for (const param of AD_DEDUPE_TRACKING_PARAMS) {
+      url.searchParams.delete(param);
+    }
+    for (const key of Array.from(url.searchParams.keys())) {
+      const lower = key.toLowerCase();
+      if (
+        lower.startsWith("utm_") ||
+        lower.startsWith("hsa_") ||
+        lower.startsWith("smb_")
+      ) {
+        url.searchParams.delete(key);
+      }
+    }
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return raw;
+  }
 }
 
 function resolveDoubleClickDestination(

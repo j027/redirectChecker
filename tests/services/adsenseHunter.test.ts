@@ -4,6 +4,8 @@ import { describe, it, expect } from "vitest";
 import "../../src/services/hunterService.js";
 import {
   AdClickCandidate,
+  DEFAULT_ADSENSE_TARGET,
+  GREETINGS_123_TARGET,
   rankAdCandidates,
   rankAdCandidatesOrdered,
 } from "../../src/services/adsenseHunter.js";
@@ -61,5 +63,22 @@ describe("rankAdCandidatesOrdered", () => {
     ];
 
     expect(rankAdCandidatesOrdered(candidates)).toEqual([1, 0]);
+  });
+});
+
+describe("123greetings target", () => {
+  it("is the default AdSense target", () => {
+    expect(DEFAULT_ADSENSE_TARGET).toBe(GREETINGS_123_TARGET);
+    expect(GREETINGS_123_TARGET.url).toBe("https://www.123greetings.com/");
+  });
+
+  it("waits for a filled GPT slot and scans ad-slot frames", () => {
+    expect(GREETINGS_123_TARGET.filledSlotSelector).toContain(
+      "div#div-gpt-mrec1[data-google-query-id]",
+    );
+    expect(GREETINGS_123_TARGET.adFrameSelector).toContain(
+      'iframe[name^="google_ads_iframe_"]',
+    );
+    expect(GREETINGS_123_TARGET.waitUntil).toBe("domcontentloaded");
   });
 });

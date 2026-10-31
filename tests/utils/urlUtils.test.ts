@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  canonicalizeAdDestinationForDedupe,
   extractAdDestinationUrl,
   redactIpFromUrl,
   unwrapYahooClickUrl,
@@ -210,6 +211,56 @@ describe("extractAdDestinationUrl", () => {
       url: "https://landing.example/cl?m315=c",
       source: "redir",
     });
+  });
+});
+
+describe("canonicalizeAdDestinationForDedupe", () => {
+  function greetingsAdUrl(clickId: string): string {
+    return (
+      "http://clickactivehub.com/" +
+      `?extclickid=${clickId}` +
+      "&t1=www.123greetings.com&t2=&adposition=&adid=%7Badid%7D" +
+      "&matchtype=&campid=23947507120&target=&gad_source=5" +
+      "&gad_campaignid=23937755010&gclid=" +
+      clickId
+    );
+  }
+
+  it("collapses rotating 123greetings click identifiers", () => {
+    expect(canonicalizeAdDestinationForDedupe(greetingsAdUrl("AAA"))).toBe(
+      "http://clickactivehub.com/",
+    );
+    expect(canonicalizeAdDestinationForDedupe(greetingsAdUrl("AAA"))).toBe(
+      canonicalizeAdDestinationForDedupe(greetingsAdUrl("BBB")),
+    );
+  });
+
+  it("strips Google Ads hsa_/smb_ parameters and click ids", () => {
+    expect(
+      canonicalizeAdDestinationForDedupe(
+        "https://oneplan.io/?hsa_acc=4534488795&hsa_cam=20792189979&cid=abc&gad_campaignid=20798489885",
+      ),
+    ).toBe("https://oneplan.io/");
+  });
+
+  it("removes utm parameters and fragments", () => {
+    expect(
+      canonicalizeAdDestinationForDedupe(
+        "https://landing.example/page?utm_source=taboola&utm_campaign=x&id=42#frag",
+      ),
+    ).toBe("https://landing.example/page?id=42");
+  });
+
+  it("keeps meaningful query parameters", () => {
+    expect(
+      canonicalizeAdDestinationForDedupe(
+        "https://landing.example/product/123?variant=blue&gclid=abc",
+      ),
+    ).toBe("https://landing.example/product/123?variant=blue");
+  });
+
+  it("returns malformed input unchanged", () => {
+    expect(canonicalizeAdDestinationForDedupe("not a url")).toBe("not a url");
   });
 });
 

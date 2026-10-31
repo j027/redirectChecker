@@ -336,7 +336,7 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
         { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: () => typosquatHunter.huntTyposquat() },
         { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: () => pornhubAdHunter.huntPornhubAds() },
         { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: () => adSpyGlassHunter.huntAdSpyGlassAds() },
-        { hunterName: "adsense" as const, name: "AdSense ad hunting", type: "adsense" as const, fn: () => adsenseHunter.huntAdsenseAds() },
+        { hunterName: "adsense" as const, name: "AdSense ad hunting", type: "adsense" as const, fn: () => adsenseHunter.huntAdsenseAds(), timeoutMs: 180000 },
         { hunterName: "taboola" as const, name: "Taboola ad hunting", type: "taboola" as const, fn: () => taboolaHunter.huntTaboolaAds(), timeoutMs: 180000 },
       ];
       const hunters = allHunters.filter(hunter => enabledHunters.includes(hunter.hunterName));

@@ -3,7 +3,13 @@ import { readConfig } from "../config.js";
 import { discordClient } from "../discordClient.js";
 
 // Add pornhubAd and adspyglass as new alert types
-export type AlertType = "adScam" | "typosquat" | "pornhubAd" | "adspyglass" | "adsense";
+export type AlertType =
+  | "adScam"
+  | "typosquat"
+  | "pornhubAd"
+  | "adspyglass"
+  | "adsense"
+  | "taboola";
 
 export interface AlertPayload {
   type: AlertType;
@@ -59,6 +65,11 @@ function getAlertConfig(type: AlertType, isNew: boolean): { emoji: string; title
     adsense: {
       newTitle: "NEW ADSENSE AD SCAM DETECTED",
       existingTitle: "EXISTING ADSENSE AD NOW MARKED AS SCAM",
+      color: 0xff0000, // Red
+    },
+    taboola: {
+      newTitle: "NEW TABOOLA AD SCAM DETECTED",
+      existingTitle: "EXISTING TABOOLA AD NOW MARKED AS SCAM",
       color: 0xff0000, // Red
     },
   };
@@ -181,8 +192,11 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
       );
     }
 
-    // Add ad text for adScam type
-    if (payload.type === "adScam" && payload.adText) {
+    // Add ad text for search and Taboola ad alerts
+    if (
+      (payload.type === "adScam" || payload.type === "taboola") &&
+      payload.adText
+    ) {
       const formattedAdText = payload.adText.replace(/\s+/g, " ").trim();
       embed.addFields({
         name: "Ad Text",

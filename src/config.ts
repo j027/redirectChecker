@@ -1,6 +1,13 @@
 import {promises as fs} from "fs";
 
-export const HUNTER_NAMES = ["search", "typosquat", "pornhub", "adspyglass", "adsense"] as const;
+export const HUNTER_NAMES = [
+  "search",
+  "typosquat",
+  "pornhub",
+  "adspyglass",
+  "adsense",
+  "taboola",
+] as const;
 
 export type HunterName = (typeof HUNTER_NAMES)[number];
 
@@ -23,6 +30,19 @@ type Config = {
   virusTotalApiKey: string;
   microsoftUsername: string;
   microsoftPassword: string;
+  /** Yahoo Mail account used by the Taboola hunter. */
+  yahooUsername: string;
+  yahooPassword: string;
+  /**
+   * Base32 TOTP secret for the Yahoo account's authenticator-app 2-step
+   * verification. Optional; only used when Yahoo asks for a code.
+   */
+  yahooTotpSecret?: string;
+  /**
+   * Advertiser domains to skip in the Taboola hunter without clicking.
+   * Useful for known-good brands whose ads are unlikely to be scams.
+   */
+  taboolaSkipAdvertiserDomains?: string[];
   kasperskyApiKey: string;
   metaDefenderApiKey: string;
   checkPhishApiKey: string;
@@ -81,10 +101,30 @@ export async function readConfig(): Promise<Config> {
     );
   }
 
+  if (
+    isHunterEnabled(config, "taboola") &&
+    (typeof config.yahooUsername !== "string" ||
+      config.yahooUsername.trim() === "" ||
+      typeof config.yahooPassword !== "string" ||
+      config.yahooPassword === "")
+  ) {
+    throw new Error(
+      'config.json is missing required "yahooUsername"/"yahooPassword". ' +
+        "Set them or disable the taboola hunter."
+    );
+  }
+
   return config;
 }
 
+/**
+ * Hunters that need an explicit opt-in. New hunters that require credentials
+ * or otherwise change deployment behavior should be added here so existing
+ * configs do not start them accidentally.
+ */
+const DEFAULT_DISABLED_HUNTERS = new Set<HunterName>(["taboola"]);
+
 /** A hunter is enabled unless explicitly disabled in config. */
 export function isHunterEnabled(config: Config, hunter: HunterName): boolean {
-  return config.hunters?.[hunter] ?? true;
+  return config.hunters?.[hunter] ?? !DEFAULT_DISABLED_HUNTERS.has(hunter);
 }

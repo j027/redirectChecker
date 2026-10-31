@@ -17,6 +17,7 @@ export const hunterLogsCommand: CommandDefinition = {
           { name: "Pornhub", value: "pornhub" },
           { name: "AdSpyGlass", value: "adspyglass" },
           { name: "AdSense", value: "adsense" },
+          { name: "Taboola", value: "taboola" },
           { name: "Scheduler", value: "scheduler" }
         )
     )

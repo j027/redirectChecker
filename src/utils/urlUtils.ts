@@ -30,7 +30,7 @@ const AD_UTILITY_HREF_PATTERN =
 
 export interface ExtractedAdDestination {
   url: string;
-  source: "adurl" | "ds_dest_url" | "raw";
+  source: "adurl" | "ds_dest_url" | "maxdest" | "redir" | "raw";
 }
 
 export interface ExtractAdDestinationOptions {
@@ -49,7 +49,7 @@ function stripAdTrackingParams(url: URL): URL {
 
 function resolveDoubleClickDestination(
   url: URL,
-  source: "adurl" | "raw"
+  source: "adurl" | "maxdest" | "redir" | "raw"
 ): ExtractedAdDestination {
   if (
     url.hostname === "ad.doubleclick.net" &&
@@ -62,6 +62,62 @@ function resolveDoubleClickDestination(
   }
 
   return { url: url.toString(), source };
+}
+
+/**
+ * Parses an embedded destination value. `URLSearchParams` already decodes one
+ * layer, but some ad servers double-encode, so try the value as-is first and
+ * only fall back to a second decode when the first parse fails.
+ */
+function parseEmbeddedDestination(value: string): URL | null {
+  const candidates = [value];
+  try {
+    const decoded = decodeURIComponent(value);
+    if (decoded !== value) {
+      candidates.push(decoded);
+    }
+  } catch {
+    // Keep the raw candidate; malformed percent escapes are not a destination.
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return parsed;
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Some click servers (notably Criteo) put the landing page in a `maxdest`
+ * query parameter. When present, the destination can be read without making
+ * a billable click.
+ */
+function extractMaxdestDestination(
+  url: URL,
+  stripTrackingParams: boolean
+): ExtractedAdDestination | null {
+  const maxdest = url.searchParams.get("maxdest");
+  if (maxdest == null || maxdest.trim() === "") {
+    return null;
+  }
+
+  const destination = parseEmbeddedDestination(maxdest);
+  if (destination == null) {
+    return null;
+  }
+
+  if (stripTrackingParams) {
+    stripAdTrackingParams(destination);
+  }
+
+  return resolveDoubleClickDestination(destination, "maxdest");
 }
 
 /**
@@ -97,16 +153,26 @@ export function extractAdDestinationUrl(
     return null;
   }
 
+  const maxdest = extractMaxdestDestination(parsed, stripTrackingParams);
+  if (maxdest != null) {
+    return maxdest;
+  }
+
+  const redir = parsed.searchParams.get("redir");
+  if (redir != null && redir.trim() !== "") {
+    const destination = parseEmbeddedDestination(redir);
+    if (destination != null) {
+      if (stripTrackingParams) {
+        stripAdTrackingParams(destination);
+      }
+      return resolveDoubleClickDestination(destination, "redir");
+    }
+  }
+
   const adurl = parsed.searchParams.get("adurl");
   if (adurl != null && adurl.trim() !== "") {
-    let destination: URL;
-    try {
-      destination = new URL(decodeURIComponent(adurl));
-    } catch {
-      return null;
-    }
-
-    if (destination.protocol !== "http:" && destination.protocol !== "https:") {
+    const destination = parseEmbeddedDestination(adurl);
+    if (destination == null) {
       return null;
     }
 
@@ -126,6 +192,64 @@ export function extractAdDestinationUrl(
   }
 
   return resolveDoubleClickDestination(parsed, "raw");
+}
+
+/**
+ * Unwraps a Yahoo click wrapper of the form:
+ *   https://pn.ybp.yahoo.com/cj/cd/<token>/rurl/<destination>
+ *
+ * The destination is followed by Yahoo's own query string and fragment. Those
+ * are reattached because `?tblci=...` is the Taboola click token, not part of
+ * the wrapped URL's path.
+ *
+ * Returns null when the URL is not a Yahoo /rurl/ wrapper.
+ */
+export function unwrapYahooClickUrl(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+
+  if (url.hostname !== "yahoo.com" && !url.hostname.endsWith(".yahoo.com")) {
+    return null;
+  }
+
+  const marker = "/rurl/";
+  const markerIndex = url.pathname.indexOf(marker);
+  if (markerIndex === -1) {
+    return null;
+  }
+
+  let destination = url.pathname.slice(markerIndex + marker.length);
+  if (destination.trim() === "") {
+    return null;
+  }
+
+  if (!/^https?:\/\//i.test(destination)) {
+    try {
+      destination = decodeURIComponent(destination);
+    } catch {
+      return null;
+    }
+  }
+
+  if (url.search) {
+    destination += destination.includes("?") ? `&${url.search.slice(1)}` : url.search;
+  }
+  destination += url.hash;
+
+  try {
+    const parsed = new URL(destination);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return destination;
 }
 
 // Matches standard IPv4 addresses (strict octet range 0-255)

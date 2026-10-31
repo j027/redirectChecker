@@ -54,7 +54,7 @@ export interface AdsenseHuntResult {
 
 export interface ExtractedAdLink {
   url: string;
-  source: "adurl" | "ds_dest_url" | "raw";
+  source: "adurl" | "ds_dest_url" | "maxdest" | "redir" | "raw";
   text: string;
 }
 

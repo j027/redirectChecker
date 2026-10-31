@@ -1,6 +1,6 @@
 import { checkRedirects } from "./redirectMonitorService.js";
 import { monitorTakedownStatus } from "./takedownMonitorService.js";
-import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter, adsenseHunter } from "./hunterService.js";
+import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter, adsenseHunter, taboolaHunter } from "./hunterService.js";
 import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
 import { browserReportService } from "./browserReportService.js";
@@ -310,6 +310,9 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
       if (enabledHunters.includes("adsense")) {
         browserRestarts.push(adsenseHunter.restartBrowser().catch(e => console.error("Error restarting AdsenseHunter browser:", e)));
       }
+      if (enabledHunters.includes("taboola")) {
+        browserRestarts.push(taboolaHunter.restartBrowser().catch(e => console.error("Error restarting TaboolaHunter browser:", e)));
+      }
       await Promise.allSettled(browserRestarts);
 
       console.log("Starting hunting cycle...");
@@ -327,12 +330,14 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
         name: string;
         type: HunterType;
         fn: () => Promise<unknown>;
+        timeoutMs?: number;
       }[] = [
         { hunterName: "search" as const, name: "Search ad hunting", type: "search" as const, fn: () => searchAdHunter.huntSearchAds() },
         { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: () => typosquatHunter.huntTyposquat() },
         { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: () => pornhubAdHunter.huntPornhubAds() },
         { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: () => adSpyGlassHunter.huntAdSpyGlassAds() },
         { hunterName: "adsense" as const, name: "AdSense ad hunting", type: "adsense" as const, fn: () => adsenseHunter.huntAdsenseAds() },
+        { hunterName: "taboola" as const, name: "Taboola ad hunting", type: "taboola" as const, fn: () => taboolaHunter.huntTaboolaAds(), timeoutMs: 180000 },
       ];
       const hunters = allHunters.filter(hunter => enabledHunters.includes(hunter.hunterName));
 
@@ -341,7 +346,11 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
 
         try {
           adHunterAbortController?.signal.throwIfAborted();
-          await withTimeout(hunter.fn(), TIMEOUT_MS, hunter.name);
+          await withTimeout(
+            hunter.fn(),
+            hunter.timeoutMs ?? TIMEOUT_MS,
+            hunter.name
+          );
         } catch (error) {
           if (isAbortError(error) && !isRunning.adHunter) throw error;
           console.error(`Error during ${hunter.name}: ${(error as Error).message}`);

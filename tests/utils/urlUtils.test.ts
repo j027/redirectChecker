@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   extractAdDestinationUrl,
   redactIpFromUrl,
+  unwrapYahooClickUrl,
 } from "../../src/utils/urlUtils.js";
 
 describe("redactIpFromUrl", () => {
@@ -174,5 +175,82 @@ describe("extractAdDestinationUrl", () => {
   it("rejects an adurl with a non-http destination", () => {
     const href = "https://tracker.example/click?adurl=javascript%3Aalert(1)";
     expect(extractAdDestinationUrl(href, stripOptions)).toBeNull();
+  });
+
+  it("extracts maxdest from Criteo click URLs", () => {
+    const href =
+      "https://cat.da1.us.criteo.com/delivery/ckn.php?cppv=3&cpp=abc" +
+      "&maxdest=https%3A%2F%2Fretailer.example%2Fproduct%2F123" +
+      "%3Futm_source%3Dcriteo%26utm_medium%3Ddisplay&tblci=TOKEN#tblciTOKEN";
+
+    expect(extractAdDestinationUrl(href, stripOptions)).toEqual({
+      url: "https://retailer.example/product/123?utm_source=criteo&utm_medium=display",
+      source: "maxdest",
+    });
+  });
+
+  it("extracts a double-encoded maxdest destination", () => {
+    const href =
+      "https://cat.da1.us.criteo.com/delivery/ckn.php?maxdest=" +
+      "https%253A%252F%252Fscam.example%252Flanding%253Fa%253D1";
+
+    expect(extractAdDestinationUrl(href, stripOptions)).toEqual({
+      url: "https://scam.example/landing?a=1",
+      source: "maxdest",
+    });
+  });
+
+  it("extracts the redir destination from Taboola native click URLs", () => {
+    const href =
+      "https://api.taboola.com/2.0/json/yahoo-mail/recommendations.notify-click" +
+      "?app.type=web&redir=https%3A%2F%2Flanding.example%2Fcl%3Fm315%3Dc%26q%3Dabc";
+
+    // `q` is in the ad-tracking parameter list, so it is stripped.
+    expect(extractAdDestinationUrl(href, stripOptions)).toEqual({
+      url: "https://landing.example/cl?m315=c",
+      source: "redir",
+    });
+  });
+});
+
+describe("unwrapYahooClickUrl", () => {
+  it("unwraps a Yahoo /rurl/ wrapper and preserves the taboola token", () => {
+    const wrapper =
+      "https://pn.ybp.yahoo.com/cj/cd/TOKEN/rurl/" +
+      "https://ad.doubleclick.net/ddm/trackclk/N123/B456;dc_trk_aid=1;dc_tdv=1" +
+      "?tblci=ABC#tblciABC";
+
+    expect(unwrapYahooClickUrl(wrapper)).toBe(
+      "https://ad.doubleclick.net/ddm/trackclk/N123/B456;dc_trk_aid=1;dc_tdv=1" +
+        "?tblci=ABC#tblciABC"
+    );
+  });
+
+  it("decodes an encoded destination and appends the Yahoo query", () => {
+    const wrapper =
+      "https://pn.ybp.yahoo.com/cj/cd/TOKEN/rurl/" +
+      "https%3A%2F%2Fexample.com%2Flanding%3Fa%3D1?tblci=ABC";
+
+    expect(unwrapYahooClickUrl(wrapper)).toBe(
+      "https://example.com/landing?a=1&tblci=ABC"
+    );
+  });
+
+  it("returns null for non-Yahoo URLs", () => {
+    expect(
+      unwrapYahooClickUrl(
+        "https://tracker.example/cj/cd/TOKEN/rurl/https://example.com"
+      )
+    ).toBeNull();
+  });
+
+  it("returns null when there is no /rurl/ segment", () => {
+    expect(
+      unwrapYahooClickUrl("https://pn.ybp.yahoo.com/cj/cd/TOKEN")
+    ).toBeNull();
+  });
+
+  it("returns null for malformed URLs", () => {
+    expect(unwrapYahooClickUrl("not a url")).toBeNull();
   });
 });

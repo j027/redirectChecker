@@ -25,6 +25,7 @@ An automated system that hunts tech support scams by following malicious ad redi
 | Pornhub Ad | Pornhub ad API | Fetches and follows ad redirect URLs |
 | AdSpyGlass | Adult sites using AdSpyGlass | Triggers popunder ads by clicking video players |
 | Typosquat | Typosquatted domains | Visits domains from `typosquats.json` and follows redirects |
+| Taboola | Yahoo Mail top-right/top-rail ad auctions | Logs in with the configured Yahoo account, intercepts Taboola OpenRTB responses, extracts destinations, and follows direct or click destinations |
 
 ## Tech Stack
 

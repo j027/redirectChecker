@@ -129,6 +129,35 @@ CREATE TABLE IF NOT EXISTS search_ads
     search_url TEXT           -- Optional: the URL used to find this ad
 );
 
+-- Taboola-specific campaign/creative metadata
+CREATE TABLE IF NOT EXISTS taboola_ads
+(
+    ad_id              UUID PRIMARY KEY REFERENCES ads (id) ON DELETE CASCADE,
+    bid_id             TEXT,
+    impression_id      TEXT,
+    campaign_id        TEXT,
+    creative_id        TEXT,
+    advertiser_domain  TEXT,
+    title              TEXT,
+    description        TEXT,
+    branding_text      TEXT,
+    cta_text           TEXT,
+    thumbnail_url      TEXT,
+    click_url          TEXT,
+    placement          TEXT,
+    bidfloor           FLOAT,
+    destination_source TEXT, -- 'maxdest', 'redir', 'adurl', 'ds_dest_url', 'unwrapped_click', 'click', 'raw'
+    first_seen         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_seen          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_taboola_ads_creative
+    ON taboola_ads (lower(advertiser_domain), creative_id);
+CREATE INDEX IF NOT EXISTS idx_taboola_ads_campaign
+    ON taboola_ads (campaign_id);
+CREATE INDEX IF NOT EXISTS idx_taboola_ads_last_seen
+    ON taboola_ads (last_seen DESC);
+
 -- History table to track status changes
 CREATE TABLE IF NOT EXISTS ad_status_history
 (

@@ -1,6 +1,6 @@
 import pool from "../dbPool.js";
 
-export type HunterType = "search" | "typosquat" | "pornhub" | "adspyglass" | "adsense" | "scheduler" | "classifier";
+export type HunterType = "search" | "typosquat" | "pornhub" | "adspyglass" | "adsense" | "taboola" | "scheduler" | "classifier";
 
 export type HunterEventType =
   | "cycle_start"

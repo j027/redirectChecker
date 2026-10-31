@@ -28,7 +28,8 @@ export const adsCommand: CommandDefinition = {
           { name: "Typosquat", value: "typosquat" },
           { name: "Pornhub", value: "pornhub" },
           { name: "AdSpyGlass", value: "adspyglass" },
-          { name: "AdSense", value: "adsense" }
+          { name: "AdSense", value: "adsense" },
+          { name: "Taboola", value: "taboola" }
         )
     )
     .addIntegerOption((option) =>

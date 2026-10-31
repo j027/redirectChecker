@@ -1,4 +1,4 @@
-import { Browser } from "patchright";
+import { Browser, BrowserContext } from "patchright";
 import {
   blockGoogleAnalytics,
   blockMailtoLinks,
@@ -18,6 +18,7 @@ import { TyposquatHunter } from "./typosquatHunter.js";
 import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
 import { AdsenseHunter } from "./adsenseHunter.js";
+import { TaboolaHunter } from "./taboolaHunter.js";
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
 import { HUNTER_NAMES, HunterName } from "../config.js";
 
@@ -42,6 +43,7 @@ export const typosquatHunter = new TyposquatHunter();
 export const pornhubAdHunter = new PornhubAdHunter();
 export const adSpyGlassHunter = new AdSpyGlassHunter();
 export const adsenseHunter = new AdsenseHunter();
+export const taboolaHunter = new TaboolaHunter();
 
 export class HunterService {
   private browser: Browser | null = null;
@@ -67,6 +69,9 @@ export class HunterService {
     }
     if (huntersToInit.includes("adsense")) {
       await adsenseHunter.init();
+    }
+    if (huntersToInit.includes("taboola")) {
+      await taboolaHunter.init();
     }
   }
 
@@ -130,9 +135,14 @@ export class HunterService {
     return await adsenseHunter.huntAdsenseAds();
   }
 
+  public async huntTaboolaAds() {
+    return await taboolaHunter.huntTaboolaAds();
+  }
+
   public async processAd(
     adDestination: string,
-    referer?: string
+    referer?: string,
+    options: { context?: BrowserContext } = {}
   ): Promise<ProcessAdResult | null> {
     await this.ensureBrowserIsHealthy();
 
@@ -146,10 +156,16 @@ export class HunterService {
     // Create signal service for this ad processing
     const signalService = createSignalService();
 
-    const context = await this.browser.newContext({
-      proxy: await parseProxy("hunter"),
-      viewport: null,
-    });
+    // Hunters can pass an existing context when the click URL is bound to a
+    // logged-in session (for example, a Yahoo Mail ad click). In that case the
+    // caller owns the context and it must not be closed here.
+    const ownsContext = options.context == null;
+    const context =
+      options.context ??
+      (await this.browser.newContext({
+        proxy: await parseProxy("hunter"),
+        viewport: null,
+      }));
 
     const page = await context.newPage();
     let screenshot: Buffer | null = null;
@@ -191,8 +207,10 @@ export class HunterService {
       console.log(`There was an error when processing ad destination ${error}`);
       return null;
     } finally {
-      await page.close();
-      await context.close();
+      await page.close().catch(() => {});
+      if (ownsContext) {
+        await context.close().catch(() => {});
+      }
     }
 
     return { screenshot, html, redirectionPath, signals };
@@ -463,6 +481,8 @@ export class HunterService {
     await typosquatHunter.close();
     await pornhubAdHunter.close();
     await adSpyGlassHunter.close();
+    await adsenseHunter.close();
+    await taboolaHunter.close();
   }
 }
 

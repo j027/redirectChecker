@@ -91,6 +91,19 @@ export class HunterService {
     }
   }
 
+  /**
+   * Closes the shared ad-processing browser without recreating it. Used when a
+   * hunt exceeds its deadline so the in-flight page operations are cancelled.
+   */
+  public async cancel(): Promise<void> {
+    console.warn("Cancelling hunter service browser...");
+    await BrowserManagerService.cancelBrowser(
+      this.browser,
+      "HunterService"
+    );
+    this.browser = null;
+  }
+
   private async ensureBrowserIsHealthy(): Promise<void> {
     await BrowserManagerService.ensureBrowserHealth(
       this.browser,

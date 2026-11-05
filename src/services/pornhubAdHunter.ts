@@ -51,6 +51,12 @@ export class PornhubAdHunter {
     this.browser = null;
   }
 
+  async cancel(): Promise<void> {
+    console.warn("Cancelling PornhubAdHunter browser...");
+    await BrowserManagerService.cancelBrowser(this.browser, "PornhubAdHunter");
+    this.browser = null;
+  }
+
   async huntPornhubAds(): Promise<boolean> {
     return this.huntPornhubAdsInternal();
   }

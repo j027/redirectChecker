@@ -41,6 +41,27 @@ services:
       - apparmor:unconfined
       - "seccomp:./docker/seccomp-chrome.json"
     stop_grace_period: 60s
+    labels:
+      autoheal: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:3000/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  autoheal:
+    image: willfarrell/autoheal@sha256:2fb036bb6d0bcd4d7ff8408a86d60b0703fa610cc645cacd742f2f3bb1a7e124
+    restart: unless-stopped
+    network_mode: none
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 10
+      AUTOHEAL_ONLY_MONITOR_RUNNING: "true"
+      AUTOHEAL_START_PERIOD: 120
+      AUTOHEAL_DEFAULT_STOP_TIMEOUT: 60
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   pgdata:

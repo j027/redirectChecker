@@ -43,8 +43,10 @@ const FAILURE_SCREENSHOT_DIR = path.join(process.cwd(), "data", "yahoo");
 const PAGE_LOAD_TIMEOUT_MS = 45_000;
 const LOGIN_TIMEOUT_MS = 45_000;
 const CAPTURE_WINDOW_MS = 35_000;
-const CYCLE_BUDGET_MS = 90_000;
-const MAX_ADS_PER_CYCLE = 3;
+const CYCLE_BUDGET_MS = 75_000;
+const MAX_ADS_PER_CYCLE = 2;
+/** Minimum time needed for one navigation + classification attempt. */
+const MIN_PROCESS_BUDGET_MS = 35_000;
 const LOGIN_SETTLE_TIMEOUT_MS = 30_000;
 
 /** Hosts that are ad delivery/click infrastructure, never a cloaker candidate. */
@@ -742,6 +744,12 @@ export class TaboolaHunter {
     this.browser = null;
   }
 
+  async cancel(): Promise<void> {
+    console.warn("Cancelling TaboolaHunter browser...");
+    await BrowserManagerService.cancelBrowser(this.browser, "TaboolaHunter");
+    this.browser = null;
+  }
+
   async huntTaboolaAds(
     options: TaboolaHuntOptions = {}
   ): Promise<TaboolaHuntResult> {
@@ -863,7 +871,7 @@ export class TaboolaHunter {
       let processed = 0;
 
       for (const bid of bids.slice(0, maxAds)) {
-        if (Date.now() >= deadline) {
+        if (Date.now() + MIN_PROCESS_BUDGET_MS >= deadline) {
           await logHunterEvent("taboola", "ad_skipped", "cycle budget exhausted");
           break;
         }
@@ -872,7 +880,7 @@ export class TaboolaHunter {
           continue;
         }
 
-        const didProcess = await this.processBid(bid, context, options);
+        const didProcess = await this.processBid(bid, context, options, deadline);
         if (didProcess) {
           processed++;
         }
@@ -1042,10 +1050,18 @@ export class TaboolaHunter {
   private async processBid(
     bid: TaboolaBid,
     sessionContext: BrowserContext,
-    options: TaboolaHuntOptions
+    options: TaboolaHuntOptions,
+    deadline: number
   ): Promise<boolean> {
     const destination = bid.destination;
     if (destination == null) {
+      return false;
+    }
+
+    if (Date.now() + MIN_PROCESS_BUDGET_MS >= deadline) {
+      await logHunterEvent("taboola", "ad_skipped", "cycle budget exhausted", {
+        url: destination.url,
+      });
       return false;
     }
 
@@ -1066,7 +1082,15 @@ export class TaboolaHunter {
       // Try the shortest form first. A fresh context is cheaper than reusing
       // the logged-in Yahoo context, but some click tokens are session-bound.
       result = await hunterService.processAd(destination.url, TABOOLA_REFERER);
-      if (result == null || this.isStuckOnTracker(result, destination.url)) {
+
+      // Only retry when the first attempt actually reached a tracker. A null
+      // result usually means the navigation timed out, and retrying would
+      // double the time spent on one bid.
+      if (
+        result != null &&
+        this.isStuckOnTracker(result, destination.url) &&
+        Date.now() + MIN_PROCESS_BUDGET_MS < deadline
+      ) {
         console.log(
           "Taboola hunter: click did not resolve in a fresh context, retrying in Yahoo context"
         );

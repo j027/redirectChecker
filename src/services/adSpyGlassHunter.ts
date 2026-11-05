@@ -49,6 +49,12 @@ export class AdSpyGlassHunter {
     this.browser = null;
   }
 
+  async cancel(): Promise<void> {
+    console.warn("Cancelling AdSpyGlassHunter browser...");
+    await BrowserManagerService.cancelBrowser(this.browser, "AdSpyGlassHunter");
+    this.browser = null;
+  }
+
   async huntAdSpyGlassAds() {
     return this.huntAdSpyGlassAdsInternal();
   }

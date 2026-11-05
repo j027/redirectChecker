@@ -1458,7 +1458,7 @@ __metadata:
     dotenv: "npm:^17.4.2"
     nodemailer: "npm:^9.1.1"
     onnxruntime-node: "npm:1.30.0"
-    patchright: "npm:1.63.0"
+    patchright: "npm:1.64.3"
     pg: "npm:^8.23.1"
     prettier: "npm:^3.9.9"
     protobufjs: "npm:^8.8.0"
@@ -2488,23 +2488,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"patchright-core@npm:1.63.0":
-  version: 1.63.0
-  resolution: "patchright-core@npm:1.63.0"
+"patchright-core@npm:1.64.3":
+  version: 1.64.3
+  resolution: "patchright-core@npm:1.64.3"
   bin:
     patchright-core: cli.js
-  checksum: 10c0/0ee971315de78de94581ca50245772c7655b11d2071beced4ed51890cf74498db707e29ec0b41d3d26b304935d7ecc0fae52c71ed97c7927fd70b3acea123099
+  checksum: 10c0/383edc0fa77f985b71601de7177c725622d246c34290b84fd968a30b981903605ef94e41542cec87d8a72ce2ffb556d4646ae28af015631981802f8243eef216
   languageName: node
   linkType: hard
 
-"patchright@npm:1.63.0":
-  version: 1.63.0
-  resolution: "patchright@npm:1.63.0"
+"patchright@npm:1.64.3":
+  version: 1.64.3
+  resolution: "patchright@npm:1.64.3"
   dependencies:
-    patchright-core: "npm:1.63.0"
+    patchright-core: "npm:1.64.3"
   bin:
     patchright: cli.js
-  checksum: 10c0/5f29f8d5ed69883df6650cdc1520568ad01cf16189caa0cd6649a04933e83fbb2f3e82716c7334f7185e5898ddb969c9382355db7c07d365faff3ce85a29cda2
+  checksum: 10c0/ec17322a3d8168d6ff12820480a414d0dc6f6db5e7f3ea53b2e6e09ecd62af30e172b30e44aa4bf9b922b2ede78a183b7b0611e9f074756fc505fcddaf1dddd4
   languageName: node
   linkType: hard
 

@@ -53,6 +53,12 @@ export class SearchAdHunter {
     this.browser = null;
   }
 
+  async cancel(): Promise<void> {
+    console.warn("Cancelling SearchAdHunter browser...");
+    await BrowserManagerService.cancelBrowser(this.browser, "SearchAdHunter");
+    this.browser = null;
+  }
+
   async huntSearchAds() {
     return this.huntSearchAdsInternal();
   }

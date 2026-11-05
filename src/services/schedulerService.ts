@@ -1,6 +1,6 @@
 import { checkRedirects } from "./redirectMonitorService.js";
 import { monitorTakedownStatus } from "./takedownMonitorService.js";
-import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter, adsenseHunter, taboolaHunter } from "./hunterService.js";
+import { searchAdHunter, typosquatHunter, pornhubAdHunter, adSpyGlassHunter, adsenseHunter, taboolaHunter, hunterService } from "./hunterService.js";
 import { pruneOldRedirects } from "./redirectPruningService.js";
 import { browserRedirectService } from "./browserRedirectService.js";
 import { browserReportService } from "./browserReportService.js";
@@ -11,6 +11,7 @@ import { urlscanHunter } from "./urlscanHunter.js";
 import { syncHashLists } from "./safeBrowsingV5Service.js";
 import { retryFailedMsrcReports } from "./msrcReportService.js";
 import { readConfig, HUNTER_NAMES, HunterName } from "../config.js";
+import { runHuntWithTimeout } from "../utils/huntLifecycle.js";
 import { fetch, ProxyAgent } from "undici";
 
 let checkInterval: NodeJS.Timeout | null = null;
@@ -269,6 +270,100 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
   console.log(`Starting ad hunter service (enabled: ${enabledHunters.join(", ") || "none"})`);
 
   let isHuntingInProgress = false;
+  const activeHunts = new Set<Promise<unknown>>();
+
+  const hunterBrowsers: Partial<
+    Record<HunterName, { name: string; restart: () => Promise<void> }>
+  > = {
+    search: { name: "SearchAdHunter", restart: () => searchAdHunter.restartBrowser() },
+    typosquat: { name: "TyposquatHunter", restart: () => typosquatHunter.restartBrowser() },
+    pornhub: { name: "PornhubAdHunter", restart: () => pornhubAdHunter.restartBrowser() },
+    adspyglass: { name: "AdSpyGlassHunter", restart: () => adSpyGlassHunter.restartBrowser() },
+    adsense: { name: "AdsenseHunter", restart: () => adsenseHunter.restartBrowser() },
+    taboola: { name: "TaboolaHunter", restart: () => taboolaHunter.restartBrowser() },
+  };
+
+  /**
+   * Closes the browsers used by a timed-out hunt. Closing the browser aborts
+   * pending page operations, which lets the original hunt promise reject and
+   * settle instead of continuing in the background.
+   */
+  async function cancelHunt(hunterName: HunterName): Promise<void> {
+    const cancellations: Promise<void>[] = [hunterService.cancel()];
+
+    switch (hunterName) {
+      case "search":
+        cancellations.push(searchAdHunter.cancel());
+        break;
+      case "typosquat":
+        cancellations.push(typosquatHunter.cancel());
+        break;
+      case "pornhub":
+        cancellations.push(pornhubAdHunter.cancel());
+        break;
+      case "adspyglass":
+        cancellations.push(adSpyGlassHunter.cancel());
+        break;
+      case "adsense":
+        cancellations.push(adsenseHunter.cancel());
+        break;
+      case "taboola":
+        cancellations.push(taboolaHunter.cancel());
+        break;
+    }
+
+    await Promise.allSettled(cancellations);
+  }
+
+  /**
+   * Restarts browsers only after all hunts have settled. This keeps the
+   * proactive "fresh browser every cycle" behavior without closing a browser
+   * underneath an in-flight hunt.
+   */
+  async function restartEnabledHunterBrowsers(): Promise<void> {
+    if (!isRunning.adHunter) {
+      return;
+    }
+
+    if (activeHunts.size > 0) {
+      console.warn(
+        `Skipping browser restart while ${activeHunts.size} hunt(s) are still active`
+      );
+      return;
+    }
+
+    console.log("Restarting hunter browsers after cycle...");
+    await logHunterEvent(
+      "scheduler",
+      "browser_restart",
+      "Restarting hunter browsers after cycle",
+      { enabled_hunters: enabledHunters }
+    );
+
+    // Shared browser used by hunterService.processAd().
+    try {
+      await hunterService.restartBrowser();
+    } catch (error) {
+      console.error("Error restarting shared hunter service browser:", error);
+    }
+
+    for (const hunterName of enabledHunters) {
+      const entry = hunterBrowsers[hunterName];
+      if (entry == null) {
+        continue;
+      }
+
+      try {
+        await entry.restart();
+      } catch (error) {
+        console.error(`Error restarting ${entry.name} browser:`, error);
+      }
+
+      await randomDelay(500, 1500);
+    }
+
+    console.log("Hunter browser restart complete");
+  }
 
   async function runAdHunter() {
     // Double-check that we're still supposed to be running
@@ -284,36 +379,22 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
       return;
     }
 
+    // A timed-out hunt may still be settling after cancellation. Do not start
+    // another cycle on top of it.
+    if (activeHunts.size > 0) {
+      console.log(
+        `Waiting for ${activeHunts.size} previous hunt(s) to settle before starting another cycle...`
+      );
+      adHunterInterval = setTimeout(runAdHunter, 10 * 1000);
+      return;
+    }
+
     isHuntingInProgress = true;
 
     try {
       adHunterAbortController?.signal.throwIfAborted();
 
       await logHunterEvent("scheduler", "cycle_start", "Starting hunting cycle", { enabled_hunters: enabledHunters });
-
-      // Restart each enabled hunter's browser before the cycle
-      console.log("Restarting enabled hunter browsers before cycle...");
-      await logHunterEvent("scheduler", "browser_restart", "Restarting enabled hunter browsers", { enabled_hunters: enabledHunters });
-      const browserRestarts: Promise<unknown>[] = [];
-      if (enabledHunters.includes("search")) {
-        browserRestarts.push(searchAdHunter.restartBrowser().catch(e => console.error("Error restarting SearchAdHunter browser:", e)));
-      }
-      if (enabledHunters.includes("typosquat")) {
-        browserRestarts.push(typosquatHunter.restartBrowser().catch(e => console.error("Error restarting TyposquatHunter browser:", e)));
-      }
-      if (enabledHunters.includes("pornhub")) {
-        browserRestarts.push(pornhubAdHunter.restartBrowser().catch(e => console.error("Error restarting PornhubAdHunter browser:", e)));
-      }
-      if (enabledHunters.includes("adspyglass")) {
-        browserRestarts.push(adSpyGlassHunter.restartBrowser().catch(e => console.error("Error restarting AdSpyGlassHunter browser:", e)));
-      }
-      if (enabledHunters.includes("adsense")) {
-        browserRestarts.push(adsenseHunter.restartBrowser().catch(e => console.error("Error restarting AdsenseHunter browser:", e)));
-      }
-      if (enabledHunters.includes("taboola")) {
-        browserRestarts.push(taboolaHunter.restartBrowser().catch(e => console.error("Error restarting TaboolaHunter browser:", e)));
-      }
-      await Promise.allSettled(browserRestarts);
 
       console.log("Starting hunting cycle...");
 
@@ -330,14 +411,15 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
         name: string;
         type: HunterType;
         fn: () => Promise<unknown>;
+        cancel: () => Promise<void>;
         timeoutMs?: number;
       }[] = [
-        { hunterName: "search" as const, name: "Search ad hunting", type: "search" as const, fn: () => searchAdHunter.huntSearchAds() },
-        { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: () => typosquatHunter.huntTyposquat() },
-        { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: () => pornhubAdHunter.huntPornhubAds() },
-        { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: () => adSpyGlassHunter.huntAdSpyGlassAds() },
-        { hunterName: "adsense" as const, name: "AdSense ad hunting", type: "adsense" as const, fn: () => adsenseHunter.huntAdsenseAds(), timeoutMs: 180000 },
-        { hunterName: "taboola" as const, name: "Taboola ad hunting", type: "taboola" as const, fn: () => taboolaHunter.huntTaboolaAds(), timeoutMs: 180000 },
+        { hunterName: "search" as const, name: "Search ad hunting", type: "search" as const, fn: () => searchAdHunter.huntSearchAds(), cancel: () => cancelHunt("search") },
+        { hunterName: "typosquat" as const, name: "Typosquat hunting", type: "typosquat" as const, fn: () => typosquatHunter.huntTyposquat(), cancel: () => cancelHunt("typosquat") },
+        { hunterName: "pornhub" as const, name: "Pornhub ad hunting", type: "pornhub" as const, fn: () => pornhubAdHunter.huntPornhubAds(), cancel: () => cancelHunt("pornhub") },
+        { hunterName: "adspyglass" as const, name: "AdSpyGlass ad hunting", type: "adspyglass" as const, fn: () => adSpyGlassHunter.huntAdSpyGlassAds(), cancel: () => cancelHunt("adspyglass") },
+        { hunterName: "adsense" as const, name: "AdSense ad hunting", type: "adsense" as const, fn: () => adsenseHunter.huntAdsenseAds(), cancel: () => cancelHunt("adsense"), timeoutMs: 150000 },
+        { hunterName: "taboola" as const, name: "Taboola ad hunting", type: "taboola" as const, fn: () => taboolaHunter.huntTaboolaAds(), cancel: () => cancelHunt("taboola"), timeoutMs: 180000 },
       ];
       const hunters = allHunters.filter(hunter => enabledHunters.includes(hunter.hunterName));
 
@@ -346,15 +428,34 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
 
         try {
           adHunterAbortController?.signal.throwIfAborted();
-          await withTimeout(
-            hunter.fn(),
-            hunter.timeoutMs ?? TIMEOUT_MS,
-            hunter.name
+
+          const huntPromise = Promise.resolve().then(() => hunter.fn());
+          activeHunts.add(huntPromise);
+          const removeHunt = () => activeHunts.delete(huntPromise);
+          huntPromise.then(removeHunt, removeHunt);
+
+          const hunterStartTime = Date.now();
+          await runHuntWithTimeout(() => huntPromise, {
+            name: hunter.name,
+            timeoutMs: hunter.timeoutMs ?? TIMEOUT_MS,
+            cancel: hunter.cancel,
+          });
+          console.log(
+            `Completed ${hunter.name} in ${((Date.now() - hunterStartTime) / 1000).toFixed(1)}s`
           );
         } catch (error) {
           if (isAbortError(error) && !isRunning.adHunter) throw error;
           console.error(`Error during ${hunter.name}: ${(error as Error).message}`);
-          logHunterEvent(hunter.type, "error", `Hunt failed: ${(error as Error).message}`);
+          await logHunterEvent(hunter.type, "error", `Hunt failed: ${(error as Error).message}`);
+
+          // A cancellation that never settled means the abandoned hunt is
+          // still using a browser. Do not start another hunter on top of it.
+          if (activeHunts.size > 0) {
+            console.error(
+              "A hunt is still active after cancellation; stopping this cycle before starting the next hunter"
+            );
+            break;
+          }
         }
 
         // Stagger between hunters (skip delay after the last one)
@@ -379,6 +480,7 @@ export function startAdHunter(enabledHunters: HunterName[] = [...HUNTER_NAMES]):
       // ALWAYS schedule the next run, regardless of success or failure
       // This ensures the scheduler keeps running even if something fails
       if (isRunning.adHunter) {
+        await restartEnabledHunterBrowsers();
         await rotateHunterProxyIp("ad hunter cycle complete");
         console.log("Scheduling next ad hunter run in 60 seconds");
         adHunterInterval = setTimeout(runAdHunter, 60 * 1000);

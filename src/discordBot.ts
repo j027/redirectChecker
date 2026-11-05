@@ -31,6 +31,11 @@ import { hunterService } from "./services/hunterService.js";
 import { initializeGoogleWebRiskClient } from "./services/reportService.js";
 import { initSafeBrowsingV5 } from "./services/safeBrowsingV5Service.js";
 import { getLatestChromeVersion } from "./services/chromeUserAgentService.js";
+import {
+  setDiscordReady,
+  startHealthServer,
+  stopHealthServer,
+} from "./services/healthService.js";
 
 /**
  * Compares installed system Chrome version against latest stable Chrome.
@@ -133,6 +138,7 @@ async function shutdownServices() {
   closes.push(closePool());
 
   await Promise.all(closes);
+  await stopHealthServer();
 }
 
 const isTestMode = process.env.NODE_ENV === 'test';
@@ -144,7 +150,22 @@ async function main() {
   }
 
   console.log("Starting up...");
+  startHealthServer();
   const { token } = await readConfig();
+
+  discordClient.on(Events.ClientReady, () => {
+    setDiscordReady(true);
+  });
+  discordClient.on(Events.ShardDisconnect, () => {
+    setDiscordReady(false);
+  });
+  discordClient.on(Events.ShardReconnecting, () => {
+    setDiscordReady(false);
+  });
+  discordClient.on(Events.ShardResume, () => {
+    setDiscordReady(true);
+  });
+
   await initializeServices();
   await checkChromeVersionDrift();
   await deployCommandsWithRetry();

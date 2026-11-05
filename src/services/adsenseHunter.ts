@@ -68,7 +68,7 @@ export const GREETINGS_123_TARGET: AdsenseTarget = {
     'iframe[id^="google_ads_iframe_"]',
   ].join(", "),
   waitUntil: "domcontentloaded",
-  postFillSettleMs: 3_000,
+  postFillSettleMs: 1_500,
 };
 
 /** Default target used by the scheduled hunter. */
@@ -107,12 +107,12 @@ export interface AdClickCandidate {
   visible: boolean;
 }
 
-const AD_FILL_TIMEOUT_MS = 45_000;
-const PAGE_LOAD_TIMEOUT_MS = 45_000;
+const AD_FILL_TIMEOUT_MS = 20_000;
+const PAGE_LOAD_TIMEOUT_MS = 30_000;
 const CONSENT_CLICK_TIMEOUT_MS = 5_000;
-const MAX_ADS_PER_CYCLE = 3;
-/** Navigation + classification budget for one hunt, under the scheduler's 180s cap. */
-const CYCLE_BUDGET_MS = 75_000;
+const MAX_ADS_PER_CYCLE = 1;
+/** Navigation + classification budget for one hunt, under the scheduler's 150s cap. */
+const CYCLE_BUDGET_MS = 60_000;
 const ANCHOR_SELECTOR = "a[href]";
 
 const CTA_TEXT_PATTERN = /c[o0]ntinue|download|learn more|click here|visit/i;
@@ -395,6 +395,12 @@ export class AdsenseHunter {
 
   async close(): Promise<void> {
     await BrowserManagerService.closeBrowser(this.browser);
+    this.browser = null;
+  }
+
+  async cancel(): Promise<void> {
+    console.warn("Cancelling AdsenseHunter browser...");
+    await BrowserManagerService.cancelBrowser(this.browser, "AdsenseHunter");
     this.browser = null;
   }
 

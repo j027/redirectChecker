@@ -53,6 +53,12 @@ export class TyposquatHunter {
     this.browser = null;
   }
 
+  async cancel(): Promise<void> {
+    console.warn("Cancelling TyposquatHunter browser...");
+    await BrowserManagerService.cancelBrowser(this.browser, "TyposquatHunter");
+    this.browser = null;
+  }
+
   private async loadTyposquats(): Promise<void> {
     const filePath = path.join(process.cwd(), "typosquats.json");
     const data = await fs.readFile(filePath, "utf8");

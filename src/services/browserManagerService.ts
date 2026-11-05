@@ -144,6 +144,30 @@ export class BrowserManagerService {
   }
 
   /**
+   * Closes a browser with a short deadline so a broken browser cannot block a
+   * hunt timeout or shutdown path.
+   */
+  static async cancelBrowser(
+    browser: Browser | null,
+    label: string,
+    timeoutMs: number = 10000
+  ): Promise<void> {
+    if (browser == null) {
+      return;
+    }
+
+    const closed = await BrowserManagerService.closeBrowserWithTimeout(
+      browser,
+      timeoutMs
+    );
+    if (!closed) {
+      console.warn(
+        `${label} browser did not close within ${timeoutMs}ms; abandoning it`
+      );
+    }
+  }
+
+  /**
    * Forcefully restarts a browser instance by closing it and creating a new one
    * This is useful for cleaning up any lingering tabs or browser state
    * @param browser Current browser instance

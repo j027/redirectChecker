@@ -1,6 +1,23 @@
 import { chromium, Browser } from "patchright";
 import { setTimeout as setTimeoutPromise } from "timers/promises";
 
+export type BrowserRenderer = "swiftshader" | "mesa";
+
+export function getBrowserRenderer(): BrowserRenderer {
+  return process.env.BROWSER_RENDERER?.trim().toLowerCase() === "mesa"
+    ? "mesa"
+    : "swiftshader";
+}
+
+export function getBrowserLaunchArgs(
+  renderer: BrowserRenderer = getBrowserRenderer()
+): string[] {
+  if (renderer === "mesa") {
+    return ["--use-gl=angle", "--use-angle=gl", "--ignore-gpu-blocklist"];
+  }
+  return ["--enable-unsafe-swiftshader"];
+}
+
 export class BrowserManagerService {
   // Static utility methods that can be used by any service
 
@@ -43,7 +60,7 @@ export class BrowserManagerService {
       headless: isHeadless,
       chromiumSandbox: true,
       channel: "chrome",
-      args: ["--enable-unsafe-swiftshader"],
+      args: getBrowserLaunchArgs(),
     });
   }
 

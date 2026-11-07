@@ -1,6 +1,5 @@
 import { Events } from "discord.js";
 import { setTimeout } from "timers/promises";
-import { chromium } from "patchright";
 import { HUNTER_NAMES, isHunterEnabled, readConfig } from "./config.js";
 import { commands } from "./commands/commands.js";
 import { closePool } from "./dbPool.js";
@@ -28,11 +27,15 @@ import { browserReportService } from "./services/browserReportService.js";
 import { browserRedirectService} from "./services/browserRedirectService.js";
 import { aiClassifierService } from "./services/aiClassifierService.js";
 import { hunterService } from "./services/hunterService.js";
+import { BrowserManagerService } from "./services/browserManagerService.js";
 import { initializeGoogleWebRiskClient } from "./services/reportService.js";
 import { initSafeBrowsingV5 } from "./services/safeBrowsingV5Service.js";
 import { getLatestChromeVersion } from "./services/chromeUserAgentService.js";
+import { sendSystemAlert } from "./services/alertService.js";
+import { checkWebGL } from "./services/webglCheckService.js";
 import {
   setDiscordReady,
+  setWebGLStatus,
   startHealthServer,
   stopHealthServer,
 } from "./services/healthService.js";
@@ -43,7 +46,7 @@ import {
  */
 async function checkChromeVersionDrift(): Promise<void> {
   try {
-    const browser = await chromium.launch({ headless: true, chromiumSandbox: true, channel: "chrome" });
+    const browser = await BrowserManagerService.createBrowser(true);
     const systemVersion = browser.version();
     await browser.close();
 
@@ -175,6 +178,69 @@ async function main() {
   await discordClient.login(token);
 
   console.log("Logged in and ready to go");
+
+  const webgl = await checkWebGL();
+  setWebGLStatus(webgl.status, webgl.actualRenderer);
+
+  if (
+    webgl.status !== "ok" ||
+    webgl.rendererMismatch ||
+    webgl.spoofMismatch
+  ) {
+    console.error("WebGL CHECK FAILED:", webgl);
+    await sendSystemAlert({
+      title: "⚠️ WebGL CHECK FAILED",
+      description:
+        "The startup WebGL check failed. Scam classification and browser signals may be degraded.",
+      color: 0xff0000,
+      fields: [
+        {
+          name: "Expected Renderer",
+          value: webgl.expectedRenderer,
+          inline: true,
+        },
+        {
+          name: "Actual Renderer",
+          value: webgl.actualRenderer ?? "unknown",
+          inline: true,
+        },
+        {
+          name: "Vendor",
+          value: webgl.actualVendor ?? "unknown",
+          inline: true,
+        },
+        {
+          name: "WebGL Version",
+          value: webgl.actualVersion ?? "unknown",
+          inline: true,
+        },
+        {
+          name: "Max Texture Size",
+          value: String(webgl.maxTextureSize ?? "unknown"),
+          inline: true,
+        },
+        {
+          name: "Spoof Check",
+          value: webgl.spoofMismatch ? "FAILED" : "ok",
+          inline: true,
+        },
+        {
+          name: "Renderer Mismatch",
+          value: webgl.rendererMismatch ? "yes" : "no",
+          inline: true,
+        },
+        {
+          name: "Error",
+          value: webgl.error ?? "none",
+          inline: false,
+        },
+      ],
+    });
+  } else {
+    console.log(
+      `WebGL check OK: ${webgl.actualRenderer} | spoofed ${webgl.spoofedVendor} / ${webgl.spoofedRenderer}`
+    );
+  }
 
   discordClient.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;

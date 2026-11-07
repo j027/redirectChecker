@@ -1,13 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { chromium } from "patchright";
+import { BrowserManagerService } from "../../src/services/browserManagerService.js";
 import { createSignalService } from "../../src/services/signalService.js";
 
 function launchSandboxedBrowser() {
-  return chromium.launch({
-    headless: false,
-    channel: "chrome",
-    chromiumSandbox: true,
-  });
+  return BrowserManagerService.createBrowser(false);
 }
 
 describe("SignalService Browser Integration", () => {

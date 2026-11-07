@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { chromium, Browser, BrowserContext, Page } from "patchright";
+import { Browser, BrowserContext, Page } from "patchright";
 import {
   startBombFixtureServer,
   BombFixtureServer,
@@ -14,11 +14,7 @@ const STRESS_TIMEOUT = 60000;
 const STRESS_HEADED = process.env.BOMB_STRESS_HEADED === "1";
 
 async function launchBrowser(): Promise<Browser> {
-  return chromium.launch({
-    headless: !STRESS_HEADED,
-    channel: "chrome",
-    chromiumSandbox: true,
-  });
+  return BrowserManagerService.createBrowser(!STRESS_HEADED);
 }
 
 async function armGuardAndTrigger(

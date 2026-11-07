@@ -247,6 +247,61 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
  * @param cloakerUrl The URL that was added to redirect checker
  * @param huntType The type of hunt that found it
  */
+export interface SystemAlertField {
+  name: string;
+  value: string;
+  inline?: boolean;
+}
+
+export interface SystemAlertPayload {
+  title: string;
+  description: string;
+  fields?: SystemAlertField[];
+  color?: number;
+}
+
+/** Sends an operational/system alert to the configured Discord channel. */
+export async function sendSystemAlert(
+  payload: SystemAlertPayload
+): Promise<void> {
+  try {
+    const { channelId } = await readConfig();
+    let channel = discordClient.channels.cache.get(
+      channelId
+    ) as TextChannel | undefined;
+
+    if (!channel) {
+      const fetched = await discordClient.channels.fetch(channelId);
+      if (fetched == null || !fetched.isTextBased()) {
+        console.error("Discord channel not found for system alert");
+        return;
+      }
+      channel = fetched as TextChannel;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle(payload.title)
+      .setDescription(truncate(payload.description, EMBED_DESCRIPTION_LIMIT))
+      .setColor(payload.color ?? 0xff9900)
+      .setTimestamp();
+
+    if (payload.fields?.length) {
+      embed.addFields(
+        payload.fields.slice(0, 25).map((field) => ({
+          name: truncate(field.name, 256),
+          value: truncate(field.value, EMBED_FIELD_VALUE_LIMIT),
+          inline: field.inline ?? false,
+        }))
+      );
+    }
+
+    await channel.send({ embeds: [embed] });
+    console.log(`Discord system alert sent: ${payload.title}`);
+  } catch (error) {
+    console.error(`Error sending Discord system alert: ${error}`);
+  }
+}
+
 export async function sendCloakerAddedAlert(
   cloakerUrl: string,
   huntType: string,

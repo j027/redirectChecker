@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import http from "http";
-import { chromium, Browser } from "patchright";
+import { Browser } from "patchright";
+import { BrowserManagerService } from "../../src/services/browserManagerService.js";
 import { trackRedirectionPath } from "../../src/utils/playwrightUtilities.js";
 
 const TEST_TIMEOUT = 30000;
@@ -144,11 +145,7 @@ describe("Redirect Path Tracker (main-frame only)", () => {
 
   beforeAll(async () => {
     server = await startFixtureServer();
-    browser = await chromium.launch({
-      headless: false,
-      channel: "chrome",
-      chromiumSandbox: true,
-    });
+    browser = await BrowserManagerService.createBrowser(false);
   }, TEST_TIMEOUT);
 
   afterAll(async () => {

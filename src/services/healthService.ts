@@ -8,16 +8,29 @@ let server: http.Server | null = null;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 let lastHeartbeat = Date.now();
 let discordReady = false;
+export type WebGLStatus = "unknown" | "ok" | "failed";
+let webglStatus: WebGLStatus = "unknown";
+let webglRenderer: string | null = null;
 
 export interface HealthStatus {
   status: "ok" | "stalled";
   uptimeSeconds: number;
   eventLoopStaleMs: number;
   discordReady: boolean;
+  webglStatus: WebGLStatus;
+  webglRenderer: string | null;
 }
 
 export function setDiscordReady(ready: boolean): void {
   discordReady = ready;
+}
+
+export function setWebGLStatus(
+  status: WebGLStatus,
+  renderer?: string | null
+): void {
+  webglStatus = status;
+  webglRenderer = renderer ?? null;
 }
 
 function getHealthStatus(): HealthStatus {
@@ -27,6 +40,8 @@ function getHealthStatus(): HealthStatus {
     uptimeSeconds: Math.round(process.uptime()),
     eventLoopStaleMs,
     discordReady,
+    webglStatus,
+    webglRenderer,
   };
 }
 

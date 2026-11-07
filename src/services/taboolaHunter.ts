@@ -667,6 +667,33 @@ export function taboolaCreativeKey(bid: TaboolaBid): string {
 }
 
 /**
+ * Returns the matching whitelisted URL or advertiser domain for a bid, or null
+ * when neither the direct destination nor the advertiser is whitelisted.
+ * Checked before any navigation so known-good advertisers do not consume a
+ * full page-load timeout.
+ */
+export function findWhitelistedBidTarget(
+  bid: TaboolaBid,
+  isWhitelisted: (url: string) => boolean
+): string | null {
+  if (bid.destination != null && isWhitelisted(bid.destination.url)) {
+    return bid.destination.url;
+  }
+
+  for (const domain of bid.advertiserDomains) {
+    const normalized = domain.trim();
+    if (normalized === "") {
+      continue;
+    }
+    if (isWhitelisted(`https://${normalized}`)) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Finds the last redirect hop that is not known ad infrastructure. Yahoo,
  * Taboola, DoubleClick and Criteo hops are never cloaker candidates.
  */
@@ -999,21 +1026,17 @@ export class TaboolaHunter {
     bid: TaboolaBid,
     options: TaboolaHuntOptions
   ): Promise<boolean> {
-    const config = await readConfig();
-    const skipDomains = (config.taboolaSkipAdvertiserDomains ?? []).map(
-      (domain) => domain.toLowerCase()
+    const whitelistedTarget = findWhitelistedBidTarget(bid, (url) =>
+      aiClassifierService.isWhitelisted(url)
     );
-    const advertiserDomains = bid.advertiserDomains.map((domain) =>
-      domain.toLowerCase()
-    );
-
-    if (advertiserDomains.some((domain) => skipDomains.includes(domain))) {
+    if (whitelistedTarget != null) {
       console.log(
-        `Skipping Taboola advertiser domain on skip list: ${advertiserDomains.join(", ")}`
+        `Skipping whitelisted Taboola bid: ${whitelistedTarget}`
       );
-      await logHunterEvent("taboola", "ad_skipped", "advertiser domain on skip list", {
+      await logHunterEvent("taboola", "ad_skipped", "whitelisted", {
         url: bid.destination?.url,
-        adomain: advertiserDomains,
+        adomain: bid.advertiserDomains,
+        whitelisted_target: whitelistedTarget,
       });
       return true;
     }

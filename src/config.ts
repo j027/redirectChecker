@@ -38,11 +38,6 @@ type Config = {
    * verification. Optional; only used when Yahoo asks for a code.
    */
   yahooTotpSecret?: string;
-  /**
-   * Advertiser domains to skip in the Taboola hunter without clicking.
-   * Useful for known-good brands whose ads are unlikely to be scams.
-   */
-  taboolaSkipAdvertiserDomains?: string[];
   kasperskyApiKey: string;
   metaDefenderApiKey: string;
   checkPhishApiKey: string;

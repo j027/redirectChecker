@@ -4,12 +4,14 @@ import "../../src/services/hunterService.js";
 import {
   extractTaboolaCreative,
   findTaboolaCloakerCandidate,
+  findWhitelistedBidTarget,
   parseTaboolaAuctionResponse,
   parseTaboolaRecommendationsResponse,
   parseTaboolaRequestContext,
   resolveTaboolaDestination,
   taboolaCreativeKey,
 } from "../../src/services/taboolaHunter.js";
+import type { TaboolaBid } from "../../src/services/taboolaHunter.js";
 
 const CRITEO_CLICK =
   "https://cat.da1.us.criteo.com/delivery/ckn.php?cppv=3&cpp=abc" +
@@ -324,5 +326,65 @@ describe("findTaboolaCloakerCandidate", () => {
         "https://scam.example/landing"
       )
     ).toBe("https://cloaker.example/redirect");
+  });
+});
+
+describe("findWhitelistedBidTarget", () => {
+  function bid(
+    destinationUrl: string,
+    advertiserDomains: string[]
+  ): TaboolaBid {
+    return {
+      bidId: "bid-id",
+      impressionId: "imp-id",
+      price: 0,
+      advertiserDomains,
+      creative: null,
+      destination: {
+        url: destinationUrl,
+        source: "raw",
+        requiresClick: false,
+      },
+    };
+  }
+
+  const isNortonWhitelisted = (url: string): boolean => {
+    try {
+      const hostname = new URL(url).hostname.toLowerCase();
+      return hostname === "norton.com" || hostname.endsWith(".norton.com");
+    } catch {
+      return false;
+    }
+  };
+
+  it("matches a whitelisted direct destination", () => {
+    expect(
+      findWhitelistedBidTarget(
+        bid("https://lifelock.norton.com/products", []),
+        isNortonWhitelisted
+      )
+    ).toBe("https://lifelock.norton.com/products");
+  });
+
+  it("matches a whitelisted advertiser behind a tracker URL", () => {
+    expect(
+      findWhitelistedBidTarget(
+        bid("https://ad.doubleclick.net/ddm/trackclk/N123", [
+          "lifelock.norton.com",
+        ]),
+        isNortonWhitelisted
+      )
+    ).toBe("lifelock.norton.com");
+  });
+
+  it("does not skip an unrelated bid", () => {
+    expect(
+      findWhitelistedBidTarget(
+        bid("https://ad.doubleclick.net/ddm/trackclk/N123", [
+          "unrelated.example",
+        ]),
+        isNortonWhitelisted
+      )
+    ).toBeNull();
   });
 });

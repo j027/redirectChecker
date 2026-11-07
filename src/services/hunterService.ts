@@ -19,11 +19,11 @@ import { PornhubAdHunter } from "./pornhubAdHunter.js";
 import { AdSpyGlassHunter } from "./adSpyGlassHunter.js";
 import { AdsenseHunter } from "./adsenseHunter.js";
 import { TaboolaHunter } from "./taboolaHunter.js";
-import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
+import { createSignalService, DetectedSignals, createEmptySignals } from "./signalService.js";
+import { decideScam } from "./scamDecision.js";
 import { HUNTER_NAMES, HunterName } from "../config.js";
 
-// Given a detected scam, confidence level above this will be treated as one
-export const CONFIDENCE_THRESHOLD = 0.80;
+export { CONFIDENCE_THRESHOLD } from "./scamDecision.js";
 
 export interface AddToRedirectCheckerResult {
   added: boolean;
@@ -315,17 +315,21 @@ export class HunterService {
               continue; // Try next redirect type
             }
 
-            const isScam =
-              classificationResult.isScam &&
-              classificationResult.confidenceScore >= CONFIDENCE_THRESHOLD &&
-              hasWeightedSignal(classificationResult.signals);
+            const decision = decideScam(
+              classificationResult.isScam,
+              classificationResult.confidenceScore,
+              classificationResult.signals
+            );
 
-            if (!isScam) {
+            if (!decision.isScam) {
               console.log(
-                `Destination ${redirectDestination} not classified as scam, trying next redirect type`
+                `Destination ${redirectDestination} not classified as scam (reason=${decision.reason ?? "none"}), trying next redirect type`
               );
               continue; // Try next redirect type
             }
+            console.log(
+              `Destination ${redirectDestination} classified as scam via ${decision.reason ?? "unknown"}`
+            );
 
             // Found a working redirect that leads to a scam, add to database
             const client = await pool.connect();

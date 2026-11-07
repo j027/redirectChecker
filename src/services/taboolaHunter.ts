@@ -12,11 +12,10 @@ import {
   unwrapYahooClickUrl,
 } from "../utils/urlUtils.js";
 import { BrowserManagerService } from "./browserManagerService.js";
-import { hasWeightedSignal } from "./signalService.js";
+import { decideScam } from "./scamDecision.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import {
-  CONFIDENCE_THRESHOLD,
   hunterService,
   ProcessAdResult,
 } from "./hunterService.js";
@@ -1161,18 +1160,22 @@ export class TaboolaHunter {
     const classifierResult = await aiClassifierService.runInference(
       result.screenshot
     );
-    const hasSignal = hasWeightedSignal(result.signals);
-    const isScam =
-      classifierResult.isScam &&
-      classifierResult.confidenceScore >= CONFIDENCE_THRESHOLD &&
-      hasSignal;
+    const decision = decideScam(
+      classifierResult.isScam,
+      classifierResult.confidenceScore,
+      result.signals
+    );
+    const isScam = decision.isScam;
 
     await logHunterEvent("taboola", "classification", `Classified ${finalUrl}`, {
       url: destination.url,
       final_url: finalUrl,
       classifier_is_scam: classifierResult.isScam,
       confidence: classifierResult.confidenceScore,
-      has_signal: hasSignal,
+      has_signal: decision.hasSignal,
+      has_strong_signals: decision.hasStrongSignals,
+      active_signal_count: decision.activeSignalCount,
+      decision_reason: decision.reason,
       effective_is_scam: isScam,
       redirect_hops: result.redirectionPath.length,
       destination_source: destination.source,
@@ -1182,7 +1185,7 @@ export class TaboolaHunter {
       console.log(
         `[taboola dry-run] ${destination.url} -> ${finalUrl} ` +
           `(isScam=${isScam}, confidence=${classifierResult.confidenceScore.toFixed(3)}, ` +
-          `signals=${hasSignal}, source=${destination.source})`
+          `signals=${decision.hasSignal}, reason=${decision.reason ?? "none"}, source=${destination.source})`
       );
       return true;
     }
@@ -1434,6 +1437,7 @@ export class TaboolaHunter {
           confidenceScore: classifierResult.confidenceScore,
           redirectionPath: result.redirectionPath,
           cloakerCandidate,
+          decisionReason: decision.reason,
         });
       }
 

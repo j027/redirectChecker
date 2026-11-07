@@ -10,11 +10,10 @@ import {
   extractAdDestinationUrl,
 } from "../utils/urlUtils.js";
 import { BrowserManagerService } from "./browserManagerService.js";
-import { hasWeightedSignal } from "./signalService.js";
+import { decideScam } from "./scamDecision.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import {
-  CONFIDENCE_THRESHOLD,
   hunterService,
   ProcessAdResult,
 } from "./hunterService.js";
@@ -556,8 +555,8 @@ export class AdsenseHunter {
     }
 
     const { isScam: rawIsScam, confidenceScore } = await aiClassifierService.runInference(screenshot);
-    const hasSignal = hasWeightedSignal(signals);
-    const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
+    const decision = decideScam(rawIsScam, confidenceScore, signals);
+    const isScam = decision.isScam;
 
     await logHunterEvent("adsense", "classification", `Classified ${finalUrl}`, {
       target: target.name,
@@ -565,7 +564,10 @@ export class AdsenseHunter {
       final_url: finalUrl,
       classifier_is_scam: rawIsScam,
       confidence: confidenceScore,
-      has_signal: hasSignal,
+      has_signal: decision.hasSignal,
+      has_strong_signals: decision.hasStrongSignals,
+      active_signal_count: decision.activeSignalCount,
+      decision_reason: decision.reason,
       effective_is_scam: isScam,
       redirect_hops: redirectionPath.length,
     });
@@ -574,7 +576,7 @@ export class AdsenseHunter {
       console.log(
         `[adsense dry-run] ${adUrl} -> ${finalUrl} ` +
           `(isScam=${isScam}, confidence=${confidenceScore.toFixed(3)}, ` +
-          `signals=${hasSignal})`,
+          `signals=${decision.hasSignal}, reason=${decision.reason ?? "none"})`,
       );
       return {
         status: "processed",
@@ -755,6 +757,7 @@ export class AdsenseHunter {
           confidenceScore,
           redirectionPath,
           cloakerCandidate,
+          decisionReason: decision.reason,
         });
       } else if (isStatusChange) {
         await sendAlert({
@@ -765,6 +768,7 @@ export class AdsenseHunter {
           confidenceScore,
           redirectionPath,
           cloakerCandidate,
+          decisionReason: decision.reason,
         });
       }
 

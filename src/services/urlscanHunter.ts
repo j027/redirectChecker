@@ -2,8 +2,8 @@ import { fetch, ProxyAgent } from "undici";
 import { readConfig } from "../config.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import { reportToNetcraft } from "./reportService.js";
-import { CONFIDENCE_THRESHOLD } from "./hunterService.js";
-import { DetectedSignals, hasWeightedSignal } from "./signalService.js";
+import { CONFIDENCE_THRESHOLD, decideScam } from "./scamDecision.js";
+import { DetectedSignals } from "./signalService.js";
 import pool from "../dbPool.js";
 
 // --- URLScan API types ---
@@ -133,13 +133,14 @@ export class UrlscanHunter {
     signals.isThirdPartyHosting = false;
     signals.workerBombDetected = false;
     signals.isIpAddress = false;
-    const passesSignalCheck = hasWeightedSignal(signals);
+    const decision = decideScam(isScam, confidenceScore, signals);
+    const passesSignalCheck = decision.hasSignal;
 
-    if (!isScam || confidenceScore < CONFIDENCE_THRESHOLD || !passesSignalCheck) {
+    if (!decision.isScam) {
       // Browser verification didn't confirm — log result but don't report
       await this.saveReport(uuid, url, confidenceScore, false, isScam, passesSignalCheck, signals);
       console.log(
-        `[urlscan-hunter] Skipped ${url} — isScam=${isScam}, confidence=${(confidenceScore * 100).toFixed(1)}%, hasSignal=${passesSignalCheck}`,
+        `[urlscan-hunter] Skipped ${url} — isScam=${isScam}, confidence=${(confidenceScore * 100).toFixed(1)}%, hasSignal=${passesSignalCheck}, reason=${decision.reason ?? "none"}`,
       );
       return;
     }

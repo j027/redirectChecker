@@ -16,6 +16,7 @@ import { BombGuard, BOMB_WORKER_THRESHOLD } from './bombGuard.js';
 import { logHunterEvent } from './hunterEventLogger.js';
 import { URL } from 'url';
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal, SignalService } from './signalService.js';
+import { CONFIDENCE_THRESHOLD } from './scamDecision.js';
 import {
   buildTrainingDataFingerprint,
   decideTrainingDataSave,
@@ -27,7 +28,7 @@ import {
 // Constants for the model
 const INPUT_WIDTH = 224;
 const INPUT_HEIGHT = 224;
-export const CONFIDENCE_THRESHOLD = 0.80;
+export { CONFIDENCE_THRESHOLD } from './scamDecision.js';
 
 // ImageNet normalization constants
 const IMAGENET_MEAN = [0.485, 0.456, 0.406];

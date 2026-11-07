@@ -1,12 +1,13 @@
 import { Browser, Page } from "patchright";
 import crypto, { randomBytes, randomInt } from "crypto";
 import { blockGoogleAnalytics, blockMailtoLinks, parseProxy, spoofWindowsChrome, trackRedirectionPath, simulateRandomMouseMovements } from "../utils/playwrightUtilities.js";
-import { hunterService, CONFIDENCE_THRESHOLD } from "./hunterService.js";
+import { hunterService } from "./hunterService.js";
 import { aiClassifierService } from "./aiClassifierService.js";
 import pool from "../dbPool.js";
 import { sendAlert, sendCloakerAddedAlert } from "./alertService.js";
 import { BrowserManagerService } from "./browserManagerService.js";
-import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal } from "./signalService.js";
+import { createSignalService, DetectedSignals, createEmptySignals } from "./signalService.js";
+import { decideScam } from "./scamDecision.js";
 import { logHunterEvent } from "./hunterEventLogger.js";
 
 export class AdSpyGlassHunter {
@@ -275,16 +276,18 @@ export class AdSpyGlassHunter {
     }
 
     const { isScam: rawIsScam, confidenceScore } = classifierResult;
-    // Only treat as scam if confidence is above threshold AND has a weighted signal
-    const hasSignal = hasWeightedSignal(signals);
-    const isScam = rawIsScam && confidenceScore >= CONFIDENCE_THRESHOLD && hasSignal;
+    const decision = decideScam(rawIsScam, confidenceScore, signals);
+    const isScam = decision.isScam;
 
     await logHunterEvent("adspyglass", "classification", `Classified ${finalUrl}`, {
       url: adUrl,
       final_url: finalUrl,
       classifier_is_scam: rawIsScam,
       confidence: confidenceScore,
-      has_signal: hasSignal,
+      has_signal: decision.hasSignal,
+      has_strong_signals: decision.hasStrongSignals,
+      active_signal_count: decision.activeSignalCount,
+      decision_reason: decision.reason,
       effective_is_scam: isScam,
       redirect_hops: redirectionPath.length
     });
@@ -376,6 +379,7 @@ export class AdSpyGlassHunter {
             confidenceScore,
             redirectionPath,
             cloakerCandidate,
+            decisionReason: decision.reason,
           });
           console.log(`Sent alert for new scam destination: ${finalUrl}`);
           await logHunterEvent("adspyglass", "scam_detected", `New scam: ${finalUrl}`, {

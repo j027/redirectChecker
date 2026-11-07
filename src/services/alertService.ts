@@ -20,6 +20,7 @@ export interface AlertPayload {
   confidenceScore: number;
   redirectionPath: string[] | null;
   cloakerCandidate?: string | null;
+  decisionReason?: "classifier" | "signal_override" | null;
 }
 
 // Discord embed limits
@@ -183,6 +184,14 @@ export async function sendAlert(payload: AlertPayload): Promise<void> {
       .setColor(alertConfig.color)
       .setTimestamp()
       .setFooter({ text: `Confidence: ${confidencePercent}%` });
+
+    if (payload.decisionReason === "signal_override") {
+      embed.addFields({
+        name: "Detection Path",
+        value: "Signal-backed override (lower confidence, strong browser signals)",
+        inline: false,
+      });
+    }
 
     // Add type-specific fields (these use the 1024-char field limit)
     if (payload.type === "typosquat") {

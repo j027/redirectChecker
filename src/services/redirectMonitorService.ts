@@ -8,6 +8,7 @@ import { DetectedSignals } from "./signalService.js";
 import { decideScam } from "./scamDecision.js";
 import { logRedirectEvent } from "./redirectEventLogger.js";
 import { logScamReport } from "./scamReportLogger.js";
+import { decisionModelService } from "./decisionModelService.js";
 
 export async function checkRedirects() {
   const client = await pool.connect();
@@ -145,7 +146,11 @@ async function processRedirectEntry(
       has_strong_signals: decision.hasStrongSignals,
       active_signal_count: decision.activeSignalCount,
       decision_reason: decision.reason,
-      effective_is_scam: isScam
+      effective_is_scam: isScam,
+      decision_model_target_probability:
+        classificationResult.decisionModel?.targetProbability ?? null,
+      decision_model_model: classificationResult.decisionModel?.model ?? null,
+      decision_model_error: classificationResult.decisionModel?.error ?? null
     });
 
     if (ownerRetired) {
@@ -192,6 +197,10 @@ async function processRedirectEntry(
       }
 
       await client.query('COMMIT');
+      await decisionModelService.updateRedirectDestinationSummary(
+        existingDestination.id,
+        classificationResult.decisionModel ?? null
+      );
       return;
     }
 
@@ -249,6 +258,10 @@ async function processRedirectEntry(
     
     // Commit the transaction
     await client.query('COMMIT');
+    await decisionModelService.updateRedirectDestinationSummary(
+      destinationId,
+      classificationResult.decisionModel ?? null
+    );
   } catch (error) {
     // If an error occurs, roll back the transaction
     await client.query('ROLLBACK');

@@ -12,7 +12,23 @@ export const HUNTER_NAMES = [
 
 export type HunterName = (typeof HUNTER_NAMES)[number];
 
-type Config = {
+export type DecisionModelMode = "advisory" | "signal";
+
+export interface DecisionModelConfig {
+  enabled: boolean;
+  mode: DecisionModelMode;
+  model: string;
+  strongThreshold: number;
+  reviewThreshold: number;
+  negativeThreshold?: number;
+  timeoutMs: number;
+  maxRetries?: number;
+  maxImageSide?: number;
+  auditDailyLimit?: number;
+  auditSampleRate?: number;
+}
+
+export type Config = {
   token: string;
   guildId: string;
   clientId: string;
@@ -52,6 +68,10 @@ type Config = {
    *  Only needed if you are reporting to the web risk api (need special permission for this)
    */
   googleWebRiskApiProjectName: string;
+  /** OpenRouter key used by the advisory decision model. */
+  openRouterApiKey?: string;
+  /** Optional advisory decision-model settings. */
+  decisionModel?: DecisionModelConfig;
   /** Enable the URLScan firehose hunter (default false if absent) */
   urlscanHunterEnabled?: boolean;
   /**
@@ -151,6 +171,55 @@ export async function readConfig(): Promise<Config> {
       'config.json is missing required "yahooUsername"/"yahooPassword". ' +
         "Set them or disable the taboola hunter."
     );
+  }
+
+  const decisionModel = config.decisionModel;
+  if (decisionModel?.enabled) {
+    if (
+      typeof config.openRouterApiKey !== "string" ||
+      config.openRouterApiKey.trim() === ""
+    ) {
+      throw new Error(
+        'config.json has decisionModel.enabled but "openRouterApiKey" is missing. ' +
+          "Set it to ${OPENROUTER_API_KEY} and define the env var."
+      );
+    }
+    if (typeof decisionModel.model !== "string" || decisionModel.model.trim() === "") {
+      throw new Error(
+        'config.json has decisionModel.enabled but "decisionModel.model" is missing.'
+      );
+    }
+    if (
+      typeof decisionModel.strongThreshold !== "number" ||
+      typeof decisionModel.reviewThreshold !== "number" ||
+      decisionModel.strongThreshold <= decisionModel.reviewThreshold
+    ) {
+      throw new Error(
+        "config.json decisionModel thresholds must be numbers and strongThreshold " +
+          "must be greater than reviewThreshold."
+      );
+    }
+    if (
+      decisionModel.negativeThreshold !== undefined &&
+      (typeof decisionModel.negativeThreshold !== "number" ||
+        decisionModel.negativeThreshold >= decisionModel.reviewThreshold)
+    ) {
+      throw new Error(
+        "config.json decisionModel.negativeThreshold must be a number below reviewThreshold."
+      );
+    }
+    if (decisionModel.mode !== "advisory" && decisionModel.mode !== "signal") {
+      throw new Error('config.json decisionModel.mode must be "advisory" or "signal".');
+    }
+    if (typeof decisionModel.timeoutMs !== "number" || decisionModel.timeoutMs <= 0) {
+      throw new Error("config.json decisionModel.timeoutMs must be a positive number.");
+    }
+    if (
+      decisionModel.maxRetries !== undefined &&
+      (!Number.isInteger(decisionModel.maxRetries) || decisionModel.maxRetries < 0)
+    ) {
+      throw new Error("config.json decisionModel.maxRetries must be a non-negative integer.");
+    }
   }
 
   return config;

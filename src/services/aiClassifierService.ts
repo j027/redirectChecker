@@ -16,7 +16,12 @@ import { BombGuard, BOMB_WORKER_THRESHOLD } from './bombGuard.js';
 import { logHunterEvent } from './hunterEventLogger.js';
 import { URL } from 'url';
 import { createSignalService, DetectedSignals, createEmptySignals, hasWeightedSignal, SignalService } from './signalService.js';
-import { CONFIDENCE_THRESHOLD } from './scamDecision.js';
+import { CONFIDENCE_THRESHOLD, decideScam } from './scamDecision.js';
+import {
+  DecisionModelResult,
+  decisionModelService,
+  hashScreenshot,
+} from './decisionModelService.js';
 import {
   buildTrainingDataFingerprint,
   decideTrainingDataSave,
@@ -43,6 +48,8 @@ export interface ClassificationResult {
   signals: DetectedSignals;
   /** True when the page tried to fork-bomb the browser while leaving. */
   bombDetected: boolean;
+  /** Advisory target probability from the configured decision model. */
+  decisionModel?: DecisionModelResult | null;
 }
 
 export class AiClassifierService {
@@ -221,6 +228,7 @@ export class AiClassifierService {
           url: currentUrl,
           signals: createEmptySignals(),
           bombDetected: false,
+          decisionModel: null,
         };
       }
 
@@ -230,13 +238,15 @@ export class AiClassifierService {
       const isScam = prediction.isScam;
       const confidenceScore = prediction.confidenceScore;
 
-      // Save data regardless of classification
+      // Save data regardless of classification. The advisory decision model is
+      // run after the bomb check so its network latency cannot delay teardown.
       await this.saveData(
         currentUrl,
         screenshot,
         html,
         isScam,
-        confidenceScore
+        confidenceScore,
+        { skipDecisionModel: true }
       );
 
       // Collect signals that are readable without leaving the page.
@@ -274,6 +284,28 @@ export class AiClassifierService {
         console.log(`🚨 Weighted signals detected for ${currentUrl}:`, signals);
       }
 
+      // Advisory target model runs after the page has been disarmed. It is
+      // log-only for now; callers can consume the probability without changing
+      // the existing scam decision.
+      const effectiveOnnxIsScam = decideScam(
+        isScam,
+        confidenceScore,
+        signals
+      ).isScam;
+      const decisionModel = await decisionModelService.classifyTarget(screenshot);
+      if (decisionModel) {
+        await decisionModelService.recordAudit({
+          screenshot,
+          screenshotHash: hashScreenshot(screenshot),
+          url: currentUrl,
+          sourceType: "classifier",
+          onnxIsScam: isScam,
+          onnxEffectiveIsScam: effectiveOnnxIsScam,
+          onnxConfidence: confidenceScore,
+          result: decisionModel,
+        });
+      }
+
       // Log prediction details
       const confidencePercent = (confidenceScore * 100).toFixed(2);
       if (confidenceScore >= CONFIDENCE_THRESHOLD) {
@@ -294,6 +326,7 @@ export class AiClassifierService {
         url: currentUrl,
         signals,
         bombDetected,
+        decisionModel,
       };
     } catch (error) {
       console.error(`Error classifying URL ${url}:`, error);
@@ -541,13 +574,44 @@ export class AiClassifierService {
     screenshot: Buffer,
     html: string,
     isScam: boolean,
-    confidenceScore: number
-  ): Promise<void> {
+    confidenceScore: number,
+    auditContext?: {
+      sourceType?: string;
+      sourceId?: string;
+      adId?: string;
+      redirectDestinationId?: number;
+      onnxEffectiveIsScam?: boolean;
+      skipDecisionModel?: boolean;
+    }
+  ): Promise<DecisionModelResult | null> {
+    // Run the advisory decision model for every classification, not just the
+    // low-confidence training samples. The audit row is written even when the
+    // image itself is not retained. classifyUrl skips this path and runs the
+    // model after the bomb check instead.
+    const decisionModel = auditContext?.skipDecisionModel
+      ? null
+      : await decisionModelService.classifyTarget(screenshot);
+    if (decisionModel) {
+      await decisionModelService.recordAudit({
+        screenshot,
+        screenshotHash: hashScreenshot(screenshot),
+        url,
+        sourceType: auditContext?.sourceType,
+        sourceId: auditContext?.sourceId,
+        adId: auditContext?.adId,
+        redirectDestinationId: auditContext?.redirectDestinationId,
+        onnxIsScam: isScam,
+        onnxEffectiveIsScam: auditContext?.onnxEffectiveIsScam,
+        onnxConfidence: confidenceScore,
+        result: decisionModel,
+      });
+    }
+
     // Only save true edge cases where the model is near the decision boundary.
     // Non-scam threshold is tighter since non-scams vastly outnumber scams.
     const saveThreshold = isScam ? 0.70 : 0.60;
     if (confidenceScore >= saveThreshold) {
-      return;
+      return decisionModel;
     }
 
     const client = await pool.connect();
@@ -562,7 +626,7 @@ export class AiClassifierService {
       // If record already exists, abort
       if (checkResult.rows.length > 0) {
         console.log(`URL ${url} already exists in training dataset - skipping`);
-        return;
+        return decisionModel;
       }
 
       const [dedupeConfig, fingerprint] = await Promise.all([
@@ -605,7 +669,7 @@ export class AiClassifierService {
         console.log(
           `Skipping training data for ${url}: ${dedupeDecision.reason}${matchedDetails}${clusterDetails}`
         );
-        return;
+        return decisionModel;
       }
 
       // Continue with saving new data
@@ -666,6 +730,7 @@ export class AiClassifierService {
     } finally {
       client.release();
     }
+    return decisionModel;
   }
 
   private getTrainingDataDedupeConfig(): Promise<TrainingDataDedupeConfig> {

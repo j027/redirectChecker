@@ -42,7 +42,17 @@ CREATE TABLE IF NOT EXISTS redirect_destinations
     signal_third_party_hosting BOOLEAN DEFAULT FALSE,         -- Hosted on third-party platform
     signal_ip_address          BOOLEAN DEFAULT FALSE,         -- Hosted on IP address instead of domain
     signal_page_frozen         BOOLEAN DEFAULT FALSE,         -- Page load was frozen/slow (advisory)
-    signal_worker_bomb         BOOLEAN DEFAULT FALSE          -- Many web workers spawned (scam tactic)
+    signal_worker_bomb         BOOLEAN DEFAULT FALSE,         -- Many web workers spawned (scam tactic)
+    -- Advisory decision-model result (latest)
+    decision_model_target_probability FLOAT,
+    decision_model_is_target          BOOLEAN,
+    decision_model_threshold          FLOAT,
+    decision_model_model              TEXT,
+    decision_model_prompt_version     TEXT,
+    decision_model_checked_at         TIMESTAMPTZ,
+    decision_model_latency_ms         INTEGER,
+    decision_model_cost               NUMERIC(12, 8),
+    decision_model_error              TEXT
 );
 
 -- Table for tracking takendown status of redirect destinations over time
@@ -131,7 +141,17 @@ CREATE TABLE IF NOT EXISTS ads
     signal_third_party_hosting BOOLEAN DEFAULT FALSE,         -- Hosted on third-party platform
     signal_ip_address          BOOLEAN DEFAULT FALSE,         -- Hosted on IP address instead of domain
     signal_page_frozen         BOOLEAN DEFAULT FALSE,         -- Page load was frozen/slow (advisory)
-    signal_worker_bomb         BOOLEAN DEFAULT FALSE          -- Many web workers spawned (scam tactic)
+    signal_worker_bomb         BOOLEAN DEFAULT FALSE,         -- Many web workers spawned (scam tactic)
+    -- Advisory decision-model result (latest)
+    decision_model_target_probability FLOAT,
+    decision_model_is_target          BOOLEAN,
+    decision_model_threshold          FLOAT,
+    decision_model_model              TEXT,
+    decision_model_prompt_version     TEXT,
+    decision_model_checked_at         TIMESTAMPTZ,
+    decision_model_latency_ms         INTEGER,
+    decision_model_cost               NUMERIC(12, 8),
+    decision_model_error              TEXT
 );
 
 -- Search ad specific attributes
@@ -323,3 +343,67 @@ CREATE TABLE IF NOT EXISTS proxy_events (
 
 CREATE INDEX IF NOT EXISTS idx_proxy_events_type ON proxy_events (event_type);
 CREATE INDEX IF NOT EXISTS idx_proxy_events_created ON proxy_events (created_at DESC);
+
+-- Advisory decision-model audit storage. Latest result columns live on ads and
+-- redirect_destinations; this section stores the image and per-call history.
+-- One image row per screenshot hash. Repeated sightings reference the same row.
+CREATE TABLE IF NOT EXISTS decision_model_images (
+    id               BIGSERIAL PRIMARY KEY,
+    screenshot_hash  TEXT NOT NULL UNIQUE,
+    screenshot_path  TEXT NOT NULL,
+    image_width      INTEGER,
+    image_height     INTEGER,
+    first_seen       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    occurrence_count INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_decision_model_images_last_seen
+    ON decision_model_images (last_seen DESC);
+
+-- Every decision-model call. image_id is nullable so normal classifications can
+-- be logged without retaining an image.
+CREATE TABLE IF NOT EXISTS decision_model_checks (
+    id                                BIGSERIAL PRIMARY KEY,
+    image_id                          BIGINT REFERENCES decision_model_images(id) ON DELETE SET NULL,
+    screenshot_hash                   TEXT NOT NULL,
+
+    source_type                       TEXT NOT NULL,
+    source_id                         TEXT,
+    source_url                        TEXT,
+    ad_id                             UUID REFERENCES ads(id) ON DELETE SET NULL,
+    redirect_destination_id           INTEGER REFERENCES redirect_destinations(id) ON DELETE SET NULL,
+
+    onnx_is_scam                      BOOLEAN,
+    onnx_effective_is_scam            BOOLEAN,
+    onnx_confidence                   FLOAT,
+    onnx_verdict                      TEXT,
+
+    decision_model_target_probability FLOAT,
+    decision_model_threshold          FLOAT,
+    decision_model_is_target          BOOLEAN,
+    decision_model_model              TEXT,
+    decision_model_prompt_version     TEXT,
+    decision_model_latency_ms         INTEGER,
+    decision_model_cost               NUMERIC(12, 8),
+    decision_model_error              TEXT,
+
+    verdict_diff                      BOOLEAN,
+    review_reason                     TEXT,
+    reviewed_at                       TIMESTAMPTZ,
+    reviewed_label                    TEXT,
+    notes                             TEXT,
+
+    created_at                        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_decision_model_checks_image
+    ON decision_model_checks (image_id);
+CREATE INDEX IF NOT EXISTS idx_decision_model_checks_hash
+    ON decision_model_checks (screenshot_hash);
+CREATE INDEX IF NOT EXISTS idx_decision_model_checks_created
+    ON decision_model_checks (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_decision_model_checks_diff
+    ON decision_model_checks (verdict_diff) WHERE verdict_diff IS TRUE;
+CREATE INDEX IF NOT EXISTS idx_decision_model_checks_review
+    ON decision_model_checks (review_reason) WHERE review_reason IS NOT NULL;

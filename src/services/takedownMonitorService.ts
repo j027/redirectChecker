@@ -21,8 +21,220 @@ interface TakedownStatusRecord {
   netcraft_flagged_at: Date | null;
   smartscreen_flagged_at: Date | null;
   dns_unresolvable_at: Date | null;
+  host_status_at: Date | null;
+  host_status_kind: string | null;
+  host_status_provider: string | null;
+  host_status_reason: string | null;
+  host_status_url: string | null;
   last_checked: Date;
   check_active: boolean;
+}
+
+export type HostStatusKind = "suspended_confirmed" | "unavailable";
+
+export interface HostStatusProvider {
+  suffix: string;
+  provider: string;
+  kind: HostStatusKind;
+  reason: string;
+  suspensionHosts: string[];
+  statusCodes: number[];
+  bodyPatterns?: RegExp[];
+}
+
+export interface HostStatusProbeResult {
+  kind: HostStatusKind;
+  provider: string;
+  reason: string;
+  url: string;
+}
+
+const HOST_STATUS_PROVIDERS: HostStatusProvider[] = [
+  {
+    suffix: "on-forge.com",
+    provider: "forge",
+    kind: "suspended_confirmed",
+    reason: "legal_451",
+    suspensionHosts: ["suspended.on-forge.com"],
+    statusCodes: [451],
+  },
+  {
+    suffix: "b-cdn.net",
+    provider: "bunny",
+    kind: "unavailable",
+    reason: "suspended_or_not_configured",
+    suspensionHosts: ["suspended.b-cdn.net"],
+    statusCodes: [403],
+    bodyPatterns: [/suspended/i, /not configured/i],
+  },
+];
+
+export function matchHostStatusProvider(url: string): HostStatusProvider | null {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return (
+      HOST_STATUS_PROVIDERS.find(
+        (provider) =>
+          hostname === provider.suffix ||
+          hostname.endsWith(`.${provider.suffix}`)
+      ) ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function classifyHostStatusResponse(
+  provider: HostStatusProvider,
+  status: number,
+  finalUrl: string,
+  body: string
+): HostStatusProbeResult | null {
+  let finalHost = "";
+  try {
+    finalHost = new URL(finalUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+
+  const hostMatched = provider.suspensionHosts.some(
+    (host) => finalHost === host || finalHost.endsWith(`.${host}`)
+  );
+  const bodyMatched = provider.bodyPatterns?.some((pattern) =>
+    pattern.test(body)
+  ) ?? false;
+  const statusMatched = provider.statusCodes.includes(status);
+
+  // A known suspension host is enough on its own. Otherwise, require both the
+  // configured status code and (when present) a body marker. This keeps Bunny's
+  // ambiguous "suspended or not configured" page from matching every 403.
+  if (hostMatched || (statusMatched && (provider.bodyPatterns == null || bodyMatched))) {
+    return {
+      kind: provider.kind,
+      provider: provider.provider,
+      reason: provider.reason,
+      url: finalUrl,
+    };
+  }
+
+  return null;
+}
+
+async function readResponseBodyCapped(
+  response: Awaited<ReturnType<typeof fetch>>,
+  maxBytes: number
+): Promise<string> {
+  const reader = response.body?.getReader();
+  if (reader == null) {
+    return "";
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = Buffer.from(value);
+      chunks.push(chunk);
+      total += chunk.length;
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {
+      // The stream may already be closed.
+    }
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+export async function probeHostStatus(
+  destinationUrl: string
+): Promise<HostStatusProbeResult | null> {
+  const provider = matchHostStatusProvider(destinationUrl);
+  if (provider == null) {
+    return null;
+  }
+
+  const { classifierProxy } = await readConfig();
+  if (typeof classifierProxy !== "string" || classifierProxy.trim() === "") {
+    console.error("Missing classifierProxy for host status check");
+    return null;
+  }
+
+  let status = 0;
+  let finalUrl = destinationUrl;
+  let body = "";
+
+  try {
+    const userAgent =
+      (await userAgentService.getUserAgent().catch(() => null)) ??
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+    const response = await fetch(destinationUrl, {
+      dispatcher: new ProxyAgent(classifierProxy),
+      redirect: "follow",
+      signal: AbortSignal.timeout(10_000),
+      headers: { "User-Agent": userAgent },
+    });
+
+    status = response.status;
+    finalUrl = response.url || destinationUrl;
+
+    if (provider.bodyPatterns?.length) {
+      body = await readResponseBodyCapped(response, 64 * 1024);
+    } else {
+      await response.body?.cancel();
+    }
+  } catch (error) {
+    console.error(`Error probing host status for ${destinationUrl}: ${error}`);
+    return null;
+  }
+
+  return classifyHostStatusResponse(provider, status, finalUrl, body);
+}
+
+async function checkHostSuspension(
+  destination: TakedownStatusRecord
+): Promise<void> {
+  const result = await probeHostStatus(destination.destination_url);
+  if (result == null) {
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    const update = await client.query(
+      `UPDATE takedown_status
+       SET host_status_at = NOW(),
+           host_status_kind = $2,
+           host_status_provider = $3,
+           host_status_reason = $4,
+           host_status_url = $5
+       WHERE id = $1
+         AND host_status_at IS NULL`,
+      [
+        destination.id,
+        result.kind,
+        result.provider,
+        result.reason,
+        result.url,
+      ]
+    );
+
+    if (update.rowCount != null && update.rowCount > 0) {
+      console.log(
+        `Host status detected for ${destination.destination_url}: ${result.provider} ${result.kind}`
+      );
+    }
+  } finally {
+    client.release();
+  }
 }
 
 // Interface for Netcraft API response
@@ -116,6 +328,9 @@ export async function monitorTakedownStatus(): Promise<void> {
         }
         if (dest.smartscreen_flagged_at === null) {
           tasks.push(checkSmartScreen(dest));
+        }
+        if (dest.host_status_at === null) {
+          tasks.push(checkHostSuspension(dest));
         }
       }
 

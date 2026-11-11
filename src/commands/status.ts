@@ -1,5 +1,14 @@
 import { CommandDefinition } from "./commands.js";
-import { EMOJI, formatTimeDifference, formatUrl, formatSignals, formatConfidence, SignalData, getSignalLegend } from "../utils/discordFormatting.js";
+import {
+  EMOJI,
+  formatHostStatusIndicator,
+  formatTimeDifference,
+  formatUrl,
+  formatSignals,
+  formatConfidence,
+  SignalData,
+  getSignalLegend,
+} from "../utils/discordFormatting.js";
 import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from "discord.js";
 import pool from "../dbPool.js";
 
@@ -35,6 +44,11 @@ export const statusCommand: CommandDefinition = {
                ts.netcraft_flagged_at, 
                ts.smartscreen_flagged_at,
                ts.dns_unresolvable_at,
+               ts.host_status_at,
+               ts.host_status_kind,
+               ts.host_status_provider,
+               ts.host_status_reason,
+               ts.host_status_url,
                CASE WHEN ts.id IS NULL THEN FALSE ELSE TRUE END AS has_takedown_status
         FROM redirects r
         LEFT JOIN (
@@ -76,6 +90,11 @@ export const statusCommand: CommandDefinition = {
           netcraftFlaggedAt: Date | null;
           smartscreenFlaggedAt: Date | null;
           dnsUnresolvableAt: Date | null;
+          hostStatusAt: Date | null;
+          hostStatusKind: string | null;
+          hostStatusProvider: string | null;
+          hostStatusReason: string | null;
+          hostStatusUrl: string | null;
         }>;
       }>();
 
@@ -110,7 +129,12 @@ export const statusCommand: CommandDefinition = {
             safebrowsingFlaggedAt: row.safebrowsing_flagged_at ? new Date(row.safebrowsing_flagged_at) : null,
             netcraftFlaggedAt: row.netcraft_flagged_at ? new Date(row.netcraft_flagged_at) : null, 
             smartscreenFlaggedAt: row.smartscreen_flagged_at ? new Date(row.smartscreen_flagged_at) : null,
-            dnsUnresolvableAt: row.dns_unresolvable_at ? new Date(row.dns_unresolvable_at) : null
+            dnsUnresolvableAt: row.dns_unresolvable_at ? new Date(row.dns_unresolvable_at) : null,
+            hostStatusAt: row.host_status_at ? new Date(row.host_status_at) : null,
+            hostStatusKind: row.host_status_kind ?? null,
+            hostStatusProvider: row.host_status_provider ?? null,
+            hostStatusReason: row.host_status_reason ?? null,
+            hostStatusUrl: row.host_status_url ?? null
           });
         }
       }
@@ -190,6 +214,15 @@ export const statusCommand: CommandDefinition = {
             if (dest.dnsUnresolvableAt) {
               const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.dnsUnresolvableAt);
               takedownStatusLines.push(`${EMOJI.DNS} ${timeDiff}`);
+            }
+
+            if (dest.hostStatusAt) {
+              const indicator = formatHostStatusIndicator(
+                dest.hostStatusKind,
+                dest.hostStatusProvider
+              );
+              const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.hostStatusAt);
+              takedownStatusLines.push(`${indicator.emoji} ${indicator.label} ${timeDiff}`);
             }
           }
           

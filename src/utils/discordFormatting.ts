@@ -3,6 +3,8 @@ export const EMOJI = {
   NETCRAFT: "<:netcraft:1347647539616157787>",
   SMARTSCREEN: "<:ms_smartscreen:1347648053045231636>",
   DNS: "🌐",
+  HOST_SUSPENDED: "⛔",
+  HOST_UNAVAILABLE: "⚠️",
   // Signal emojis (compact icons)
   FULLSCREEN: "📺",
   KEYBOARD_LOCK: "⌨️",
@@ -72,6 +74,36 @@ export function formatTimeDifference(startDate: Date, endDate: Date): string {
   } else {
     return `${diffSeconds}s`;
   }
+}
+
+export function formatHostProvider(provider: string | null): string {
+  switch (provider) {
+    case "forge":
+      return "Forge";
+    case "bunny":
+      return "Bunny CDN";
+    default:
+      return provider != null && provider.length > 0 ? provider : "Provider";
+  }
+}
+
+export function formatHostStatusIndicator(
+  kind: string | null,
+  provider: string | null
+): { emoji: string; label: string } {
+  const providerName = formatHostProvider(provider);
+
+  if (kind === "suspended_confirmed") {
+    return {
+      emoji: EMOJI.HOST_SUSPENDED,
+      label: `${providerName} suspended`,
+    };
+  }
+
+  return {
+    emoji: EMOJI.HOST_UNAVAILABLE,
+    label: `${providerName} unavailable`,
+  };
 }
 
 export function formatUrl(url: string): { display: string, full: string } {

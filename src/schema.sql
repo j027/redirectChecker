@@ -59,12 +59,26 @@ CREATE TABLE IF NOT EXISTS takedown_status
     -- DNS resolution status (NULL = still resolving, timestamp = when first found unresolvable)
     dns_unresolvable_at     TIMESTAMPTZ DEFAULT NULL, -- When the DNS record stopped resolving
 
+    -- Provider-level suspension/unavailability (Forge, Bunny, ...)
+    host_status_at          TIMESTAMPTZ DEFAULT NULL, -- When the host status was detected
+    host_status_kind        TEXT DEFAULT NULL,         -- 'suspended_confirmed' | 'unavailable'
+    host_status_provider    TEXT DEFAULT NULL,         -- 'forge' | 'bunny' | ...
+    host_status_reason      TEXT DEFAULT NULL,         -- 'legal_451' | 'suspended_or_not_configured' | ...
+    host_status_url         TEXT DEFAULT NULL,         -- Final URL (e.g. suspended.on-forge.com)
+
     -- Tracking fields
     last_checked            TIMESTAMPTZ DEFAULT NULL, -- When security checks were last performed
     check_active            BOOLEAN     DEFAULT TRUE, -- Whether this URL should be checked in future runs
 
     UNIQUE (redirect_destination_id)
 );
+
+-- Add columns for existing databases (schema.sql is also used as the baseline).
+ALTER TABLE takedown_status ADD COLUMN IF NOT EXISTS host_status_at TIMESTAMPTZ DEFAULT NULL;
+ALTER TABLE takedown_status ADD COLUMN IF NOT EXISTS host_status_kind TEXT DEFAULT NULL;
+ALTER TABLE takedown_status ADD COLUMN IF NOT EXISTS host_status_provider TEXT DEFAULT NULL;
+ALTER TABLE takedown_status ADD COLUMN IF NOT EXISTS host_status_reason TEXT DEFAULT NULL;
+ALTER TABLE takedown_status ADD COLUMN IF NOT EXISTS host_status_url TEXT DEFAULT NULL;
 
 -- Index for efficient lookup of active checks
 CREATE INDEX IF NOT EXISTS idx_takedown_status_active ON takedown_status (check_active);

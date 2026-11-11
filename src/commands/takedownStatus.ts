@@ -1,7 +1,13 @@
 import { CommandDefinition } from "./commands.js";
 import { SlashCommandBuilder, ChatInputCommandInteraction, EmbedBuilder } from "discord.js";
 import pool from "../dbPool.js";
-import { EMOJI, formatTimeDifference, formatUrl } from "../utils/discordFormatting.js";
+import {
+  EMOJI,
+  formatHostProvider,
+  formatHostStatusIndicator,
+  formatTimeDifference,
+  formatUrl,
+} from "../utils/discordFormatting.js";
 
 export const takedownStatusCommand: CommandDefinition = {
   command: new SlashCommandBuilder()
@@ -28,19 +34,26 @@ export const takedownStatusCommand: CommandDefinition = {
                ts.safebrowsing_flagged_at,
                ts.netcraft_flagged_at,
                ts.smartscreen_flagged_at,
-               ts.dns_unresolvable_at
+               ts.dns_unresolvable_at,
+               ts.host_status_at,
+               ts.host_status_kind,
+               ts.host_status_provider,
+               ts.host_status_reason,
+               ts.host_status_url
         FROM takedown_status ts
         JOIN redirect_destinations d ON ts.redirect_destination_id = d.id
         WHERE ts.safebrowsing_flagged_at IS NOT NULL 
            OR ts.netcraft_flagged_at IS NOT NULL
            OR ts.smartscreen_flagged_at IS NOT NULL
            OR ts.dns_unresolvable_at IS NOT NULL
+           OR ts.host_status_at IS NOT NULL
         ORDER BY 
           GREATEST(
             COALESCE(ts.safebrowsing_flagged_at, '1970-01-01'::timestamp),
             COALESCE(ts.netcraft_flagged_at, '1970-01-01'::timestamp),
             COALESCE(ts.smartscreen_flagged_at, '1970-01-01'::timestamp),
-            COALESCE(ts.dns_unresolvable_at, '1970-01-01'::timestamp)
+            COALESCE(ts.dns_unresolvable_at, '1970-01-01'::timestamp),
+            COALESCE(ts.host_status_at, '1970-01-01'::timestamp)
           ) DESC
         LIMIT $1;
       `;
@@ -54,9 +67,9 @@ export const takedownStatusCommand: CommandDefinition = {
 
       // Create a beautiful embed to show the takedowns
       const embed = new EmbedBuilder()
-        .setTitle("🛡️ Recent Takedowns")
+        .setTitle("🛡️ Recent Takedown Signals")
         .setColor(0x3ba55c) // Green color for success
-        .setDescription(`The ${limit} most recent phishing sites that were taken down`)
+        .setDescription(`Recent takedown and provider-status signals`)
         .setTimestamp();
       
       // Add some overall statistics
@@ -65,6 +78,7 @@ export const takedownStatusCommand: CommandDefinition = {
         netcraft: 0, 
         smartscreen: 0,
         dns: 0,
+        hostStatusCounts: {} as Record<string, number>,
         fastest: { service: '', time: Infinity }
       };
       
@@ -130,6 +144,26 @@ export const takedownStatusCommand: CommandDefinition = {
           }
           statusIndicators.push(`${EMOJI.DNS} ${formatTimeDifference(firstSeen, flaggedAt)}`);
         }
+
+        // Provider host status (Forge/Bunny/...)
+        if (row.host_status_at) {
+          const flaggedAt = new Date(row.host_status_at);
+          const indicator = formatHostStatusIndicator(
+            row.host_status_kind,
+            row.host_status_provider
+          );
+          const timeDiff = flaggedAt.getTime() - firstSeen.getTime();
+          if (timeDiff < fastestTime) {
+            fastestTime = timeDiff;
+            fastestService = formatHostProvider(row.host_status_provider);
+          }
+          statusIndicators.push(
+            `${indicator.emoji} ${indicator.label} ${formatTimeDifference(firstSeen, flaggedAt)}`
+          );
+          const providerKey = row.host_status_provider ?? "unknown";
+          stats.hostStatusCounts[providerKey] =
+            (stats.hostStatusCounts[providerKey] ?? 0) + 1;
+        }
         
         // Update global fastest if this is faster
         if (fastestTime < stats.fastest.time) {
@@ -149,8 +183,15 @@ export const takedownStatusCommand: CommandDefinition = {
         formatTimeDifference(new Date(0), new Date(stats.fastest.time)) : 
         'N/A';
       
+      const hostStatusSummary = Object.entries(stats.hostStatusCounts)
+        .map(([provider, count]) => `${formatHostProvider(provider)}: ${count}`)
+        .join(" | ");
+      const hostStatusPart = hostStatusSummary
+        ? ` | Host status: ${hostStatusSummary}`
+        : "";
+
       embed.setFooter({
-        text: `Flagged by: SafeBrowsing: ${stats.safebrowsing} | Netcraft: ${stats.netcraft} | SmartScreen: ${stats.smartscreen} | DNS: ${stats.dns} | Fastest: ${stats.fastest.service} (${fastestTime})`
+        text: `Flagged by: SafeBrowsing: ${stats.safebrowsing} | Netcraft: ${stats.netcraft} | SmartScreen: ${stats.smartscreen} | DNS: ${stats.dns}${hostStatusPart} | Fastest signal: ${stats.fastest.service} (${fastestTime})`
       });
       
       // Send the embed

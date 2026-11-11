@@ -10,6 +10,12 @@ import fs from "fs/promises";
 import path from "path";
 import { logHunterEvent } from "./hunterEventLogger.js";
 import { trySightingAdd } from "./redirectAddService.js";
+import {
+  getTyposquatPool,
+  getTyposquatRunContext,
+  selectTyposquatFromPool,
+  type TyposquatSelection,
+} from "./typosquatPoolService.js";
 
 export class TyposquatHunter {
   private browser: Browser | null = null;
@@ -81,19 +87,37 @@ export class TyposquatHunter {
     this.typosquatDomains = Array.from(new Set(domains));
 
     console.log(`Loaded ${this.typosquatDomains.length} typosquat domains from ${filePath}`);
+
+    const poolEntries = await getTyposquatPool(this.typosquatDomains);
+    const tierCounts = poolEntries.reduce<Record<string, number>>((counts, entry) => {
+      counts[entry.tier] = (counts[entry.tier] ?? 0) + 1;
+      return counts;
+    }, {});
+    console.log(
+      `Typosquat pool tiers: ${["hot", "normal", "low", "cold", "unknown"]
+        .map((tier) => `${tier}=${tierCounts[tier] ?? 0}`)
+        .join(", ")}`
+    );
   }
 
-  private getRandomTyposquatUrl(): string {
+  private async getNextTyposquatSelection(): Promise<TyposquatSelection> {
     if (!this.typosquatDomains || this.typosquatDomains.length === 0) {
       throw new Error("Typosquat domains not loaded; ensure typosquats.json exists and contains domains.");
     }
 
-    const randomDomain = this.typosquatDomains[crypto.randomInt(this.typosquatDomains.length)];
-    if (!randomDomain.startsWith("http")) {
-      return `http://${randomDomain}`;
+    const entries = await getTyposquatPool(this.typosquatDomains);
+    const context = getTyposquatRunContext();
+    const selection = selectTyposquatFromPool(entries, context);
+
+    if (selection == null) {
+      throw new Error("Typosquat pool selection returned no domain");
     }
 
-    return randomDomain;
+    return selection;
+  }
+
+  private toTyposquatUrl(domain: string): string {
+    return domain.startsWith("http") ? domain : `http://${domain}`;
   }
 
   async huntTyposquat() {
@@ -111,9 +135,25 @@ export class TyposquatHunter {
       return null;
     }
 
-    const typosquat = this.getRandomTyposquatUrl();
-    console.log(`Checking typosquat domain: ${typosquat}`);
-    await logHunterEvent("typosquat", "cycle_start", `Checking typosquat domain`, { domain: typosquat });
+    const selection = await this.getNextTyposquatSelection();
+    const typosquat = this.toTyposquatUrl(selection.domain);
+    const context = selection.context;
+    console.log(
+      `Checking typosquat domain: ${typosquat} ` +
+      `(tier=${selection.tier}, dfp=${selection.stats?.distinctFinalParents ?? "?"}, ` +
+      `${context.isPeak ? "peak" : "off-hours"})`
+    );
+    await logHunterEvent("typosquat", "cycle_start", `Checking typosquat domain`, {
+      domain: typosquat,
+      tier: selection.tier,
+      run_context: context.isPeak ? "peak" : "off_hours",
+      et_hour: context.hourEt,
+      et_isodow: context.isodow,
+      dfp: selection.stats?.distinctFinalParents ?? null,
+      distinct_final_hosts: selection.stats?.distinctFinalHosts ?? null,
+      mean_distinct_hosts: selection.stats?.meanDistinctHosts ?? null,
+      recent_scams: selection.stats?.recentScams ?? 0,
+    });
 
     const result = await hunterService.processAd(typosquat);
 

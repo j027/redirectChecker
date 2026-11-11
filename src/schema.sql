@@ -344,6 +344,15 @@ CREATE TABLE IF NOT EXISTS proxy_events (
 CREATE INDEX IF NOT EXISTS idx_proxy_events_type ON proxy_events (event_type);
 CREATE INDEX IF NOT EXISTS idx_proxy_events_created ON proxy_events (created_at DESC);
 
+-- Applied migration history. Fresh installs record the migrations that were
+-- already folded into this schema; existing databases use src/migrate.ts.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    name         TEXT PRIMARY KEY,
+    checksum     TEXT,
+    applied_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    execution_ms INTEGER
+);
+
 -- Advisory decision-model audit storage. Latest result columns live on ads and
 -- redirect_destinations; this section stores the image and per-call history.
 -- One image row per screenshot hash. Repeated sightings reference the same row.

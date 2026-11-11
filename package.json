@@ -8,6 +8,8 @@
     "start": "node dist/discordBot.js",
     "init-db:dev": "tsx src/initDb.ts",
     "init-db": "node dist/initDb.js",
+    "migrate:dev": "tsx src/migrate.ts",
+    "migrate": "node dist/migrate.js",
     "reset-training-data:dev": "tsx src/resetTrainingDataset.ts",
     "reset-training-data": "node dist/resetTrainingDataset.js",
     "clean": "rm -rf dist",

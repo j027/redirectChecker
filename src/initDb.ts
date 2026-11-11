@@ -3,6 +3,7 @@ import { Client } from 'pg';
 import { readFileSync } from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import { markAllMigrationsApplied } from './migrate.js';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -15,7 +16,10 @@ async function initializeDatabase() {
         const schemaPath = path.join(import.meta.dirname, 'schema.sql');
         const schema = readFileSync(schemaPath, 'utf-8');
         await client.query(schema);
-        console.log('Database initialized successfully.');
+        const marked = await markAllMigrationsApplied(client);
+        console.log(
+          `Database initialized successfully. Marked ${marked.length} migration(s) as applied.`
+        );
     } catch (error) {
         console.error('Error initializing the database:', error);
     } finally {

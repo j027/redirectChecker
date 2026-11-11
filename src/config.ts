@@ -1,3 +1,4 @@
+import "dotenv/config";
 import {promises as fs} from "fs";
 
 export const HUNTER_NAMES = [
@@ -80,10 +81,53 @@ type Config = {
   discourseBypassHeader?: string;
 };
 
+const ENV_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+/**
+ * Replaces ${ENV_VAR} references in config.json with values from the
+ * environment. dotenv loads .env at import time, so local runs and the
+ * bind-mounted Docker container both resolve the same way.
+ */
+function resolveEnvRefs(value: unknown, path = "config"): unknown {
+  if (typeof value === "string") {
+    if (!value.includes("${")) {
+      return value;
+    }
+
+    return value.replace(ENV_REF, (_match, name: string) => {
+      const resolved = process.env[name];
+      if (resolved === undefined) {
+        throw new Error(
+          `Missing environment variable "${name}" referenced at ${path}`
+        );
+      }
+      return resolved;
+    });
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item, index) =>
+      resolveEnvRefs(item, `${path}[${index}]`)
+    );
+  }
+
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        resolveEnvRefs(item, `${path}.${key}`),
+      ])
+    );
+  }
+
+  return value;
+}
+
 export async function readConfig(): Promise<Config> {
-  const config = JSON.parse(
+  const parsed = JSON.parse(
     await fs.readFile("./config.json", { encoding: "utf-8" })
-  ) as Config;
+  );
+  const config = resolveEnvRefs(parsed) as Config;
 
   // Fail fast: the classifier must never share the hunter proxy.
   if (

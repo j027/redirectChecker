@@ -13,6 +13,8 @@ import { scamStatsDailyCommand } from "./scamStatsDaily.js";
 import { scamStatsMonthlyCommand } from "./scamStatsMonthly.js";
 import { urlscanStatsCommand } from "./urlscanStats.js";
 import { abuseReportsCommand } from "./abuseReports.js";
+import { reportLogCommand } from "./reportLog.js";
+import { reportStatsCommand } from "./reportStats.js";
 import { proxyCommand } from "./proxy.js";
 
 export type CommandDefinition = {
@@ -32,5 +34,7 @@ export const commands: CommandDefinition[] = [
   scamStatsMonthlyCommand,
   urlscanStatsCommand,
   abuseReportsCommand,
+  reportLogCommand,
+  reportStatsCommand,
   proxyCommand
 ];

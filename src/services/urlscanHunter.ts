@@ -146,13 +146,13 @@ export class UrlscanHunter {
     }
 
     // --- Stage 3: Report to Netcraft ---
-    let reportedSuccessfully = false;
-    try {
-      await reportToNetcraft(url);
-      reportedSuccessfully = true;
-    } catch (error) {
+    const netcraftOutcome = await reportToNetcraft(url, {
+      metadata: { urlscan_uuid: uuid },
+    });
+    const reportedSuccessfully = netcraftOutcome.status === "success";
+    if (!reportedSuccessfully) {
       console.error(
-        `[urlscan-hunter] Netcraft report failed for ${url}: ${error}`,
+        `[urlscan-hunter] Netcraft report failed for ${url}: ${netcraftOutcome.errorMessage ?? netcraftOutcome.status}`,
       );
     }
 

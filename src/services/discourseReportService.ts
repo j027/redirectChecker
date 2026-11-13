@@ -1,5 +1,11 @@
 import { fetch } from "undici";
 import { readConfig } from "../config.js";
+import {
+  ReportContext,
+  ReportOutcome,
+  reportInput,
+  trackReport,
+} from "./reportLogService.js";
 
 interface DiscoursePostResponse {
   id?: number;
@@ -59,59 +65,92 @@ export async function reportToDiscourse(
   site: string,
   redirect: string,
   cloudflareScanId: string | null,
-  urlscanUuid: string | null
-): Promise<void> {
-  const config = await readConfig();
-  const {
-    discourseBaseUrl,
-    discourseApiKey,
-    discourseApiUsername,
-    discourseTopicId,
-    discourseBypassHeader,
-  } = config;
+  urlscanUuid: string | null,
+  context?: ReportContext
+): Promise<ReportOutcome> {
+  return trackReport(
+    reportInput("discourse", "notification", site, context),
+    async () => {
+      const config = await readConfig();
+      const {
+        discourseBaseUrl,
+        discourseApiKey,
+        discourseApiUsername,
+        discourseTopicId,
+        discourseBypassHeader,
+      } = config;
 
-  if (
-    !discourseBaseUrl ||
-    !discourseApiKey ||
-    !discourseApiUsername ||
-    discourseTopicId == null
-  ) {
-    console.info("Discourse reporting disabled: missing config");
-    return;
-  }
+      if (
+        !discourseBaseUrl ||
+        !discourseApiKey ||
+        !discourseApiUsername ||
+        discourseTopicId == null
+      ) {
+        console.info("Discourse reporting disabled: missing config");
+        return { status: "skipped", metadata: { reason: "not_configured" } };
+      }
 
-  const raw = buildPostRaw(site, redirect, cloudflareScanId, urlscanUuid);
+      const raw = buildPostRaw(site, redirect, cloudflareScanId, urlscanUuid);
 
-  try {
-    const response = await fetch(`${discourseBaseUrl}/posts.json`, {
-      method: "POST",
-      headers: {
-        ...getDiscourseHeaders(
-          discourseApiKey,
-          discourseApiUsername,
-          discourseBypassHeader
-        ),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        topic_id: discourseTopicId,
-        raw,
-      }),
-    });
+      const response = await fetch(`${discourseBaseUrl}/posts.json`, {
+        method: "POST",
+        headers: {
+          ...getDiscourseHeaders(
+            discourseApiKey,
+            discourseApiUsername,
+            discourseBypassHeader
+          ),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          topic_id: discourseTopicId,
+          raw,
+        }),
+      });
+      const text = await response.text();
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      console.error(
-        `Discourse report failed for ${site}: ${response.status} ${response.statusText} - ${text}`
+      if (!response.ok) {
+        console.error(
+          `Discourse report failed for ${site}: ${response.status} ${response.statusText} - ${text}`
+        );
+        return {
+          status: "error",
+          httpStatus: response.status,
+          responseSnippet: text,
+          errorMessage: `HTTP ${response.status} ${response.statusText}`,
+        };
+      }
+
+      let data: DiscoursePostResponse;
+      try {
+        data = JSON.parse(text) as DiscoursePostResponse;
+      } catch {
+        return {
+          status: "error",
+          httpStatus: response.status,
+          responseSnippet: text,
+          errorMessage: "Discourse response was not JSON",
+        };
+      }
+
+      console.info(
+        `Reported to Discourse: ${site} (topic ${data.topic_id}, post #${data.post_number})`
       );
-      return;
+      const postUrl =
+        data.topic_id != null && data.post_number != null
+          ? `${discourseBaseUrl}/t/${data.topic_id}/${data.post_number}`
+          : null;
+      return {
+        status: "success",
+        httpStatus: response.status,
+        externalId: data.id != null ? String(data.id) : null,
+        externalUrl: postUrl,
+        responseSnippet: text,
+        metadata: {
+          topic_id: data.topic_id ?? null,
+          post_number: data.post_number ?? null,
+        },
+      };
     }
-
-    const data = (await response.json()) as DiscoursePostResponse;
-    console.info(
-      `Reported to Discourse: ${site} (topic ${data.topic_id}, post #${data.post_number})`
-    );
-  } catch (err) {
-    console.error(`Error reporting to Discourse: ${err}`);
-  }
+  );
 }

@@ -5,6 +5,17 @@ import path from "path";
 import { readConfig } from "../config.js";
 import { parseProxy, spoofWindowsChrome } from "../utils/playwrightUtilities.js";
 import { BrowserManagerService } from './browserManagerService.js';
+import {
+  ReportContext,
+  abandonStaleReports,
+  finishReport,
+  logSkippedReport,
+  markReportStarted,
+  reportInput,
+  startReport,
+  trackReport,
+  updateReportProgress,
+} from "./reportLogService.js";
 
 const SMARTSCREEN_REPORT_URL =
   "https://www.microsoft.com/en-us/wdsi/support/report-unsafe-site";
@@ -34,6 +45,7 @@ interface SafeBrowsingReportTask {
   url: string;
   details: string;
   attempts: number;
+  submissionId: number | null;
 }
 
 export class BrowserReportService {
@@ -45,6 +57,7 @@ export class BrowserReportService {
   private safeBrowsingPendingUrls: Set<string>;
   private safeBrowsingProcessing: boolean;
   private safeBrowsingInFlight: Promise<void> | null;
+  private safeBrowsingActiveTask: SafeBrowsingReportTask | null;
   private safeBrowsingStopped: boolean;
   private safeBrowsingPaused: boolean;
   private safeBrowsingCounters: {
@@ -63,6 +76,7 @@ export class BrowserReportService {
     this.safeBrowsingPendingUrls = new Set();
     this.safeBrowsingProcessing = false;
     this.safeBrowsingInFlight = null;
+    this.safeBrowsingActiveTask = null;
     this.safeBrowsingStopped = false;
     this.safeBrowsingPaused = false;
     this.safeBrowsingCounters = { submitted: 0, captcha: 0, blocked: 0, gaveUp: 0 };
@@ -114,48 +128,61 @@ export class BrowserReportService {
     return this.context;
   }
 
-  async reportToSmartScreen(url: string): Promise<boolean> {
-    await this.ensureBrowserIsHealthy();
+  async reportToSmartScreen(
+    url: string,
+    reportContext?: ReportContext
+  ): Promise<boolean> {
+    const outcome = await trackReport(
+      reportInput("smartscreen", "threat_intel", url, reportContext),
+      async () => {
+        await this.ensureBrowserIsHealthy();
 
-    if (this.browser == null) {
-      console.error(
-        "Browser has not been initialized - reporting to smartscreen failed",
-      );
-      return false;
-    }
+        if (this.browser == null) {
+          console.error(
+            "Browser has not been initialized - reporting to smartscreen failed",
+          );
+          return { status: "error", errorMessage: "Browser not initialized" };
+        }
 
-    const context = await this.getContext();
-    const page = await context.newPage();
+        const browserContext = await this.getContext();
+        const page = await browserContext.newPage();
 
-    try {
-      await spoofWindowsChrome(context, page);
-      await page.goto(SMARTSCREEN_REPORT_URL);
+        try {
+          await spoofWindowsChrome(browserContext, page);
+          await page.goto(SMARTSCREEN_REPORT_URL);
 
-      if (!(await this.isReportFormAvailable(page))) {
-        const signedIn = await this.signIn(page);
-        if (signedIn) {
-          await this.saveSession(context);
+          if (!(await this.isReportFormAvailable(page))) {
+            const signedIn = await this.signIn(page);
+            if (signedIn) {
+              await this.saveSession(browserContext);
+            }
+          }
+
+          // Fill out the report form. The form fields are custom widgets that only
+          // update their model on real keystrokes, so keep pressSequentially here.
+          await page.getByLabel("Which site do you want to report?").pressSequentially(url, { delay: 20 });
+          await page.getByText("Malware or other threats").check();
+          await page.getByRole("button", { name: "Submit" }).click();
+
+          // ensure that the submission was successful
+          await page.getByText("Thank you for your submission").waitFor({ timeout: 30000 });
+          console.log(`Successfully reported to microsoft smartscreen: ${url}`);
+          return { status: "success" };
+        } catch (error) {
+          console.error(`Error when reporting to microsoft smartscreen (${url}): ${error}`);
+          const screenshot = await this.takeFailureScreenshot(page, url);
+          return {
+            status: "error",
+            errorMessage: String(error),
+            metadata: screenshot ? { screenshot_path: screenshot } : {},
+          };
+        } finally {
+          await page.close().catch(() => {});
         }
       }
+    );
 
-      // Fill out the report form. The form fields are custom widgets that only
-      // update their model on real keystrokes, so keep pressSequentially here.
-      await page.getByLabel("Which site do you want to report?").pressSequentially(url, { delay: 20 });
-      await page.getByText("Malware or other threats").check();
-      await page.getByRole("button", { name: "Submit" }).click();
-
-      // ensure that the submission was successful
-      await page.getByText("Thank you for your submission").waitFor({ timeout: 30000 });
-      console.log(`Successfully reported to microsoft smartscreen: ${url}`);
-    } catch (error) {
-      console.error(`Error when reporting to microsoft smartscreen (${url}): ${error}`);
-      await this.takeFailureScreenshot(page, url);
-      return false;
-    } finally {
-      await page.close().catch(() => {});
-    }
-
-    return true;
+    return outcome.status === "success";
   }
 
   /**
@@ -360,18 +387,33 @@ export class BrowserReportService {
    * reports sequentially; transient failures are retried with backoff while
    * captcha blocks are terminal and logged for visibility.
    */
-  enqueueSafeBrowsingReport(url: string, details: string): void {
+  async enqueueSafeBrowsingReport(
+    url: string,
+    details: string,
+    reportContext?: ReportContext
+  ): Promise<void> {
+    const input = reportInput(
+      "safe_browsing_web_form",
+      "threat_intel",
+      url,
+      reportContext
+    );
+
     if (this.safeBrowsingStopped) {
+      await logSkippedReport(input, "service_stopped");
       return;
     }
 
     if (this.safeBrowsingPendingUrls.has(url)) {
       console.log(`[safe-browsing] ${url} is already queued, skipping duplicate`);
+      await logSkippedReport(input, "already_queued");
       return;
     }
 
+    const submissionId = await startReport(input, { startedAt: null });
+
     this.safeBrowsingPendingUrls.add(url);
-    this.safeBrowsingQueue.push({ url, details, attempts: 0 });
+    this.safeBrowsingQueue.push({ url, details, attempts: 0, submissionId });
     console.log(`[safe-browsing] queued report for ${url} (${this.safeBrowsingQueue.length} in queue)`);
     void this.processSafeBrowsingQueue();
   }
@@ -391,6 +433,8 @@ export class BrowserReportService {
 
         const task = this.safeBrowsingQueue.shift()!;
         task.attempts++;
+        this.safeBrowsingActiveTask = task;
+        await markReportStarted(task.submissionId);
 
         const run = (async () => {
           const status = await this.reportToGoogleSafeBrowsing(task.url, task.details);
@@ -402,6 +446,7 @@ export class BrowserReportService {
           await run;
         } finally {
           this.safeBrowsingInFlight = null;
+          this.safeBrowsingActiveTask = null;
         }
       }
     } finally {
@@ -416,6 +461,10 @@ export class BrowserReportService {
     if (status === "success") {
       this.safeBrowsingPendingUrls.delete(task.url);
       this.safeBrowsingCounters.submitted++;
+      await finishReport(task.submissionId, {
+        status: "success",
+        metadata: { attempts: task.attempts },
+      });
       console.log(
         `[safe-browsing] report succeeded for ${task.url} (attempt ${task.attempts}/${SAFE_BROWSING_MAX_ATTEMPTS})`,
       );
@@ -426,20 +475,39 @@ export class BrowserReportService {
       } else {
         this.safeBrowsingCounters.blocked++;
       }
+      await finishReport(task.submissionId, {
+        status,
+        metadata: { attempts: task.attempts },
+      });
     } else if (task.attempts < SAFE_BROWSING_MAX_ATTEMPTS && !this.safeBrowsingStopped) {
       const delayMs = SAFE_BROWSING_RETRY_BASE_DELAY_MS * task.attempts;
       console.warn(
         `[safe-browsing] report failed for ${task.url} (attempt ${task.attempts}/${SAFE_BROWSING_MAX_ATTEMPTS}); retrying in ${delayMs / 1000}s`,
       );
+      await updateReportProgress(task.submissionId, {
+        attempts: task.attempts,
+        last_status: status,
+        last_attempt_at: new Date().toISOString(),
+      });
       await setTimeout(delayMs);
       if (this.safeBrowsingStopped) {
         this.safeBrowsingPendingUrls.delete(task.url);
+        await finishReport(task.submissionId, {
+          status: "abandoned",
+          errorMessage: "service stopped during retry delay",
+          metadata: { attempts: task.attempts, reason: "shutdown" },
+        });
       } else {
         this.safeBrowsingQueue.push(task);
       }
     } else {
       this.safeBrowsingPendingUrls.delete(task.url);
       this.safeBrowsingCounters.gaveUp++;
+      await finishReport(task.submissionId, {
+        status: "error",
+        errorMessage: `gave up after ${task.attempts} attempt(s)`,
+        metadata: { attempts: task.attempts, gave_up: true },
+      });
       console.error(
         `[safe-browsing] gave up on ${task.url} after ${task.attempts} attempt(s)`,
       );
@@ -607,9 +675,31 @@ export class BrowserReportService {
     }
   }
 
+  /**
+   * The Safe Browsing queue is in memory, so any row still queued from a
+   * previous process can never be picked up. Mark old rows abandoned at
+   * startup to keep the ledger honest.
+   */
+  async reconcileQueuedReports(): Promise<void> {
+    const abandoned = await abandonStaleReports(15, "safe_browsing_web_form");
+    if (abandoned > 0) {
+      console.log(
+        `[safe-browsing] marked ${abandoned} stale queued report(s) abandoned`
+      );
+    }
+  }
+
   async close() {
     this.safeBrowsingStopped = true;
-    this.safeBrowsingQueue.length = 0;
+
+    const queuedTasks = this.safeBrowsingQueue.splice(0);
+    for (const task of queuedTasks) {
+      await finishReport(task.submissionId, {
+        status: "abandoned",
+        errorMessage: "service stopped before submission",
+        metadata: { attempts: task.attempts, reason: "shutdown" },
+      });
+    }
     this.safeBrowsingPendingUrls.clear();
 
     if (this.safeBrowsingInFlight) {
@@ -618,6 +708,18 @@ export class BrowserReportService {
         setTimeout(15000),
       ]).catch(() => {});
       this.safeBrowsingInFlight = null;
+    }
+
+    if (this.safeBrowsingActiveTask) {
+      await finishReport(this.safeBrowsingActiveTask.submissionId, {
+        status: "abandoned",
+        errorMessage: "service stopped while submission was in flight",
+        metadata: {
+          attempts: this.safeBrowsingActiveTask.attempts,
+          reason: "shutdown",
+        },
+      });
+      this.safeBrowsingActiveTask = null;
     }
 
     if (this.safeBrowsingContext) {

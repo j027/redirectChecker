@@ -100,6 +100,7 @@ async function initializeServices() {
 
   await aiClassifierService.init();
   await browserReportService.init();
+  await browserReportService.reconcileQueuedReports();
   await browserRedirectService.init();
   await hunterService.init(false, enabledHunters);
   await initializeGoogleWebRiskClient();

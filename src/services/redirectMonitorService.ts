@@ -193,7 +193,14 @@ async function processRedirectEntry(
       });
 
       if (isScam) {
-        await reportScamDestination(redirectDestination, sourceUrl, classificationResult, signals, confidenceScore);
+        await reportScamDestination(
+          redirectDestination,
+          sourceUrl,
+          classificationResult,
+          signals,
+          confidenceScore,
+          existingDestination.id
+        );
       }
 
       await client.query('COMMIT');
@@ -253,7 +260,14 @@ async function processRedirectEntry(
 
     // If it's a scam site, report it with the screenshot and HTML
     if (isScam) {
-      await reportScamDestination(redirectDestination, sourceUrl, classificationResult, signals, confidenceScore);
+      await reportScamDestination(
+        redirectDestination,
+        sourceUrl,
+        classificationResult,
+        signals,
+        confidenceScore,
+        destinationId
+      );
     }
     
     // Commit the transaction
@@ -279,7 +293,8 @@ async function reportScamDestination(
   sourceUrl: string,
   classificationResult: ClassificationResult,
   signals: DetectedSignals,
-  confidenceScore: number
+  confidenceScore: number,
+  redirectDestinationId: number
 ): Promise<void> {
   await logScamReport(destinationUrl, "redirect");
   await logRedirectEvent("scam_found", `Scam detected: ${destinationUrl}`, sourceUrl, {
@@ -290,6 +305,6 @@ async function reportScamDestination(
     sourceUrl,
     classificationResult.screenshot,
     classificationResult.html,
-    { signals, confidenceScore }
+    { signals, confidenceScore, redirectDestinationId }
   );
 }

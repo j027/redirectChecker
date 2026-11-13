@@ -10,6 +10,7 @@ import { logProxyEvent, pruneProxyEvents } from "./proxyEventLogger.js";
 import { urlscanHunter } from "./urlscanHunter.js";
 import { syncHashLists } from "./safeBrowsingV5Service.js";
 import { retryFailedMsrcReports } from "./msrcReportService.js";
+import { abandonStaleReports, pruneReportSubmissions } from "./reportLogService.js";
 import { readConfig, HUNTER_NAMES, HunterName } from "../config.js";
 import { runHuntWithTimeout } from "../utils/huntLifecycle.js";
 import { fetch, ProxyAgent } from "undici";
@@ -539,8 +540,20 @@ export function startEventLogPruner(): void {
       const hunterPruned = await pruneHunterEvents(7);
       const redirectPruned = await pruneRedirectEvents(7);
       const proxyPruned = await pruneProxyEvents(365);
-      if (hunterPruned > 0 || redirectPruned > 0 || proxyPruned > 0) {
-        console.log(`Pruned ${hunterPruned} hunter events, ${redirectPruned} redirect events, and ${proxyPruned} proxy events`);
+      const reportsPruned = await pruneReportSubmissions(365);
+      const reportsAbandoned = await abandonStaleReports(60);
+      if (
+        hunterPruned > 0 ||
+        redirectPruned > 0 ||
+        proxyPruned > 0 ||
+        reportsPruned > 0 ||
+        reportsAbandoned > 0
+      ) {
+        console.log(
+          `Pruned ${hunterPruned} hunter events, ${redirectPruned} redirect events, ` +
+          `${proxyPruned} proxy events, and ${reportsPruned} report submissions; ` +
+          `abandoned ${reportsAbandoned} stale report submissions`
+        );
       }
     } catch (error) {
       console.error("Error during event log pruning:", error);

@@ -9,6 +9,12 @@ vi.mock("../../src/config.js", () => ({
   readConfig: vi.fn(),
 }));
 
+vi.mock("../../src/dbPool.js", () => ({
+  default: {
+    query: vi.fn().mockResolvedValue({ rows: [{ id: "1" }], rowCount: 1 }),
+  },
+}));
+
 import { fetch } from "undici";
 import { readConfig } from "../../src/config.js";
 import { reportToDiscourse } from "../../src/services/discourseReportService.js";

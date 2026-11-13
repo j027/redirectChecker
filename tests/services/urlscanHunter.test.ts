@@ -15,7 +15,7 @@ vi.mock("../../src/services/aiClassifierService.js", () => ({
 }));
 
 vi.mock("../../src/services/reportService.js", () => ({
-  reportToNetcraft: vi.fn().mockResolvedValue(undefined),
+  reportToNetcraft: vi.fn().mockResolvedValue({ status: "success" }),
 }));
 
 vi.mock("../../src/dbPool.js", () => ({

@@ -4,6 +4,13 @@ import path from "path";
 import crypto from "crypto";
 import { readConfig } from "../config.js";
 import pool from "../dbPool.js";
+import {
+  ReportContext,
+  ReportOutcome,
+  logSkippedReport,
+  reportInput,
+  trackReport,
+} from "./reportLogService.js";
 
 const MSRC_API_BASE = "https://api.msrc.microsoft.com/report/v3.0";
 const MSRC_ABUSE_ENDPOINT = `${MSRC_API_BASE}/abuse`;
@@ -50,12 +57,14 @@ async function logAbuseReport(
   reportPayload: object,
   responseStatus: string,
   responseBody: string
-): Promise<void> {
-  await pool.query(
+): Promise<number | null> {
+  const result = await pool.query(
     `INSERT INTO abuse_reports (provider, report_type, scam_url, source_url, report_payload, response_status, response_body)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id`,
     [provider, reportType, scamUrl, sourceUrl, JSON.stringify(reportPayload), responseStatus, responseBody]
   );
+  return result.rows[0]?.id ?? null;
 }
 
 function screenshotPath(scamUrl: string): string {
@@ -119,11 +128,18 @@ async function uploadScreenshot(screenshot: Buffer): Promise<string | null> {
 export async function reportToMsrc(
   scamUrl: string,
   sourceUrl: string,
-  screenshot?: Buffer | null
-): Promise<void> {
+  screenshot?: Buffer | null,
+  context?: ReportContext
+): Promise<ReportOutcome> {
+  const input = reportInput("msrc", "abuse_report", scamUrl, {
+    ...context,
+    provider: "msrc",
+  });
+
   if (await hasAlreadyReported("msrc", scamUrl)) {
     console.info(`MSRC: already reported ${scamUrl}, skipping`);
-    return;
+    await logSkippedReport(input, "duplicate");
+    return { status: "skipped", metadata: { reason: "duplicate" } };
   }
 
   const config = await readConfig();
@@ -156,36 +172,80 @@ export async function reportToMsrc(
     ...(config.msrcReporterOrg && { reporterOrg: config.msrcReporterOrg }),
   };
 
-  await sendReport(scamUrl, sourceUrl, report);
+  return sendReport(scamUrl, sourceUrl, report, context);
 }
 
-async function sendReport(scamUrl: string, sourceUrl: string, report: MsrcAbuseReport): Promise<string> {
-  let status: string;
-  let responseBody: string;
-  try {
-    const response = await fetch(MSRC_ABUSE_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(report),
-      signal: AbortSignal.timeout(MSRC_TIMEOUT_MS),
-    });
+async function sendReport(
+  scamUrl: string,
+  sourceUrl: string,
+  report: MsrcAbuseReport,
+  context?: ReportContext,
+  trigger: "initial" | "retry" = "initial"
+): Promise<ReportOutcome> {
+  const input = reportInput(
+    "msrc",
+    "abuse_report",
+    scamUrl,
+    { ...context, provider: "msrc" },
+    { trigger }
+  );
 
-    responseBody = await response.text();
-    status = response.ok ? "success" : `error_${response.status}`;
-  } catch (err) {
-    responseBody = err instanceof Error ? `${err.message}${err.cause ? ` (cause: ${err.cause})` : ""}` : String(err);
-    status = isTimeout(err) ? "error_timeout" : "error";
-  }
+  return trackReport(input, async () => {
+    let status: string;
+    let responseBody: string;
+    let httpStatus: number | null = null;
+    try {
+      const response = await fetch(MSRC_ABUSE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(report),
+        signal: AbortSignal.timeout(MSRC_TIMEOUT_MS),
+      });
 
-  await logAbuseReport("msrc", "msrc_api", scamUrl, sourceUrl, report, status, responseBody);
+      httpStatus = response.status;
+      responseBody = await response.text();
+      status = response.ok ? "success" : `error_${response.status}`;
+    } catch (err) {
+      responseBody = err instanceof Error ? `${err.message}${err.cause ? ` (cause: ${err.cause})` : ""}` : String(err);
+      status = isTimeout(err) ? "error_timeout" : "error";
+    }
 
-  if (status === "success") {
-    console.info(`Successfully reported to MSRC: ${scamUrl}`);
-  } else {
+    let abuseReportId: number | null = null;
+    try {
+      abuseReportId = await logAbuseReport(
+        "msrc",
+        "msrc_api",
+        scamUrl,
+        sourceUrl,
+        report,
+        status,
+        responseBody
+      );
+    } catch (error) {
+      console.error(`Failed to store MSRC abuse report for ${scamUrl}: ${error}`);
+    }
+
+    if (status === "success") {
+      console.info(`Successfully reported to MSRC: ${scamUrl}`);
+      return {
+        status: "success",
+        httpStatus,
+        abuseReportId,
+        responseSnippet: responseBody,
+        metadata: { trigger },
+      };
+    }
+
     console.error(`MSRC report failed for ${scamUrl}: ${status} - ${responseBody}`);
-  }
-
-  return status;
+    return {
+      status: "error",
+      httpStatus,
+      abuseReportId,
+      responseSnippet: responseBody,
+      errorMessage: responseBody || status,
+      metadata: { trigger },
+    };
+  });
 }
 
 export async function retryFailedMsrcReports(): Promise<void> {
@@ -236,5 +296,5 @@ async function retryMsrcReport(scamUrl: string): Promise<void> {
     }
   }
 
-  await sendReport(scamUrl, report.sourceUrl, report);
+  await sendReport(scamUrl, report.sourceUrl, report, undefined, "retry");
 }

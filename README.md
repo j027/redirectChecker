@@ -76,6 +76,8 @@ For production: `yarn build && yarn start`
 | `/hunterlogs` | View hunter event logs (filterable by hunter/event type) |
 | `/ads` | Browse detected ads with scam/clean filtering |
 | `/redirectlogs` | View redirect checker logs (filterable by event/source) |
+| `/report_log [channel] [status] [url] [count]` | View recent outbound report submissions and responses |
+| `/report_stats [days]` | View report delivery rates and report-to-action timing |
 
 ## Testing
 

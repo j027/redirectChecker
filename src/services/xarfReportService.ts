@@ -2,6 +2,13 @@ import { randomUUID, createHash } from "crypto";
 import nodemailer from "nodemailer";
 import { readConfig } from "../config.js";
 import pool from "../dbPool.js";
+import {
+  ReportContext,
+  ReportOutcome,
+  logSkippedReport,
+  reportInput,
+  trackReport,
+} from "./reportLogService.js";
 
 export interface XarfProvider {
   name: string;
@@ -126,12 +133,14 @@ async function logAbuseReport(
   reportPayload: object,
   responseStatus: string,
   responseBody: string
-): Promise<void> {
-  await pool.query(
+): Promise<number | null> {
+  const result = await pool.query(
     `INSERT INTO abuse_reports (provider, report_type, scam_url, source_url, report_payload, response_status, response_body)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id`,
     [provider, "xarf_email", scamUrl, sourceUrl, JSON.stringify(reportPayload), responseStatus, responseBody]
   );
+  return result.rows[0]?.id ?? null;
 }
 
 export async function sendXarfReport(
@@ -139,51 +148,102 @@ export async function sendXarfReport(
   sourceUrl: string | null,
   screenshot: Buffer | null,
   confidence: number | undefined,
-  provider: XarfProvider
-): Promise<void> {
-  if (await hasAlreadyReported(provider.name, scamUrl)) {
-    console.info(`XARF [${provider.name}]: already reported ${scamUrl}, skipping`);
-    return;
-  }
-
-  const config = await readConfig();
-
-  const report = buildXarfReport(
+  provider: XarfProvider,
+  context?: ReportContext
+): Promise<ReportOutcome> {
+  const input = reportInput(
+    "xarf",
+    "abuse_report",
     scamUrl,
-    screenshot,
-    confidence,
-    provider.xarfType,
-    config.xarfReporterOrg,
-    config.xarfReporterContact,
-    config.xarfReporterDomain
+    { ...context, provider: provider.name },
+    { xarf_type: provider.xarfType }
   );
 
-  const transporter = nodemailer.createTransport({
-    host: config.smtpHost,
-    port: config.smtpPort,
-    secure: config.smtpPort === 465,
-    auth: {
-      user: config.smtpUser,
-      pass: config.smtpPass,
-    },
-  });
+  if (await hasAlreadyReported(provider.name, scamUrl)) {
+    console.info(`XARF [${provider.name}]: already reported ${scamUrl}, skipping`);
+    await logSkippedReport(input, "duplicate");
+    return { status: "skipped", metadata: { reason: "duplicate" } };
+  }
 
-  try {
-    const info = await transporter.sendMail({
-      from: config.xarfReporterContact,
-      to: provider.abuseEmail,
-      subject: `[XARF] Abuse Report: Scam/Fraud detected on ${new URL(scamUrl).hostname}`,
-      text: JSON.stringify(report, null, 2),
-      headers: {
-        "X-XARF": "XARF",
-        "Auto-Submitted": "auto-generated",
+  return trackReport(input, async () => {
+    const config = await readConfig();
+
+    const report = buildXarfReport(
+      scamUrl,
+      screenshot,
+      confidence,
+      provider.xarfType,
+      config.xarfReporterOrg,
+      config.xarfReporterContact,
+      config.xarfReporterDomain
+    );
+
+    const transporter = nodemailer.createTransport({
+      host: config.smtpHost,
+      port: config.smtpPort,
+      secure: config.smtpPort === 465,
+      auth: {
+        user: config.smtpUser,
+        pass: config.smtpPass,
       },
     });
 
-    await logAbuseReport(provider.name, scamUrl, sourceUrl, report, "success", info.messageId ?? "");
-    console.info(`XARF [${provider.name}]: successfully reported ${scamUrl} (messageId: ${info.messageId})`);
-  } catch (err) {
-    await logAbuseReport(provider.name, scamUrl, sourceUrl, report, "error", String(err));
-    console.error(`XARF [${provider.name}]: error reporting ${scamUrl}: ${err}`);
-  }
+    try {
+      const info = await transporter.sendMail({
+        from: config.xarfReporterContact,
+        to: provider.abuseEmail,
+        subject: `[XARF] Abuse Report: Scam/Fraud detected on ${new URL(scamUrl).hostname}`,
+        text: JSON.stringify(report, null, 2),
+        headers: {
+          "X-XARF": "XARF",
+          "Auto-Submitted": "auto-generated",
+        },
+      });
+
+      let abuseReportId: number | null = null;
+      try {
+        abuseReportId = await logAbuseReport(
+          provider.name,
+          scamUrl,
+          sourceUrl,
+          report,
+          "success",
+          info.messageId ?? ""
+        );
+      } catch (error) {
+        console.error(`Failed to store XARF abuse report for ${scamUrl}: ${error}`);
+      }
+
+      console.info(`XARF [${provider.name}]: successfully reported ${scamUrl} (messageId: ${info.messageId})`);
+      return {
+        status: "success",
+        externalId: info.messageId ?? null,
+        responseSnippet: info.response ?? null,
+        abuseReportId,
+        metadata: { provider: provider.name, xarf_type: provider.xarfType },
+      };
+    } catch (err) {
+      let abuseReportId: number | null = null;
+      try {
+        abuseReportId = await logAbuseReport(
+          provider.name,
+          scamUrl,
+          sourceUrl,
+          report,
+          "error",
+          String(err)
+        );
+      } catch (error) {
+        console.error(`Failed to store XARF abuse report for ${scamUrl}: ${error}`);
+      }
+
+      console.error(`XARF [${provider.name}]: error reporting ${scamUrl}: ${err}`);
+      return {
+        status: "error",
+        errorMessage: String(err),
+        abuseReportId,
+        metadata: { provider: provider.name, xarf_type: provider.xarfType },
+      };
+    }
+  });
 }

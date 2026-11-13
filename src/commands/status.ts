@@ -2,6 +2,7 @@ import { CommandDefinition } from "./commands.js";
 import {
   EMOJI,
   formatHostStatusIndicator,
+  formatHostStatusReason,
   formatTimeDifference,
   formatUrl,
   formatSignals,
@@ -221,8 +222,15 @@ export const statusCommand: CommandDefinition = {
                 dest.hostStatusKind,
                 dest.hostStatusProvider
               );
+              const reason = formatHostStatusReason(
+                dest.hostStatusKind,
+                dest.hostStatusReason
+              );
+              const reasonSuffix = reason.length > 0 ? ` (${reason})` : "";
               const timeDiff = formatTimeDifference(dest.firstSeenDate, dest.hostStatusAt);
-              takedownStatusLines.push(`${indicator.emoji} ${indicator.label} ${timeDiff}`);
+              takedownStatusLines.push(
+                `${indicator.emoji} ${indicator.label}${reasonSuffix} ${timeDiff}`
+              );
             }
           }
           

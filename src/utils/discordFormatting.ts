@@ -5,6 +5,7 @@ export const EMOJI = {
   DNS: "🌐",
   HOST_SUSPENDED: "⛔",
   HOST_UNAVAILABLE: "⚠️",
+  HOST_GONE: "🛑",
   // Signal emojis (compact icons)
   FULLSCREEN: "📺",
   KEYBOARD_LOCK: "⌨️",
@@ -82,6 +83,8 @@ export function formatHostProvider(provider: string | null): string {
       return "Forge";
     case "bunny":
       return "Bunny CDN";
+    case "azurefd":
+      return "Azure FD";
     default:
       return provider != null && provider.length > 0 ? provider : "Provider";
   }
@@ -100,10 +103,35 @@ export function formatHostStatusIndicator(
     };
   }
 
+  if (kind === "gone") {
+    return {
+      emoji: EMOJI.HOST_GONE,
+      label: `${providerName} gone`,
+    };
+  }
+
   return {
     emoji: EMOJI.HOST_UNAVAILABLE,
     label: `${providerName} unavailable`,
   };
+}
+
+export function formatHostStatusReason(
+  kind: string | null,
+  reason: string | null
+): string {
+  if (kind !== "gone") {
+    return "";
+  }
+
+  const label =
+    reason === "http_404"
+      ? "HTTP 404"
+      : reason != null && reason.startsWith("http_")
+        ? `HTTP ${reason.slice(5)}`
+        : reason ?? "HTTP gone";
+
+  return `${label}, ambiguous`;
 }
 
 export function formatUrl(url: string): { display: string, full: string } {

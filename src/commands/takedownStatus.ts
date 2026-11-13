@@ -5,6 +5,7 @@ import {
   EMOJI,
   formatHostProvider,
   formatHostStatusIndicator,
+  formatHostStatusReason,
   formatTimeDifference,
   formatUrl,
 } from "../utils/discordFormatting.js";
@@ -157,8 +158,13 @@ export const takedownStatusCommand: CommandDefinition = {
             fastestTime = timeDiff;
             fastestService = formatHostProvider(row.host_status_provider);
           }
+          const reason = formatHostStatusReason(
+            row.host_status_kind,
+            row.host_status_reason
+          );
+          const reasonSuffix = reason.length > 0 ? ` (${reason})` : "";
           statusIndicators.push(
-            `${indicator.emoji} ${indicator.label} ${formatTimeDifference(firstSeen, flaggedAt)}`
+            `${indicator.emoji} ${indicator.label}${reasonSuffix} ${formatTimeDifference(firstSeen, flaggedAt)}`
           );
           const providerKey = row.host_status_provider ?? "unknown";
           stats.hostStatusCounts[providerKey] =

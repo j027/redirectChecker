@@ -30,7 +30,7 @@ interface TakedownStatusRecord {
   check_active: boolean;
 }
 
-export type HostStatusKind = "suspended_confirmed" | "unavailable";
+export type HostStatusKind = "suspended_confirmed" | "unavailable" | "gone";
 
 export interface HostStatusProvider {
   suffix: string;
@@ -66,6 +66,14 @@ const HOST_STATUS_PROVIDERS: HostStatusProvider[] = [
     suspensionHosts: ["suspended.b-cdn.net"],
     statusCodes: [403],
     bodyPatterns: [/suspended/i, /not configured/i],
+  },
+  {
+    suffix: "azurefd.net",
+    provider: "azurefd",
+    kind: "gone",
+    reason: "http_404",
+    suspensionHosts: [],
+    statusCodes: [404],
   },
 ];
 

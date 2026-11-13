@@ -3,6 +3,10 @@ import {
   classifyHostStatusResponse,
   matchHostStatusProvider,
 } from "../../src/services/takedownMonitorService.js";
+import {
+  formatHostStatusIndicator,
+  formatHostStatusReason,
+} from "../../src/utils/discordFormatting.js";
 
 describe("takedown host status", () => {
   it("matches Forge and Bunny destinations", () => {
@@ -95,5 +99,57 @@ describe("takedown host status", () => {
         ""
       )
     ).toBeNull();
+  });
+
+  it("classifies Azure FD 404 as gone", () => {
+    const provider = matchHostStatusProvider(
+      "https://foo.z03.azurefd.net/"
+    );
+    expect(provider?.provider).toBe("azurefd");
+
+    const result = classifyHostStatusResponse(
+      provider!,
+      404,
+      "https://foo.z03.azurefd.net/",
+      ""
+    );
+
+    expect(result).toMatchObject({
+      kind: "gone",
+      provider: "azurefd",
+      reason: "http_404",
+    });
+  });
+
+  it("only treats 404 as gone for Azure FD", () => {
+    const provider = matchHostStatusProvider("https://foo.z03.azurefd.net/");
+    expect(provider).not.toBeNull();
+
+    expect(
+      classifyHostStatusResponse(
+        provider!,
+        410,
+        "https://foo.z03.azurefd.net/",
+        ""
+      )
+    ).toBeNull();
+    expect(
+      classifyHostStatusResponse(
+        provider!,
+        200,
+        "https://foo.z03.azurefd.net/",
+        ""
+      )
+    ).toBeNull();
+  });
+
+  it("labels Azure FD 404 as ambiguous gone", () => {
+    expect(formatHostStatusIndicator("gone", "azurefd")).toEqual({
+      emoji: "🛑",
+      label: "Azure FD gone",
+    });
+    expect(formatHostStatusReason("gone", "http_404")).toBe(
+      "HTTP 404, ambiguous"
+    );
   });
 });
